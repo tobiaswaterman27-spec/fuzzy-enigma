@@ -1,0 +1,25 @@
+# THE BIGSHOT — Project Instructions
+
+Before making changes to this project, read `GAME_MASTER_PROMPT.md` completely.
+
+Treat it as the main game vision, design specification and development roadmap.
+
+## How to work
+
+- Inspect the existing repository, game engine, code, assets and build process before making changes.
+- Preserve working features and integrate new systems into the existing project.
+- Work autonomously. Make sensible decisions and add useful features that fit the game's vision.
+- Build connected, playable systems rather than disconnected menus, placeholders or mock functionality.
+- Follow the milestones, feature dependencies, asset requirements and animation requirements in the master prompt.
+- Test actual gameplay, saves, loading, economy behaviour and integrations wherever possible.
+- Fix discovered bugs and regressions before moving on.
+- Keep documentation, the roadmap and implementation status up to date.
+- Never claim something is implemented or tested unless it genuinely is.
+- If a tool, asset or capability is unavailable, explain the limitation and use a sensible alternative.
+- Prioritise a working, playable game and continue development beyond initial planning.
+
+## Starting work
+
+Read the master prompt and inspect the repository. Identify the current state of the project, then implement the highest-priority missing milestone. Do not stop after producing a plan. Make changes, test them and report what actually works.
+
+The project title is currently **THE BIGSHOT** and may change later.
