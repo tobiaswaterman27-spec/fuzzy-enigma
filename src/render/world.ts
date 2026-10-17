@@ -3,6 +3,7 @@
 // street furniture and detailed interiors.
 import * as THREE from 'three';
 import { getWorld, wallsFor, WALL_T, type BuildingDef, type Obstacle, type Rect } from '../sim/world/layout';
+import { hasModel, modelInstance } from './models';
 import { tex, TILE, worldUV, planeUV, signTexture, normalOf } from './textures';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { GameState } from '../sim/types';
@@ -114,18 +115,17 @@ export function buildWorld(scene: THREE.Scene): WorldView {
   }
   // road markings
   const paint = M('#ecebdf', 0.6);
-  const yellow = M('#e5c33a', 0.6);
   // zebra crossings sit exactly where the walking routes cross (see layout nav): Main Street at x, Harbour Road at z
   const mainX = [-7.5, 7.5, -24, 17, -70, 57];
   const harbourZ = [-7.5, 7.5];
   const clearOf = (v: number, list: number[], half: number) => list.every((c) => Math.abs(v - c) > half);
   for (let x = -94; x < 94; x += 6) if (Math.abs(x) > 9 && clearOf(x, mainX, 3)) g.add(box(3, 0.02, 0.14, paint, x, 0.04, 0, false));
   for (let z = -46; z < 74; z += 6) if (Math.abs(z) > 9 && clearOf(z, harbourZ, 3)) g.add(box(0.14, 0.02, 3, paint, 0, 0.04, z, false));
-  // yellow edge lines, broken at the junction and at each crossing
-  for (const z of [-4.6, 4.6]) {
+  // white edge lines along the kerb (parking allowed), broken at the junction and at each crossing
+  for (const z of [-4.82, 4.82]) {
     const cuts = [...mainX.map((x) => [x - 1.6, x + 1.6]), [-5.5, 5.5]].sort((a, b) => a[0] - b[0]);
     let from = -94;
-    for (const [a, b] of [...cuts, [94, 94]]) { if (a - from > 0.5) g.add(box(a - from, 0.02, 0.1, yellow, (from + a) / 2, 0.035, z, false)); from = Math.max(from, b); }
+    for (const [a, b] of [...cuts, [94, 94]]) { if (a - from > 0.5) g.add(box(a - from, 0.02, 0.1, paint, (from + a) / 2, 0.035, z, false)); from = Math.max(from, b); }
   }
   for (const x of mainX) for (let i = -4; i <= 4; i++) g.add(box(2.6, 0.02, 0.55, paint, x, 0.042, i * 1.05, false));
   for (const z of harbourZ) for (let i = -4; i <= 4; i++) g.add(box(0.55, 0.02, 2.6, paint, i * 1.05, 0.042, z, false));
@@ -480,6 +480,19 @@ function buildObstacle(o: Obstacle): THREE.Object3D {
   switch (o.kind) {
     case 'gondola': {
       const frame = metal('#dfe2e6', 0.4);
+      if (hasModel('gondola_bay')) {
+        // Blender-modelled bays tiled along the run, with end panels and a header sign
+        const n = Math.max(1, Math.round(D / 1.25)), bay = D / n;
+        for (let k = 0; k < n; k++) {
+          const b = modelInstance('gondola_bay', o.color ?? '#2e8b57')!;
+          b.position.set(cx, 0, r.z0 + (k + 0.5) * bay);
+          b.scale.set(W / 1.2, 1, bay / 1.25);
+          grp.add(b);
+        }
+        for (const z of [r.z0, r.z1]) grp.add(box(W + 0.04, o.height + 0.05, 0.04, frame, cx, (o.height + 0.05) / 2, z));
+        grp.add(box(0.05, 0.3, D * 0.7, M(o.color ?? '#2e8b57', 0.5), cx, o.height + 0.3, cz));
+        break;
+      }
       grp.add(box(0.06, o.height, D, M('#c9ced4', 0.6), cx, o.height / 2, cz));
       grp.add(box(W, 0.12, D, M('#9aa1a8', 0.6), cx, 0.06, cz));
       for (const y of [0.17, 0.62, 1.07, 1.52]) {
@@ -492,6 +505,16 @@ function buildObstacle(o: Obstacle): THREE.Object3D {
       break;
     }
     case 'counter': {
+      if (!o.color && hasModel('checkout')) {
+        // the cashier stands where the till's interaction point is; customers face them across the belt
+        const till = Object.values(getWorld().interactables).find((it) => it.kind === 'till' && it.obj.x >= r.x0 && it.obj.x <= r.x1 && Math.abs(it.obj.z - cz) < 2);
+        const c = modelInstance('checkout', '#2e8b57')!;
+        c.position.set(cx, 0, cz);
+        c.rotation.y = till && till.pos.z > cz ? Math.PI : 0;
+        c.scale.set(W / 4, o.height / 0.92, D / 1.2);
+        grp.add(c);
+        break;
+      }
       grp.add(box(W, o.height - 0.05, D, M(o.color ?? '#8b6f4e', 0.6), cx, (o.height - 0.05) / 2, cz));
       grp.add(box(W + 0.05, 0.05, D + 0.05, M('#2b2b2b', 0.35), cx, o.height, cz));
       if (!o.color) {
@@ -634,6 +657,8 @@ function buildObstacle(o: Obstacle): THREE.Object3D {
 }
 
 export function buildCar(color: string, x: number, z: number, rot: number, van = false): THREE.Group {
+  const model = modelInstance(van ? 'van' : 'car', color);
+  if (model) { model.position.set(x, 0, z); model.rotation.y = rot; return model; }
   const grp = new THREE.Group();
   const body = M(color, 0.3, { metalness: 0.5 });
   const glass = M('#1f2a33', 0.08, { metalness: 0.6 });

@@ -493,12 +493,23 @@ export function getWorld(): World {
   lamps.push({ x: 7.6, z: -24 });
   for (const l of lamps) obstacles.push({ kind: 'lamp', rect: box(l.x, l.z, 0.25, 0.25), height: 5, solid: true });
 
+  // kerbside parking (lane centre 4.0 m from the road centre, clear of the van's 2.5 m line and of crossings)
+  const E = Math.PI / 2, W = -Math.PI / 2;
   const parked = [
-    { pos: { x: 30, z: 3.5 }, rot: Math.PI / 2, color: '#b03a2e' },
-    { pos: { x: -60, z: -3.5 }, rot: -Math.PI / 2, color: '#2e86c1' },
-    { pos: { x: 64, z: -3.5 }, rot: -Math.PI / 2, color: '#d4ac0d' },
-    { pos: { x: 3.5, z: 44 }, rot: 0, color: '#717d7e' },
-    { pos: { x: -3.5, z: 58 }, rot: Math.PI, color: '#1e8449' },
+    { pos: { x: 30, z: 4 }, rot: E, color: '#b03a2e' },
+    { pos: { x: 36, z: 4 }, rot: E, color: '#e5e7e9' },
+    { pos: { x: 44, z: 4 }, rot: E, color: '#1b2631' },
+    { pos: { x: -40, z: 4 }, rot: E, color: '#7d3c98' },
+    { pos: { x: -46, z: 4 }, rot: E, color: '#a6acaf' },
+    { pos: { x: -60, z: -4 }, rot: W, color: '#2e86c1' },
+    { pos: { x: -32, z: -4 }, rot: W, color: '#f0f3f4' },
+    { pos: { x: -15, z: -4 }, rot: W, color: '#943126' },
+    { pos: { x: 26, z: -4 }, rot: W, color: '#212f3d' },
+    { pos: { x: 64, z: -4 }, rot: W, color: '#d4ac0d' },
+    { pos: { x: 72, z: -4 }, rot: W, color: '#5d6d7e' },
+    { pos: { x: 4, z: 44 }, rot: 0, color: '#717d7e' },
+    { pos: { x: 4, z: 26 }, rot: 0, color: '#c0392b' },
+    { pos: { x: -4, z: 58 }, rot: Math.PI, color: '#1e8449' },
   ];
   for (const p of parked) obstacles.push({ kind: 'car', rect: p.rot === 0 || p.rot === Math.PI ? box(p.pos.x, p.pos.z, 1.9, 4.2) : box(p.pos.x, p.pos.z, 4.2, 1.9), height: 1.5, solid: true, color: p.color });
 

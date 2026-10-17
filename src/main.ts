@@ -6,9 +6,10 @@ import { createNewGame, SKIN_TONES, HAIR_COLORS, HAIR_STYLES, BUILDS } from './s
 import type { Appearance } from './sim/types';
 import * as sim from './sim/index';
 import { loadHumanAsset, buildRealHuman } from './render/humanAsset';
+import { loadModels } from './render/models';
 import { buildRig } from './render/character';
 
-await loadHumanAsset();
+await Promise.all([loadHumanAsset(), loadModels(['car', 'van', 'gondola_bay', 'checkout'])]);
 const canvas = document.getElementById('view') as HTMLCanvasElement;
 const seed = (Date.now() % 100000) + 1;
 const appearance = { frame: 'm', skin: SKIN_TONES[2], hair: 'short', hairColor: HAIR_COLORS[1], build: 'average' } as Omit<Appearance, 'outfit' | 'height'>;
