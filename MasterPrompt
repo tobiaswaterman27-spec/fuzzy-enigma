@@ -1,25 +1,2617 @@
-# THE BIGSHOT — Project Instructions
+# THE BIGSHOT
+# MASTER GAME DESIGN, ENGINEERING AND AUTONOMOUS DEVELOPMENT SPECIFICATION
 
-Before making changes to this project, read `GAME_MASTER_PROMPT.md` completely.
+**Document type:** Authoritative project vision, gameplay specification, technical development contract and long-term roadmap  
+**Project title:** THE BIGSHOT  
+**Title status:** Provisional. The name may change later without affecting the game's identity or architecture.  
+**Target:** A playable, persistent, 3D open-world life, employment, business, property, economic and national simulation.  
+**Development approach:** Autonomous, iterative, system-driven, testable and continuously improving.
 
-Treat it as the main game vision, design specification and development roadmap.
+---
 
-## How to work
+# PART I — THE VISION
 
-- Inspect the existing repository, game engine, code, assets and build process before making changes.
-- Preserve working features and integrate new systems into the existing project.
-- Work autonomously. Make sensible decisions and add useful features that fit the game's vision.
-- Build connected, playable systems rather than disconnected menus, placeholders or mock functionality.
-- Follow the milestones, feature dependencies, asset requirements and animation requirements in the master prompt.
-- Test actual gameplay, saves, loading, economy behaviour and integrations wherever possible.
-- Fix discovered bugs and regressions before moving on.
-- Keep documentation, the roadmap and implementation status up to date.
-- Never claim something is implemented or tested unless it genuinely is.
-- If a tool, asset or capability is unavailable, explain the limitation and use a sensible alternative.
-- Prioritise a working, playable game and continue development beyond initial planning.
+## 1. Your role
 
-## Starting work
+You are the lead developer and primary technical decision-maker for THE BIGSHOT.
 
-Read the master prompt and inspect the repository. Identify the current state of the project, then implement the highest-priority missing milestone. Do not stop after producing a plan. Make changes, test them and report what actually works.
+Act as the project's:
 
-The project title is currently **THE BIGSHOT** and may change later.
+- Lead gameplay programmer.
+- Software architect.
+- Systems designer.
+- Economic simulation designer.
+- NPC artificial intelligence developer.
+- Technical artist.
+- 3D modelling and animation pipeline developer.
+- World and environment designer.
+- User-interface designer.
+- Audio and presentation designer.
+- Quality-assurance engineer.
+- Performance and optimisation engineer.
+- Build, packaging and documentation engineer.
+
+You are responsible for turning the game's vision into a real, functioning product inside the existing repository.
+
+You must understand the existing code before changing it. You must make implementation decisions, write and integrate code, create or obtain suitable assets using available tools, test the results, diagnose failures, repair defects and continue development.
+
+Do not stop after writing a plan.
+
+Do not produce only a concept document, a menu, a collection of mock interfaces, a prototype that cannot be extended, or a scene full of decorative buildings.
+
+The objective is an actual game with interconnected systems and repeatable gameplay.
+
+## 2. The central concept
+
+THE BIGSHOT is a modern, 3D, open-world simulation about building a life and participating in an evolving economy.
+
+The player begins with limited resources in a world that already exists independently of them.
+
+They can find work, develop skills, earn money, pay expenses, obtain accommodation, travel, build relationships, purchase property, establish a small business, employ people, manage companies, develop land, own supply chains and gradually build a large corporate group.
+
+Eventually, the player may become an influential employer, major investor, property developer, industrialist or participant in national economic and political life.
+
+However, becoming wealthy is not the only valid outcome.
+
+A player might remain a skilled tradesperson, run one successful shop, operate a small transport business, own a few rental properties, pursue a professional career or simply live in the world.
+
+The simulation must support different ambitions rather than forcing every player into the same progression path.
+
+### The defining design principle
+
+**Everything important should connect to something else.**
+
+A job connects to an employer, workplace, schedule, tasks, skills, equipment and wages.
+
+A business connects to customers, stock, suppliers, employees, premises, finance and competition.
+
+A property connects to ownership, land, buildings, maintenance, utilities, tenants and potential economic activity.
+
+An NPC connects to a home, finances, needs, work, relationships, travel and future decisions.
+
+A government policy connects to public finances, institutions, businesses, households and the physical world.
+
+These are not independent minigames. They are different parts of one simulation.
+
+## 3. Creative autonomy
+
+The specification defines the intended game, but it does not restrict you to the listed features.
+
+You are explicitly encouraged to add mechanics, content and systems that improve THE BIGSHOT.
+
+You may identify missing features, design better alternatives, invent new industries, add activities, improve progression, expand the economy, create new forms of ownership or develop entirely new opportunities for the player.
+
+Examples include:
+
+- Business negotiations and commercial tenders.
+- Reputation, trust, professional credibility and public image.
+- Auctions, procurement and competitive bidding.
+- Investment portfolios, ownership stakes and acquisitions.
+- Research, innovation and productivity improvements.
+- Franchising, licensing and intellectual property.
+- Business insurance, disputes and legal obligations.
+- Economic recessions, recoveries and changing consumer behaviour.
+- Employee morale, workplace culture and industrial disputes.
+- Public transport planning and infrastructure investment.
+- Tourism, entertainment, hospitality and leisure industries.
+- Dynamic contracts, unexpected opportunities and economic events.
+- Family businesses, partnerships and succession.
+- Automation and the changing nature of work.
+- Environmental regulations, resource scarcity and sustainability.
+- Rival companies with identifiable strategies.
+- Detailed analytics, forecasting and financial reporting.
+- New ways for players to build influence without simply accumulating money.
+
+These are examples, not an exhaustive list.
+
+Before adding a feature, determine whether it contributes to the core experience, which systems it depends on, what data it requires, how it affects existing systems and how it can be tested.
+
+Do not add complexity for its own sake. The best additions create meaningful choices and reinforce the simulation.
+
+If a feature is too expensive to implement properly at the current stage, document it, establish its dependencies and implement a smaller but coherent version first.
+
+---
+
+# PART II — PROJECT INSPECTION AND ENGINEERING
+
+## 4. Inspect before modifying
+
+Before writing or replacing code, inspect the existing repository thoroughly.
+
+Determine:
+
+1. The game engine, engine version and rendering pipeline.
+2. The programming languages and frameworks.
+3. The project structure and main entry points.
+4. Existing scenes, levels, prefabs, components and scripts.
+5. Existing player movement and camera behaviour.
+6. Current NPC, interaction, inventory and economy implementations.
+7. Existing character models, rigs, animations, materials and audio.
+8. Available 3D tools, import pipelines and asset libraries.
+9. Existing UI, menus, input mappings and settings.
+10. Save/load architecture and current data formats.
+11. Build commands, launch procedures and available tests.
+12. Existing dependencies, licences and platform constraints.
+13. Performance bottlenecks and known errors.
+14. Git branches, uncommitted changes and repository history where useful.
+
+Read relevant project documentation and configuration files. Inspect the implementation, not just the filenames.
+
+Do not assume that a feature is functional because a script or scene with an appropriate name exists.
+
+Where practical, establish a reproducible baseline build before changing the project.
+
+### Required initial deliverables
+
+Create or update:
+
+- `PROJECT_ASSESSMENT.md` — current state, engine, architecture, risks and known defects.
+- `ROADMAP.md` — milestones, priorities and implementation status.
+- `FEATURE_DEPENDENCIES.md` — feature relationships and acceptance criteria.
+- `ASSET_REGISTER.md` — important models, textures, audio and other assets.
+- `ANIMATION_REGISTER.md` — animation requirements, coverage and test status.
+- `TEST_PLAN.md` — repeatable gameplay and technical tests.
+
+Adapt existing documents where possible instead of creating unnecessary duplicates.
+
+Once the initial inspection is complete, immediately begin the highest-priority implementation work. Documentation is a means of coordinating development, not a substitute for it.
+
+## 5. Preserve and improve the existing game
+
+Treat the current repository as the source of truth.
+
+Do not rebuild the entire project from scratch unless inspection demonstrates that the existing architecture is fundamentally unusable and a replacement is genuinely justified.
+
+Preserve working systems, assets, configurations and user changes.
+
+Before large refactors:
+
+- Identify what depends on the code being changed.
+- Define the intended replacement behaviour.
+- Migrate relevant data and references.
+- Keep the project buildable where practical.
+- Test affected systems and their neighbours.
+- Document breaking changes.
+
+Do not silently delete functioning features to make implementation easier.
+
+Do not overwrite uncommitted user work.
+
+Keep dependencies proportionate, use version control responsibly and avoid introducing secrets into the repository.
+
+## 6. Technical architecture
+
+Use an architecture appropriate to the existing engine.
+
+Where compatible with the project, separate responsibilities into modules or equivalent subsystems.
+
+Recommended conceptual modules:
+
+- `WorldSimulation`
+- `TimeAndCalendar`
+- `CharacterController`
+- `InteractionSystem`
+- `CharacterAppearance`
+- `AnimationController`
+- `NPCSimulation`
+- `NavigationAndTransport`
+- `TaskAndJobSystem`
+- `EmploymentSystem`
+- `InventorySystem`
+- `TransactionSystem`
+- `AccountingSystem`
+- `MarketSimulation`
+- `BusinessSimulation`
+- `PropertySystem`
+- `ConstructionSystem`
+- `VehicleSystem`
+- `SupplyChainSystem`
+- `GovernmentSimulation`
+- `RelationshipSystem`
+- `EventAndNewsSystem`
+- `UIController`
+- `SaveLoadSystem`
+- `AudioSystem`
+- `DiagnosticsAndTesting`
+
+These names are conceptual rather than mandatory class names. Follow the engine's conventions and existing architecture.
+
+### Separation of responsibilities
+
+Each subsystem should have clear ownership of its data and rules.
+
+For example:
+
+- Accounting calculates and records financial transactions.
+- Inventory tracks quantities, locations and item states.
+- Employment manages contracts, wages, attendance and career status.
+- The task system determines whether work has actually been completed.
+- Animation presents the character's current activity.
+- The UI requests actions and displays authoritative state.
+- The save system serialises and restores relevant state.
+
+A UI button must not independently invent a financial result. An animation must not grant a delivery reward merely because it finished playing.
+
+Use clear interfaces, explicit state transitions and well-defined communication between systems.
+
+Use events where appropriate, but prevent duplicated processing, circular dependencies and accidental repeated payments.
+
+---
+
+# PART III — THE PLAYER AND EVERYDAY LIFE
+
+## 7. Player character
+
+Create or improve a controllable 3D character suitable for an immersive modern simulation.
+
+The player should be able to:
+
+- Walk, run and turn.
+- Interact with objects.
+- Enter and leave buildings where supported.
+- Pick up, carry and place suitable objects.
+- Use workplace equipment.
+- Operate computers, phones and interfaces.
+- Sit, stand and use appropriate furniture.
+- Enter, exit and use vehicles where implemented.
+- Change clothing and appearance where supported.
+- Perform job-specific activities.
+- Interact with other characters.
+- Access inventories and management interfaces.
+
+Controls should feel responsive and consistent.
+
+Movement, collision, interaction range, camera behaviour and animation must agree with one another.
+
+Avoid characters floating, sliding excessively, clipping through objects or becoming stuck in common situations.
+
+Support the input devices and platform already targeted by the project. Make important controls configurable when practical.
+
+## 8. Character customisation
+
+Where the asset pipeline permits, provide meaningful character customisation.
+
+Possible options include:
+
+- Face and facial features.
+- Hairstyle and colour.
+- Skin appearance.
+- Body proportions.
+- Facial hair.
+- Clothing and footwear.
+- Accessories.
+- Work uniforms.
+- Other compatible appearance variations.
+
+Customisation must use compatible meshes, rigs, materials and animations.
+
+Do not create hundreds of combinations by allowing arbitrary incompatible assets to clip through one another.
+
+Maintain a coherent visual style and reasonable performance.
+
+## 9. Clothing and wardrobe
+
+Clothing should have practical context.
+
+Different workplaces may require particular uniforms, safety equipment or protective clothing.
+
+NPC clothing should reflect occupation, personal preference, weather, available resources and other implemented factors.
+
+The player should be able to change clothing through a wardrobe, inventory or other suitable interface if those systems are implemented.
+
+If clothing can be purchased, the purchase must connect to the economy and inventory.
+
+If clothing is equipped, the game should correctly update the character's visible appearance.
+
+Support appropriate combinations of clothing, accessories and equipment. Avoid severe clipping and incompatible body attachments.
+
+Clothing condition, laundry and replacement can be introduced if they create worthwhile gameplay rather than unnecessary micromanagement.
+
+## 10. Physical condition and capabilities
+
+Create a manageable physical-condition model.
+
+Potential attributes include:
+
+- Energy.
+- Fatigue.
+- Stamina.
+- Strength.
+- Carrying capacity.
+- Movement ability.
+- Occupational fitness.
+- Health and recovery.
+- Sleep quality.
+- Stress and concentration.
+
+These attributes should have defined effects.
+
+For example, carrying heavy objects may consume stamina, demanding work may increase fatigue, and rest may restore energy.
+
+Relevant training can improve capabilities over time.
+
+Do not create hidden numerical attributes that have no observable consequences.
+
+Avoid making routine activities needlessly punishing. The purpose is to add meaningful decisions, not constant interruptions.
+
+## 11. Personal life and progression
+
+The player needs a credible progression system beyond simply earning money.
+
+Track appropriate information such as:
+
+- Employment history.
+- Qualifications.
+- Skills and experience.
+- Professional reputation.
+- Financial records.
+- Owned possessions.
+- Housing and property.
+- Vehicle ownership.
+- Business interests.
+- Relevant relationships.
+- Achievements and major decisions.
+
+Provide useful feedback about progress.
+
+The player should understand why opportunities become available and what they need to do to qualify for better jobs, loans, contracts or ownership opportunities.
+
+Allow players to change direction without requiring a complete restart.
+
+---
+
+# PART IV — THE WORLD
+
+## 12. Geographic structure
+
+Build a fictional modern country with a detailed starting region and the potential for wider expansion.
+
+The world should include a mixture of:
+
+- Large cities.
+- Medium-sized towns.
+- Small towns and villages.
+- Suburbs and residential districts.
+- Commercial centres.
+- Industrial estates.
+- Business parks.
+- Warehousing and distribution districts.
+- Farms and rural settlements.
+- Construction and redevelopment areas.
+- Transport hubs.
+- Public-service districts.
+- Leisure and recreation areas.
+
+Give districts different identities, land uses, property values, employment opportunities, transport access and economic characteristics.
+
+The country should not consist of interchangeable blocks of buildings.
+
+A central business district might have expensive commercial property, offices and transport links. An industrial district might have factories, warehouses and freight access. A rural district might specialise in agriculture and have fewer nearby services.
+
+These differences should influence gameplay.
+
+## 13. World generation and building placement
+
+Use a combination of designed locations, modular construction and procedural generation.
+
+Where procedural generation is appropriate, use explicit rules for:
+
+- Road connectivity.
+- Building frontage.
+- Land-use zoning.
+- Building footprints.
+- Plot boundaries.
+- Vehicle access.
+- Pedestrian access.
+- Building entrances.
+- Service access.
+- Terrain compatibility.
+- Utility connections where simulated.
+- Neighbourhood density.
+- Visual variation.
+
+Generated buildings must not block essential roads, spawn across important objects or create inaccessible workplaces.
+
+Use designed landmarks and major locations to give the world a recognisable identity.
+
+Avoid relying on random placement as a substitute for urban design.
+
+## 14. Buildings and interiors
+
+Buildings should be functional according to their purpose.
+
+Support suitable building categories:
+
+- Houses and apartments.
+- Shops and supermarkets.
+- Offices.
+- Restaurants and cafés.
+- Workshops and garages.
+- Warehouses.
+- Factories.
+- Farms and agricultural facilities.
+- Hotels and leisure businesses.
+- Schools and hospitals.
+- Council and public-service buildings.
+- Construction sites.
+- Other useful facilities.
+
+A functional building should have an appropriate combination of:
+
+- Entrance and exit.
+- Navigation space.
+- Interactable equipment.
+- Work areas.
+- Inventory or storage where relevant.
+- Suitable character positions.
+- Relevant business or public-service state.
+- Visual identity.
+- Collision and navigation support.
+
+Not every building needs a fully modelled interior. Use detailed interiors where gameplay requires them, and suitable simplified representations elsewhere.
+
+Clearly distinguish between fully functional locations, simplified simulated locations and purely decorative background buildings.
+
+Do not present decorative buildings as usable businesses.
+
+## 15. Roads, movement and accessibility
+
+Implement reliable movement through the world.
+
+Support appropriate combinations of:
+
+- Pedestrian paths.
+- Roads and junctions.
+- Car parks.
+- Loading bays.
+- Building entrances.
+- Delivery access.
+- Public transport stops.
+- Freight routes.
+- Service roads.
+- Rural access routes.
+
+Navigation must account for physical obstacles, restricted areas and destination accessibility.
+
+Vehicles must not routinely drive through buildings or become permanently trapped.
+
+Pedestrians should use suitable routes and avoid obviously impossible paths.
+
+If a destination becomes unavailable, agents should find a reasonable alternative, wait, replan or report failure rather than silently corrupting their task state.
+
+## 16. Time, weather and day-night cycles
+
+Create a consistent simulation clock.
+
+Time should influence:
+
+- Opening hours.
+- Employment shifts.
+- Wages.
+- Deliveries.
+- Production.
+- Construction schedules.
+- NPC routines.
+- Transport availability.
+- Household activity.
+- Lighting and ambience.
+- Weather effects where implemented.
+
+Use a configurable relationship between game time and real time.
+
+The simulation must be fast enough to support development and testing while remaining understandable to players.
+
+Weather and seasons can affect relevant activities, including agriculture, construction, travel and energy demand, where the systems are supported.
+
+Do not introduce weather effects that randomly break gameplay without clear rules.
+
+## 17. World events
+
+The world should produce events that arise from simulation state.
+
+Examples include:
+
+- A business opening or closing.
+- A large employer hiring staff.
+- A supplier running out of stock.
+- A road closure disrupting deliveries.
+- A new construction project.
+- A local festival increasing customer demand.
+- A factory shutdown.
+- A change in government policy.
+- A housing shortage.
+- A competitor entering a market.
+- A business being acquired.
+- A public infrastructure project.
+
+Events should have identifiable causes and appropriate consequences.
+
+Use event notifications, news reports or other interfaces to communicate important changes.
+
+Do not generate meaningless random headlines that contradict the actual state of the world.
+
+---
+
+# PART V — NPCS AND THEIR LIVES
+
+## 18. NPC data model
+
+NPCs are persistent participants in the world.
+
+Each relevant NPC should have a stable identifier that survives save/load and simulation-detail changes.
+
+Their data may include:
+
+**Identity**
+- Identifier and name.
+- Appearance and compatible rig.
+- Relevant life-stage information.
+- Clothing and equipment.
+
+**Location**
+- Home.
+- Employer.
+- Workplace.
+- Current location.
+- Relevant destinations.
+- Preferred transport methods.
+
+**Employment**
+- Employer and job.
+- Contract and working hours.
+- Wages and pay schedule.
+- Qualifications and skills.
+- Attendance and performance.
+- Career history.
+
+**Finances**
+- Income.
+- Expenses.
+- Available money.
+- Savings and debts where supported.
+- Financial obligations.
+- Important purchases.
+
+**Behaviour**
+- Personality traits.
+- Current task.
+- Schedule.
+- Needs and energy.
+- Preferences and goals.
+- Decision priorities.
+
+**Relationships**
+- Household membership.
+- Friends and relevant contacts.
+- Professional relationships.
+- Trust, familiarity and relationship history where implemented.
+
+**History**
+- Important life events.
+- Employment changes.
+- Relevant achievements.
+- Business ownership.
+- Major decisions.
+
+Do not simulate every possible attribute for every person immediately. Use a layered data model with detailed state for nearby or important characters and lighter state for distant populations.
+
+## 19. NPC decision-making
+
+NPCs must select actions based on their situation.
+
+A decision should consider:
+
+1. Current activity and task.
+2. Whether that task remains valid.
+3. Schedule and deadlines.
+4. Immediate needs and physical condition.
+5. Relevant goals and priorities.
+6. Available resources.
+7. Travel requirements.
+8. Environmental constraints.
+9. Social or workplace context.
+10. The consequences of possible actions.
+
+Use a suitable architecture such as behaviour trees, utility-based decisions, state machines or a combination.
+
+Choose the simplest architecture that provides the required behaviour.
+
+NPCs should not randomly abandon important tasks without explanation.
+
+For example, an employee who is scheduled to work should generally travel to the workplace, arrive, perform assigned duties and finish their shift. If the workplace closes unexpectedly, the employee should respond according to the circumstances.
+
+## 20. NPC daily routines
+
+Implement schedules that connect to actual world locations and tasks.
+
+A routine may include:
+
+- Wake up.
+- Prepare for the day.
+- Travel to work.
+- Arrive at the workplace.
+- Perform assigned tasks.
+- Take appropriate breaks.
+- Finish work.
+- Travel to other destinations.
+- Shop or access services.
+- Spend leisure time.
+- Return home.
+- Sleep and recover.
+
+The schedule should vary according to job type, working hours, individual circumstances and relevant events.
+
+Do not make every NPC follow the exact same timetable.
+
+Ensure that routines are interruptible and recoverable. An NPC delayed by traffic should not remain stuck in an impossible state for the rest of the day.
+
+## 21. Needs and decision priorities
+
+Where implemented, model needs such as:
+
+- Rest.
+- Food.
+- Income.
+- Social interaction.
+- Personal safety.
+- Recreation.
+- Household obligations.
+
+Needs should influence decisions without making every NPC require constant manual management.
+
+A character with low energy may prefer rest. Someone with insufficient money may seek additional work. An ambitious employee may pursue training or promotion.
+
+Make the relationship between needs, decisions and outcomes understandable.
+
+## 22. Personality and individual differences
+
+Create meaningful behavioural variation.
+
+Potential traits include:
+
+- Ambition.
+- Conscientiousness.
+- Patience.
+- Sociability.
+- Confidence.
+- Cooperation.
+- Competitiveness.
+- Risk tolerance.
+- Reliability.
+- Trust.
+- Adaptability.
+- Stress resilience.
+- Preference for routine.
+- Willingness to learn.
+
+Traits should influence appropriate decisions and be balanced so that no single trait determines every behaviour.
+
+An ambitious worker may pursue promotion. A cautious entrepreneur may prefer a stable investment. A cooperative manager may improve team coordination.
+
+Traits should not be merely descriptive text.
+
+## 23. NPC careers and economic activity
+
+NPCs must participate in the employment and economic systems.
+
+They should be able to:
+
+- Search for suitable vacancies.
+- Apply for jobs.
+- Accept offers.
+- Travel to workplaces.
+- Complete assigned work.
+- Receive wages.
+- Spend income.
+- Acquire skills.
+- Pursue training.
+- Seek promotion.
+- Resign or change employers.
+- Become unemployed.
+- Start or operate businesses where supported.
+- Retire or change activity where appropriate.
+
+NPC behaviour should reflect available opportunities, qualifications, pay, working conditions and personal circumstances.
+
+Businesses must not receive unlimited workers from nowhere.
+
+Recruitment should use the actual labour pool or a clearly defined population-generation mechanism.
+
+## 24. NPC relationships
+
+Relationships should arise from interactions and shared circumstances.
+
+Potential relationship factors include:
+
+- Familiarity.
+- Trust.
+- Cooperation.
+- Respect.
+- Conflict.
+- Shared employment.
+- Shared interests.
+- Relevant history.
+
+Use these factors where they improve recruitment, management, negotiations, social activities or other gameplay.
+
+A good relationship might improve communication or cooperation. A history of broken agreements might reduce trust.
+
+Do not make relationships change arbitrarily without an identifiable cause.
+
+## 25. NPC navigation and recovery
+
+NPCs must be able to reach their destinations through valid routes.
+
+Implement:
+
+- Destination selection.
+- Route planning.
+- Movement execution.
+- Obstacle avoidance.
+- Arrival verification.
+- Path replanning.
+- Failure recovery.
+- Task cancellation or reassignment where appropriate.
+
+An NPC should not be considered to have arrived merely because a timer expired.
+
+If the character cannot reach the destination, the game should detect the problem and respond sensibly.
+
+Use distance, navigation state and relevant interaction conditions to verify arrival.
+
+## 26. Population scale and simulation detail
+
+A living world can become computationally expensive.
+
+Use simulation levels based on distance, importance and current activity.
+
+**Detailed simulation:** nearby NPCs use navigation, animation, interaction and active task execution.
+
+**Reduced simulation:** distant NPCs retain schedules, locations, tasks, finances and important decisions without full frame-by-frame behaviour.
+
+**Aggregate simulation:** large populations can be represented statistically for routine economic calculations where individual detail is unnecessary.
+
+When an NPC moves between simulation levels, preserve their identity and state.
+
+Never allow switching simulation detail to duplicate wages, repeat purchases or reset important progress.
+
+---
+
+# PART VI — ANIMATION, MODELLING AND VISUAL INTEGRATION
+
+## 27. Animation is mandatory gameplay infrastructure
+
+Animation must be treated as a required part of the development process, not as a final decorative stage.
+
+The game needs believable movement and visible activities that correspond to actual simulation events.
+
+Implement or integrate suitable animations for:
+
+- Idle and breathing.
+- Walking and running.
+- Turning and stopping.
+- Starting and ending movement.
+- Reaching and handling objects.
+- Carrying and placing items.
+- Opening and closing doors.
+- Sitting and standing.
+- Using computers and phones.
+- Talking and interacting.
+- Eating and resting.
+- Entering and exiting vehicles.
+- Job-specific activities.
+- Appropriate equipment operation.
+
+## 28. Animation state machine
+
+Create a coherent animation system using the engine's suitable animation tools.
+
+The system should support:
+
+- Locomotion blending.
+- Action states.
+- Smooth transitions.
+- Appropriate timing.
+- Interaction alignment.
+- Interruptions.
+- Recovery from failed tasks.
+- Animation prioritisation.
+- Different character rigs where supported.
+- Performance-aware animation updates.
+
+Prevent incompatible animations from playing simultaneously.
+
+For example, a character should not walk normally while performing an interaction that requires standing still and using both hands.
+
+If an action is interrupted, return the character to an appropriate state.
+
+Animation completion and task completion must remain separate concepts.
+
+## 29. Work animation and object alignment
+
+Work animations must correspond to the correct object, tool and task.
+
+Examples:
+
+**Retail**
+- Picking up products.
+- Stocking shelves.
+- Scanning items.
+- Handling payments.
+- Bagging goods.
+- Cleaning work areas.
+
+**Warehouse**
+- Picking stock.
+- Carrying packages.
+- Placing items into storage.
+- Loading and unloading cargo.
+- Operating appropriate equipment.
+
+**Delivery**
+- Approaching a vehicle.
+- Loading or unloading cargo.
+- Handling parcels.
+- Verifying deliveries.
+
+**Construction**
+- Carrying materials.
+- Using tools.
+- Positioning components.
+- Performing suitable building tasks.
+
+**Mechanics**
+- Inspecting vehicles.
+- Using workshop tools.
+- Removing or installing suitable components.
+- Completing repair procedures.
+
+**Food preparation**
+- Preparing ingredients.
+- Operating kitchen equipment.
+- Cooking.
+- Plating and serving.
+
+**Manufacturing**
+- Handling components.
+- Operating machinery where safe and appropriate.
+- Inspecting products.
+- Moving finished goods.
+
+Use interaction anchors, animation markers, inverse kinematics or equivalent techniques where useful.
+
+The object, character hands, equipment and task state must agree.
+
+Do not allow a worker to visually stock an empty shelf while the inventory remains unchanged, or to complete a delivery without transferring the cargo.
+
+## 30. 3D modelling workflow
+
+Inspect the available asset pipeline before choosing modelling tools.
+
+Use a hybrid approach:
+
+- Modular architecture.
+- Reusable environmental assets.
+- Functional props.
+- Character models.
+- Compatible character rigs.
+- Procedural environment generation.
+- Reusable vehicles.
+- Bespoke landmarks.
+- Industry-specific equipment.
+- Detailed hero assets where justified.
+
+Use Blender or another suitable tool if available.
+
+Do not assume external services, paid tools or specific modelling software are installed.
+
+For every important asset, check:
+
+- Correct scale.
+- Geometry quality.
+- Material setup.
+- Texture requirements.
+- UVs where relevant.
+- Collision.
+- Pivot and origin.
+- Rig and animation compatibility.
+- Import settings.
+- Runtime performance.
+- Licensing and provenance.
+
+Use level of detail, culling, instancing and asset reuse where appropriate.
+
+Maintain a consistent artistic direction.
+
+## 31. Visual consistency
+
+Define a practical visual style based on the project's current assets and engine capabilities.
+
+The world should have coherent architecture, materials, lighting, proportions, signs and environmental detail.
+
+Buildings should look appropriate to their use.
+
+Workplaces should contain the equipment required by their jobs.
+
+Characters should wear appropriate clothing for their roles.
+
+Avoid severe model clipping, broken rigs, floating objects, missing textures, invisible collision and obvious asset mismatches.
+
+Where a high-quality asset is unavailable, use a deliberate, consistent substitute rather than pretending that the intended asset exists.
+
+---
+
+# PART VII — EMPLOYMENT AND WORKPLACE SIMULATION
+
+## 32. Employment lifecycle
+
+Create a complete employment lifecycle.
+
+The player should be able to:
+
+1. Discover vacancies.
+2. Review job descriptions.
+3. Check qualifications and requirements.
+4. Apply for a suitable position.
+5. Complete an interview or assessment where appropriate.
+6. Receive an offer or rejection.
+7. Accept an offer.
+8. Understand the employment terms.
+9. Travel to work.
+10. Attend shifts.
+11. Complete tasks.
+12. Receive wages.
+13. Build experience.
+14. Obtain training or promotion.
+15. Change employers or resign.
+16. Be dismissed for relevant reasons where implemented.
+
+Maintain employment history and appropriate records.
+
+Vacancies should reflect actual staffing needs rather than appearing as unlimited generic opportunities.
+
+## 33. Jobs, wages and performance
+
+Every implemented job should have defined:
+
+- Role and responsibilities.
+- Skills and qualifications.
+- Workplace.
+- Working hours.
+- Pay structure.
+- Available tasks.
+- Required equipment.
+- Performance criteria.
+- Training and progression.
+- Relevant workplace risks and operating constraints.
+
+Performance should arise from actual behaviour.
+
+Factors may include task completion, accuracy, speed, attendance, customer satisfaction, safety, teamwork and relevant skills.
+
+Do not reduce every job to standing at a location until a timer finishes.
+
+Wages must be calculated according to actual employment terms and recorded through the accounting system.
+
+## 34. Initial profession implementations
+
+Build a small number of complete professions before expanding.
+
+### Retail worker
+
+The player should interact with a functioning shop.
+
+Tasks can include:
+
+- Restocking shelves.
+- Organising inventory.
+- Scanning products.
+- Serving customers.
+- Handling transactions.
+- Maintaining the shop floor.
+- Receiving deliveries.
+
+Customer transactions must change stock and finances correctly.
+
+### Warehouse operative
+
+Tasks can include:
+
+- Receiving deliveries.
+- Unloading cargo.
+- Checking quantities.
+- Moving items into storage.
+- Picking orders.
+- Preparing shipments.
+- Loading outgoing goods.
+- Reporting discrepancies.
+
+Storage locations, cargo and order status must be represented in real state.
+
+### Delivery driver
+
+Tasks can include:
+
+- Accepting delivery assignments.
+- Collecting the correct cargo.
+- Loading a vehicle.
+- Planning a route.
+- Travelling to destinations.
+- Confirming successful delivery.
+- Returning or accepting further assignments.
+
+The game must verify the destination and cargo before recording success.
+
+### Cleaner and maintenance worker
+
+Tasks can include:
+
+- Travelling to a work site.
+- Inspecting the assigned area.
+- Using appropriate equipment.
+- Cleaning or maintaining specific objects.
+- Verifying completion.
+
+Cleaning must change a meaningful environmental state if cleanliness is part of the game.
+
+### Kitchen worker or chef
+
+Tasks can include:
+
+- Receiving orders.
+- Obtaining ingredients.
+- Preparing food.
+- Using suitable equipment.
+- Completing recipes.
+- Delivering finished orders.
+
+Recipes, ingredients, preparation time and product quality must be connected.
+
+### Construction worker
+
+Tasks can include:
+
+- Collecting materials.
+- Delivering materials to the correct location.
+- Operating suitable tools.
+- Completing assigned stages.
+- Recording progress.
+
+Construction progress must depend on actual tasks, materials and project state.
+
+### Mechanic
+
+Tasks can include:
+
+- Receiving a vehicle for repair.
+- Inspecting faults.
+- Identifying necessary parts.
+- Obtaining parts.
+- Performing repairs.
+- Testing the result.
+- Completing the customer order.
+
+The repaired vehicle must have an updated state consistent with the work completed.
+
+### Factory operative
+
+Tasks can include:
+
+- Feeding inputs into production.
+- Operating suitable machines.
+- Monitoring production.
+- Checking quality.
+- Moving finished goods.
+- Reporting downtime.
+
+Outputs must depend on inputs, machine availability, production time and relevant workforce.
+
+### Farmer
+
+Tasks can include:
+
+- Preparing fields.
+- Planting and maintaining crops.
+- Operating equipment.
+- Harvesting.
+- Storing produce.
+- Selling or delivering goods.
+
+Agricultural output must connect to time, resources, weather or seasons where implemented.
+
+### Office and administrative worker
+
+Implement genuine workflows, such as processing orders, maintaining records, managing accounts, coordinating schedules or handling customer requests.
+
+Do not create an office job that consists solely of repeatedly pressing a generic work button.
+
+---
+
+# PART VIII — THE BUSINESS SIMULATION
+
+## 35. Business ownership
+
+The player must be able to create and operate real businesses.
+
+A business should be a persistent simulation entity with an identity, ownership structure, location or operating area, finances, assets, employees and activities.
+
+Depending on the business type, it may also need:
+
+- Registration.
+- Licences or permits.
+- Premises.
+- Equipment.
+- Inventory.
+- Suppliers.
+- Customers.
+- Products or services.
+- Employees.
+- Operating schedules.
+- Contracts.
+- Debts and financial obligations.
+- Reputation.
+- Financial history.
+
+Not every business needs every field. Use appropriate business types and requirements.
+
+## 36. Business creation
+
+A business creation workflow should explain the practical requirements.
+
+For example, opening a shop may require:
+
+1. Choosing a suitable location.
+2. Renting or purchasing premises.
+3. Arranging startup funds.
+4. Acquiring fixtures and equipment.
+5. Choosing products.
+6. Finding suppliers.
+7. Purchasing opening inventory.
+8. Setting prices.
+9. Choosing opening hours.
+10. Hiring staff or planning to work personally.
+11. Opening the business.
+12. Monitoring actual operations.
+
+Requirements should vary by business type.
+
+A transport company needs vehicles and operating capacity. A manufacturer needs production equipment and inputs. A property business needs appropriate property assets and financing.
+
+## 37. Business operations
+
+Each implemented business should operate through real underlying systems.
+
+Track relevant information such as:
+
+- Revenue.
+- Cost of goods.
+- Wages.
+- Rent.
+- Utilities.
+- Insurance.
+- Maintenance.
+- Taxes and fees.
+- Debt payments.
+- Inventory.
+- Supplier commitments.
+- Customer demand.
+- Operating capacity.
+- Downtime.
+- Profit or loss.
+- Available cash.
+- Assets and liabilities.
+
+Display information in usable reports.
+
+A business may have substantial sales but still lose money because its costs exceed its income.
+
+A profitable business may nevertheless face a cash-flow problem if payments arrive too late to cover immediate obligations.
+
+Represent these distinctions accurately.
+
+## 38. Inventory and purchasing
+
+Inventory must be authoritative and consistent.
+
+Each relevant item should have an identifiable type, quantity, location and ownership or allocation state.
+
+Where useful, track quality, condition, batch, expiry, storage requirements and unit cost.
+
+Purchasing should follow a coherent process:
+
+1. Select a supplier.
+2. Choose products and quantities.
+3. Determine pricing and delivery terms.
+4. Check available funds or credit.
+5. Place an order.
+6. Record the obligation.
+7. Transport or receive the goods.
+8. Verify delivery.
+9. Update inventory.
+10. Record the appropriate financial transactions.
+
+Prevent duplicated deliveries, duplicated stock and payments being processed multiple times.
+
+Stock should not appear instantly unless the business rules explicitly permit immediate collection or instant supply.
+
+## 39. Suppliers and contracts
+
+Suppliers should be businesses or simulated economic entities with their own capabilities and constraints.
+
+Relevant supplier data may include:
+
+- Products or services offered.
+- Available capacity.
+- Prices.
+- Minimum order sizes.
+- Delivery methods.
+- Lead times.
+- Reliability.
+- Quality.
+- Payment terms.
+- Reputation.
+
+Supplier selection should create meaningful trade-offs.
+
+A cheaper supplier may have longer delivery times. A reliable supplier may charge more. A nearby supplier may reduce transport costs.
+
+Contracts should define relevant obligations, quantities, prices, schedules and conditions.
+
+Where implemented, missed deliveries and breached agreements should have appropriate consequences.
+
+## 40. Customers and demand
+
+Customers must generate actual economic demand.
+
+Demand should depend on relevant factors, such as:
+
+- Population.
+- Household income.
+- Prices.
+- Product suitability.
+- Quality.
+- Reputation.
+- Location.
+- Competition.
+- Availability.
+- Opening hours.
+- Consumer preferences.
+- Economic conditions.
+
+A shop in an inaccessible location should not receive the same demand as an identical shop in a busy commercial centre without a reason.
+
+Businesses should not receive unlimited customers or infinite purchasing power.
+
+Customer behaviour can be simulated individually nearby and statistically at a distance.
+
+## 41. Business staff and delegation
+
+The player should be able to recruit employees, assign roles and delegate operations.
+
+Possible roles include:
+
+- Frontline workers.
+- Skilled operators.
+- Supervisors.
+- Department managers.
+- Store managers.
+- Operations managers.
+- Accountants.
+- Procurement staff.
+- Logistics coordinators.
+- Senior executives.
+
+Roles must have meaningful responsibilities.
+
+A manager should be able to perform defined decisions or coordinate operations within their authority.
+
+Delegation should reduce some player workload while introducing management costs, staff requirements and possible performance differences.
+
+Employees should not magically make a business self-sufficient if essential functions remain unstaffed.
+
+## 42. Multiple businesses and corporate structures
+
+Support progression from one small business to a portfolio of operations.
+
+Where justified, implement:
+
+- Multiple branches.
+- Shared services.
+- Central purchasing.
+- Group-level accounting.
+- Shared logistics.
+- Management hierarchies.
+- Subsidiary companies.
+- Parent or holding companies.
+- Ownership stakes.
+- Acquisitions.
+- Mergers.
+- Divestment.
+- Business sales.
+
+A corporate group should aggregate relevant information without losing the individual financial records and operating state of each business.
+
+Businesses within the same group may share services, but the associated costs and benefits must be recorded.
+
+## 43. Competition and market strategy
+
+NPC-owned businesses should compete for customers, workers, suppliers, locations and contracts.
+
+Competition may involve:
+
+- Pricing.
+- Product quality.
+- Service.
+- Location.
+- Brand reputation.
+- Operating hours.
+- Innovation.
+- Supplier relationships.
+- Customer loyalty.
+- Marketing where implemented.
+
+A rival should not instantly react to every player action with perfect knowledge.
+
+Use believable information limits and decision-making.
+
+The market should support entry, expansion, decline and closure where economically justified.
+
+## 44. Business intelligence
+
+Provide useful information for decision-making.
+
+Possible reports include:
+
+- Revenue and expense history.
+- Profit and loss.
+- Cash-flow forecasts.
+- Stock levels.
+- Supplier performance.
+- Employee productivity.
+- Sales by product.
+- Customer demand.
+- Branch comparisons.
+- Competitor information.
+- Market prices.
+- Outstanding obligations.
+- Business valuation.
+
+Distinguish between actual information, estimates and forecasts.
+
+Forecasts should be based on available data and may be inaccurate.
+
+---
+
+# PART IX — ECONOMY AND FINANCIAL INTEGRITY
+
+## 45. Economic model
+
+Build an economy with understandable causes and effects.
+
+The initial implementation may use a simplified model, but it must remain internally consistent and extensible.
+
+Track relevant flows of:
+
+- Goods.
+- Services.
+- Labour.
+- Money.
+- Energy.
+- Materials.
+- Transport capacity.
+- Information.
+
+Households earn income and purchase goods or services.
+
+Businesses employ workers, purchase inputs, produce outputs, sell products and pay expenses.
+
+Suppliers receive orders and deliver goods.
+
+Landlords receive rent and maintain property.
+
+Government collects relevant revenue and purchases public services.
+
+Banks or lenders provide finance and receive repayments where those systems exist.
+
+These flows must connect through shared data and transaction rules.
+
+## 46. Price formation
+
+Prices should reflect the implemented market model.
+
+Relevant influences may include:
+
+- Production cost.
+- Supplier price.
+- Transport cost.
+- Labour cost.
+- Inventory.
+- Demand.
+- Competition.
+- Product quality.
+- Location.
+- Scarcity.
+- Taxes and fees.
+- Economic conditions.
+
+Avoid arbitrary price changes that cannot be explained.
+
+A market does not need perfect economic realism, but its rules must be consistent enough for players to learn and exploit strategically without discovering broken accounting.
+
+## 47. Production and capacity
+
+Production must consume relevant inputs and use real capacity.
+
+A production operation may depend on:
+
+- Required materials.
+- Equipment.
+- Energy.
+- Available labour.
+- Skill.
+- Operating time.
+- Storage.
+- Maintenance.
+- Quality requirements.
+- Orders and demand.
+
+Insufficient inputs should prevent or reduce production.
+
+Equipment downtime should reduce output.
+
+Finished goods should appear in an appropriate inventory location and become available for sale or transport.
+
+Prevent production from creating unlimited goods without cost.
+
+## 48. Accounting and transaction rules
+
+Every meaningful financial change must have an identifiable cause.
+
+Examples include:
+
+- Wage payments.
+- Customer purchases.
+- Supplier invoices.
+- Inventory purchases.
+- Rent.
+- Utility bills.
+- Taxes.
+- Loan repayments.
+- Interest.
+- Dividends.
+- Property transactions.
+- Vehicle purchases.
+- Construction expenditure.
+- Insurance claims.
+
+Use an authoritative transaction mechanism.
+
+Where appropriate, record:
+
+- Transaction identifier.
+- Parties involved.
+- Amount.
+- Account or accounts affected.
+- Reason.
+- Time.
+- Related business, order or asset.
+- Status.
+
+Use safeguards against duplicate processing.
+
+When a transaction fails, do not partially apply it unless the operation has a defined partial-completion rule.
+
+Ensure that account balances remain consistent with recorded transactions.
+
+## 49. Loans and credit
+
+Introduce lending after personal and business accounting are reliable.
+
+Potential features include:
+
+- Loan applications.
+- Eligibility assessment.
+- Interest.
+- Repayment schedules.
+- Collateral.
+- Credit history.
+- Missed payments.
+- Refinancing.
+- Early repayment.
+- Default and restructuring.
+
+Eligibility may depend on income, cash flow, assets, liabilities, credit history and other relevant factors.
+
+A loan should create both an inflow of funds and a corresponding liability.
+
+Borrowed money is not profit.
+
+## 50. Investment and ownership
+
+Where supported, allow investment in businesses and assets.
+
+Investment types may include:
+
+- Direct business ownership.
+- Shares or equity.
+- Property.
+- Equipment.
+- Other defined financial instruments.
+
+Ownership must have clear rights, costs and returns.
+
+Dividends should arise from declared distributions or explicit business rules, not from an automatic reward detached from financial performance.
+
+Business valuations should use appropriate financial or market factors and be presented as estimates where uncertainty exists.
+
+## 51. Economic cycles
+
+Introduce wider economic conditions when the underlying economy can support them.
+
+Possible conditions include:
+
+- Expansion.
+- Strong demand.
+- Inflation.
+- Recession.
+- Unemployment.
+- Credit tightening.
+- Supply shortages.
+- Commodity price changes.
+- Industry-specific growth or decline.
+- Recovery.
+
+Economic changes should propagate through the simulation.
+
+A downturn may reduce household spending, lower business revenue, increase unemployment and delay investment.
+
+An infrastructure investment may increase demand for construction and materials.
+
+A supply shock may raise prices for affected goods.
+
+Avoid simply changing a global difficulty multiplier without meaningful effects on businesses and households.
+
+---
+
+# PART X — PROPERTY, CONSTRUCTION AND LAND
+
+## 52. Property system
+
+Property is both a personal asset and a productive part of the economy.
+
+Support appropriate property categories, including:
+
+- Residential property.
+- Shops.
+- Offices.
+- Restaurants.
+- Industrial units.
+- Warehouses.
+- Workshops.
+- Factories.
+- Agricultural land.
+- Hotels.
+- Development sites.
+
+Track relevant data such as:
+
+- Unique property identifier.
+- Location.
+- Ownership.
+- Property type.
+- Size and condition.
+- Occupancy.
+- Purchase price and estimated value.
+- Rent and operating costs.
+- Maintenance needs.
+- Permitted use where implemented.
+- Utility and access status.
+- Relevant leases or contracts.
+
+## 53. Renting and purchasing
+
+Property acquisition must have clear financial and legal state transitions appropriate to the game's abstraction.
+
+For a purchase:
+
+1. Select the property.
+2. Review its price and relevant information.
+3. Determine whether the player or business can afford it.
+4. Arrange finance if supported.
+5. Confirm the transaction.
+6. Transfer ownership.
+7. Record costs and obligations.
+8. Update property access and management interfaces.
+
+For a rental:
+
+1. Select the property.
+2. Review rent, deposit and terms.
+3. Check affordability.
+4. Sign the lease.
+5. Pay the required amount.
+6. Establish occupancy or business access.
+7. Record recurring obligations.
+
+Prevent simultaneous incompatible ownership claims and duplicated property purchases.
+
+## 54. Rental businesses and tenants
+
+If the player owns rental property, tenants should be represented by actual household or business state.
+
+Track relevant information such as:
+
+- Lease terms.
+- Rent due.
+- Payment history.
+- Occupancy.
+- Maintenance issues.
+- Relevant tenant obligations.
+- Vacancy.
+- Property condition.
+
+Rental income should be recorded when due or paid according to the chosen model.
+
+Maintenance and vacancy should affect profitability.
+
+Avoid generating automatic rental income without considering whether a property is occupied and operating under the relevant rules.
+
+## 55. Construction lifecycle
+
+Construction must transform a real site into a completed asset.
+
+Implement stages appropriate to the project:
+
+1. Identify a site.
+2. Check access and suitability.
+3. Acquire or control the land.
+4. Select a development proposal.
+5. Estimate cost and timeline.
+6. Arrange financing.
+7. Obtain relevant permissions.
+8. Prepare the site.
+9. Arrange labour, materials and equipment.
+10. Complete construction tasks.
+11. Verify progress and quality.
+12. Resolve outstanding issues.
+13. Complete inspections where appropriate.
+14. Commission the finished building.
+15. Update the world and property systems.
+
+The project must be dependent on its inputs.
+
+Missing money, labour, materials or access should create delays or prevent progress.
+
+## 56. Construction contracts and contractors
+
+Contractors should have actual capabilities, costs, availability and relevant skills.
+
+Contracts should define:
+
+- Scope.
+- Price.
+- Materials or services supplied.
+- Expected completion.
+- Payment conditions.
+- Quality requirements.
+- Relevant responsibilities.
+
+Progress payments, delays and disputes can be introduced where useful.
+
+Contractors must not instantly complete complex projects without the required work unless the game explicitly offers an abstract fast-build option with an appropriate cost and rules.
+
+## 57. Urban development
+
+Completed projects should change the world.
+
+A new shop should become available for business activity.
+
+A new home should provide housing capacity.
+
+A new warehouse should provide storage and logistics capacity.
+
+A new road should alter access and potentially travel routes.
+
+A new factory should create production capacity if it is operational.
+
+Development can affect property values, employment, traffic, demand and neighbouring businesses.
+
+Represent these consequences through the simulation rather than merely adding a decorative model.
+
+---
+
+# PART XI — VEHICLES, TRANSPORT AND LOGISTICS
+
+## 58. Vehicle ownership and condition
+
+Implement vehicles according to their actual use.
+
+Potential categories include:
+
+- Cars.
+- Vans.
+- Trucks.
+- Buses.
+- Agricultural vehicles.
+- Construction equipment.
+- Other useful commercial vehicles.
+
+Track relevant information such as:
+
+- Vehicle identifier.
+- Type.
+- Owner.
+- Location.
+- Condition.
+- Capacity.
+- Fuel or energy.
+- Operating costs.
+- Maintenance requirements.
+- Cargo.
+- Availability.
+- Relevant insurance or legal requirements.
+
+Purchasing or assigning a vehicle must update ownership and availability consistently.
+
+## 59. Driving and vehicle interaction
+
+Where vehicles are playable, implement:
+
+- Entering and exiting.
+- Vehicle controls.
+- Acceleration and braking.
+- Steering.
+- Collision.
+- Appropriate camera behaviour.
+- Vehicle condition.
+- Fuel or energy consumption where supported.
+- Cargo loading and unloading.
+- Parking or storage.
+- Basic traffic interaction.
+
+Do not advertise a vehicle as drivable if it is merely a static model.
+
+If advanced driving is not yet available, implement a coherent alternative for the relevant gameplay and document the limitation.
+
+## 60. Logistics operations
+
+Logistics should connect suppliers, warehouses, factories, shops, farms, construction sites and customers.
+
+A shipment should have a meaningful lifecycle:
+
+1. A demand or order is created.
+2. Goods are allocated.
+3. The shipment is prepared.
+4. Transport is assigned.
+5. Cargo is loaded.
+6. A route is selected.
+7. The shipment travels.
+8. Delivery is verified.
+9. Receiving inventory is updated.
+10. Relevant payments and records are completed.
+
+Track cargo identity, quantities, origin, destination and status.
+
+Prevent cargo duplication and prevent the same delivery from being accepted repeatedly.
+
+## 61. Transport networks
+
+Introduce public transport and freight infrastructure where practical.
+
+Transport should influence:
+
+- Travel time.
+- Access to employment.
+- Delivery cost.
+- Business location suitability.
+- Labour availability.
+- Customer accessibility.
+- Regional development.
+
+Use simplified or aggregate travel calculations for distant agents when appropriate.
+
+Detailed vehicle simulation should be reserved for situations where it adds gameplay value.
+
+---
+
+# PART XII — GOVERNMENT AND NATIONAL SIMULATION
+
+## 62. Government structure
+
+Introduce local and national institutions after the core economic simulation is stable.
+
+Possible institutions include:
+
+- Local councils.
+- Regional government.
+- National government.
+- Public-service organisations.
+- Planning authorities.
+- Relevant regulatory bodies.
+
+Represent each institution through defined responsibilities and budgets rather than a collection of arbitrary menu options.
+
+## 63. Public finance
+
+Government revenue and expenditure should connect to actual economic activity.
+
+Potential revenue includes:
+
+- Business taxation.
+- Income-related taxation.
+- Property-related taxation.
+- Sales or consumption taxes.
+- Fees.
+- Other explicitly modelled sources.
+
+Potential expenditure includes:
+
+- Public-sector wages.
+- Roads and transport.
+- Education.
+- Healthcare.
+- Housing.
+- Waste management.
+- Water and energy infrastructure.
+- Public facilities.
+- Administration.
+- Other public services.
+
+Use a consistent accounting model.
+
+Where borrowing is implemented, track public debt and repayment obligations.
+
+Avoid allowing government budgets to create or destroy money without a defined mechanism.
+
+## 64. Policy decisions
+
+Policies should have identifiable costs, effects and delays.
+
+Examples include:
+
+- Changing tax rates.
+- Investing in transport.
+- Building housing.
+- Expanding education.
+- Supporting industries.
+- Changing planning rules.
+- Improving public services.
+- Investing in infrastructure.
+
+Represent the implementation process.
+
+A policy announcement should not instantly transform the whole country. Budget allocation, construction, hiring and other implementation steps may take time.
+
+## 65. Elections and political influence
+
+Political systems may include parties, elections, campaigns, public approval and competing policy priorities.
+
+The player may eventually participate through appropriate routes such as:
+
+- Funding or supporting permitted initiatives.
+- Building public reputation.
+- Participating in local politics.
+- Advocating policy.
+- Standing for office where supported.
+- Building relationships with relevant institutions.
+- Winning contracts through legitimate commercial processes.
+
+Money may create opportunities, but should not guarantee complete control over government.
+
+Public opinion, institutions, regulations and competing interests should remain meaningful.
+
+## 66. National development
+
+The long-term simulation should connect regional economic performance with infrastructure, services, employment and population.
+
+Regions may develop differently according to:
+
+- Transport access.
+- Available land.
+- Industrial capacity.
+- Labour.
+- Education and skills.
+- Investment.
+- Public services.
+- Housing.
+- Local demand.
+- Government decisions.
+
+The player should eventually be able to influence national development through business decisions, investment, employment, property development and public participation.
+
+Implement national-scale systems only when their underlying data and economic relationships are sufficiently reliable.
+
+---
+
+# PART XIII — USER INTERFACE AND PLAYER INFORMATION
+
+## 67. Interface principles
+
+Interfaces must be functional, readable and connected to authoritative game state.
+
+Provide clear feedback when actions succeed, fail or require further information.
+
+Use consistent navigation, terminology, visual hierarchy and interaction patterns.
+
+Avoid unnecessary clicks and ensure that important information is accessible.
+
+Do not display fabricated statistics or information that contradicts the actual simulation.
+
+## 68. Required interface categories
+
+As their underlying systems become available, implement interfaces for:
+
+**Personal**
+- Character information.
+- Inventory.
+- Skills and qualifications.
+- Employment.
+- Personal finances.
+- Banking.
+- Housing.
+- Vehicles.
+- Relevant relationships.
+
+**Business**
+- Business overview.
+- Revenue and expenses.
+- Profit and loss.
+- Cash flow.
+- Inventory.
+- Suppliers.
+- Orders.
+- Customers.
+- Employees.
+- Recruitment.
+- Scheduling.
+- Contracts.
+- Equipment.
+- Property.
+- Expansion and acquisitions.
+
+**World**
+- Map.
+- Navigation.
+- Nearby locations.
+- Transport.
+- Job vacancies.
+- Property listings.
+- Market prices.
+- News and events.
+
+**Advanced simulation**
+- Corporate groups.
+- Investment.
+- Construction projects.
+- Supply chains.
+- Government budgets.
+- Economic reports.
+- Public services.
+- Policies and national development.
+
+Do not implement all these interfaces as empty placeholders at the beginning. Introduce them when the underlying systems can provide real information and perform real actions.
+
+## 69. In-world technology
+
+The player may use a phone, computer or other suitable device to access remote management tools.
+
+These interfaces can expose business information, banking, recruitment, contracts, property listings and market reports.
+
+The availability of a remote action should follow the game's rules.
+
+For example, some tasks may require physical presence, while others can be performed remotely if the player has suitable staff or systems.
+
+A remote management interface should not bypass operational dependencies merely because it is convenient.
+
+---
+
+# PART XIV — SAVING, DATA AND RELIABILITY
+
+## 70. Persistent world
+
+The world must retain important changes between sessions.
+
+Save relevant state, including:
+
+- Player state.
+- Time and date.
+- Inventory and ownership.
+- Financial accounts and transaction history.
+- Employment and tasks.
+- NPC identities and important state.
+- Business operations.
+- Stock and shipments.
+- Property and construction.
+- Vehicle ownership and cargo.
+- Relevant relationships.
+- Market conditions.
+- World events.
+- Government state where implemented.
+
+Do not save every transient visual detail if it can be reconstructed safely.
+
+Define which state is authoritative and which state can be derived.
+
+## 71. Save format and migration
+
+Use a save format suitable for the engine and project.
+
+Include a save version and validation.
+
+When loading:
+
+1. Verify that the file can be read.
+2. Validate required data.
+3. Handle missing or incompatible fields.
+4. Apply appropriate migrations where possible.
+5. Reconstruct derived state.
+6. Validate cross-system references.
+7. Report errors clearly.
+8. Avoid corrupting the original save during recovery.
+
+Use safe write procedures where supported.
+
+Do not overwrite a valid save with incomplete or invalid state.
+
+## 72. Persistence tests
+
+Test saving and loading:
+
+- During employment.
+- During a business transaction.
+- While a delivery is active.
+- During construction.
+- With employees on shifts.
+- With goods in transit.
+- After property changes.
+- After economic events.
+
+Confirm that the game does not duplicate money, items, staff, deliveries, payments or construction progress.
+
+Check that NPCs resume coherent schedules and businesses continue from valid states.
+
+---
+
+# PART XV — TESTING AND DEBUGGING
+
+## 73. Definition of done
+
+A feature is not complete merely because code has been written.
+
+A feature is complete when:
+
+1. Its requirements are defined.
+2. Its dependencies exist or have documented substitutes.
+3. It is integrated with the appropriate systems.
+4. Its intended gameplay can be performed.
+5. Its state changes correctly.
+6. Errors are handled appropriately.
+7. Relevant tests have been run.
+8. Existing functionality has not been unintentionally broken.
+9. Its status and limitations are documented.
+
+Distinguish between planned, implemented, integrated, tested, playable and polished.
+
+Do not label a feature playable if it cannot actually be used.
+
+## 74. Automated testing
+
+Where the project's tools permit, implement tests for:
+
+- Financial calculations.
+- Transaction consistency.
+- Inventory quantities.
+- Job and task state transitions.
+- Wage calculations.
+- Production inputs and outputs.
+- Delivery verification.
+- Property ownership.
+- Construction dependencies.
+- Save/load round trips.
+- NPC identifiers.
+- Duplicate event prevention.
+- Business profitability calculations.
+- Simulation time.
+- Other important deterministic rules.
+
+Use small reproducible test scenarios.
+
+Test edge cases such as insufficient funds, missing stock, unavailable staff, cancelled orders and interrupted tasks.
+
+## 75. Gameplay testing
+
+Regularly launch the game and perform actual gameplay.
+
+Verify movement, interactions, animations, menus, workplace operations, NPC behaviours and world transitions.
+
+Inspect logs and errors.
+
+When possible, use screenshots, captured output or other available evidence to assess visual defects.
+
+Do not rely solely on code inspection when the feature's correctness depends on runtime behaviour.
+
+## 76. Required end-to-end journeys
+
+Maintain a repeatable suite of gameplay journeys.
+
+**Journey A — Start a life**
+
+Create a new game, obtain work, complete a shift, receive wages, pay an expense and verify the financial result.
+
+**Journey B — Operate a shop**
+
+Acquire stock, open the shop, serve customers, process transactions, replenish inventory and review financial performance.
+
+**Journey C — Build a business**
+
+Start a suitable business, recruit staff, purchase supplies, operate it and determine whether it makes a profit.
+
+**Journey D — Delegate**
+
+Hire a manager, assign responsibilities and verify that the business continues operating according to its rules.
+
+**Journey E — Build property**
+
+Acquire suitable land, arrange resources, progress construction and verify that the completed building becomes functional.
+
+**Journey F — Deliver goods**
+
+Create an order, prepare cargo, transport it and verify delivery and inventory updates.
+
+**Journey G — Supply disruption**
+
+Make an input unavailable and verify the consequences for dependent businesses.
+
+**Journey H — NPC persistence**
+
+Advance time across multiple days and verify that NPCs retain their identities, employment, finances and schedules.
+
+**Journey I — Save and resume**
+
+Save during active operations, reload and verify that tasks, transactions and world state remain consistent.
+
+**Journey J — Extended simulation**
+
+Run the simulation for an extended period and inspect economic stability, NPC recovery, resource consumption, performance and data integrity.
+
+**Journey K — Character and animation**
+
+Test multiple character variations, clothing combinations, locomotion, workplace actions, object alignment and interrupted animations.
+
+**Journey L — Regression**
+
+Repeat core gameplay after significant changes to ensure that existing features continue working.
+
+Adapt the suite to the actual implementation. Clearly document tests that cannot yet be performed.
+
+---
+
+# PART XVI — PERFORMANCE AND SCALABILITY
+
+## 77. Performance strategy
+
+Measure performance before making major optimisation decisions.
+
+Identify expensive systems and distinguish between CPU, GPU, memory, loading and simulation costs.
+
+Use appropriate techniques such as:
+
+- Level of detail.
+- Frustum and occlusion culling.
+- Instancing.
+- Asset reuse.
+- Texture reuse.
+- Object pooling where appropriate.
+- Reduced simulation frequency for distant entities.
+- Event-driven updates.
+- Efficient spatial queries.
+- Navigation updates only when needed.
+- Data-oriented processing where suitable.
+- Asynchronous loading where supported.
+- Profiling and targeted optimisation.
+
+Do not optimise by breaking simulation consistency.
+
+## 78. Simulation scheduling
+
+Avoid running every expensive decision for every NPC every frame.
+
+Separate high-frequency movement and presentation from slower economic and strategic decisions.
+
+For example, nearby character movement may update frequently, while distant business decisions can update at suitable simulation intervals.
+
+Use a coherent simulation clock and deterministic rules where practical.
+
+Important financial events and state transitions must not be skipped merely because an entity is distant.
+
+## 79. Graceful degradation
+
+When the simulation becomes too expensive, reduce nonessential detail before compromising core state.
+
+Examples include reducing distant animation detail, simplifying background movement and aggregating low-priority population activity.
+
+Maintain correct accounting, inventory, employment and ownership.
+
+If a system cannot support the intended scale, document the limitation and improve the architecture rather than hiding the problem.
+
+---
+
+# PART XVII — DEVELOPMENT MANAGEMENT
+
+## 80. Milestone system
+
+Develop the game through integrated, playable milestones.
+
+Adapt the sequence to the actual repository.
+
+### Milestone 0 — Assessment and foundation
+
+Inspect the project, establish the build process, identify risks and document the architecture.
+
+### Milestone 1 — Player and world
+
+Deliver reliable movement, camera, interaction, a small environment, basic character presentation and initial persistence.
+
+### Milestone 2 — Functional workplace
+
+Deliver one complete profession with actual tasks, equipment, animations and task outcomes.
+
+### Milestone 3 — Personal economy
+
+Deliver money, wages, expenses, purchases and reliable financial records.
+
+### Milestone 4 — NPC simulation
+
+Deliver persistent identities, schedules, navigation, employment and basic life routines.
+
+### Milestone 5 — Business operations
+
+Deliver a functional player-owned business with stock, suppliers, customers, costs, revenue and accounting.
+
+### Milestone 6 — Employees and management
+
+Deliver recruitment, shifts, wages, performance and delegation.
+
+### Milestone 7 — Property
+
+Deliver property ownership, rent, maintenance and meaningful property interactions.
+
+### Milestone 8 — Construction
+
+Deliver a working construction lifecycle with funding, materials, labour and completed assets.
+
+### Milestone 9 — Transport and logistics
+
+Deliver vehicles or appropriate transport abstractions, cargo, routes and verified deliveries.
+
+### Milestone 10 — Connected regional economy
+
+Connect multiple industries, households, businesses, NPCs and supply chains.
+
+### Milestone 11 — Corporate progression
+
+Deliver multiple businesses, branches, management structures and larger investment opportunities.
+
+### Milestone 12 — National simulation
+
+Introduce wider regions, public finances, infrastructure and government systems.
+
+### Milestone 13 — Advanced simulation and polish
+
+Expand economic depth, NPC individuality, animation coverage, audio, visuals, accessibility and optimisation.
+
+Do not advance purely because a milestone's code exists. Verify its acceptance criteria.
+
+Do not delay all visual improvement until the final milestone. Maintain consistent quality throughout.
+
+## 81. Dependency register
+
+Maintain `FEATURE_DEPENDENCIES.md` as the authoritative feature map.
+
+For each feature, record:
+
+- Description.
+- Intended player experience.
+- Required systems.
+- Data requirements.
+- Asset and animation requirements.
+- Dependencies.
+- Acceptance criteria.
+- Tests.
+- Current status.
+- Known limitations.
+- Next implementation step.
+
+Example:
+
+**Feature:** Warehouse employment.
+
+**Dependencies:** NPC navigation, job system, workplace interaction, inventory, storage locations, cargo, task execution, wages, animation and save/load.
+
+**Acceptance criteria:**
+- The player can obtain a warehouse job.
+- The player can travel to the workplace.
+- The player can receive a valid task.
+- Required cargo exists.
+- The player can perform the task using appropriate interactions.
+- Storage or cargo state updates correctly.
+- The task completes only when its conditions are satisfied.
+- Relevant wages and performance records update.
+- Saving and loading does not duplicate or erase task progress.
+
+Use equivalent criteria for other important features.
+
+## 82. Prioritisation
+
+When selecting the next task, consider:
+
+- Severity of existing bugs.
+- Importance to the core gameplay loop.
+- Number of dependent features.
+- Integration risk.
+- Player-visible impact.
+- Technical feasibility.
+- Testing requirements.
+- Performance implications.
+
+Prioritise critical defects, missing dependencies and incomplete core gameplay before optional advanced systems.
+
+However, do not become trapped in endless infrastructure work. Deliver playable functionality regularly.
+
+A good development sequence alternates between foundational systems and complete player-facing features.
+
+## 83. Reporting progress
+
+Maintain a concise, accurate progress report.
+
+After significant work, document:
+
+- What changed.
+- Which systems were integrated.
+- Which tests were run.
+- Whether the build succeeded.
+- What was actually verified.
+- Remaining defects.
+- Known limitations.
+- The next highest-priority task.
+
+Distinguish clearly between implementation and verification.
+
+If a build cannot be run, say so. Do not invent test results.
+
+---
+
+# PART XVIII — REQUIRED PLAYER EXPERIENCE
+
+## 84. Early-game experience
+
+The opening experience should establish the player's situation and give them a meaningful first goal.
+
+The player should understand:
+
+- Where they are.
+- What resources they have.
+- What opportunities exist.
+- How to find work or another legitimate source of income.
+- How to interact with the world.
+- How time and money work.
+- How to save progress.
+
+Provide useful guidance without overwhelming the player with every advanced system at once.
+
+Early activities should teach the basic relationships between work, income, expenses, inventory and opportunity.
+
+## 85. Mid-game experience
+
+As the player develops, introduce more consequential decisions.
+
+The player may choose between improving personal skills, changing jobs, starting a business, acquiring equipment, investing in property or expanding into another industry.
+
+Time, finance, staffing and operational capacity should create meaningful trade-offs.
+
+The player should increasingly decide what to do personally and what to delegate.
+
+## 86. Late-game experience
+
+The late game should introduce scale rather than merely larger numbers.
+
+Possible challenges include:
+
+- Managing multiple companies.
+- Coordinating supply chains.
+- Financing large projects.
+- Developing new regions.
+- Competing with established firms.
+- Hiring and retaining senior staff.
+- Managing corporate risk.
+- Responding to market changes.
+- Investing in infrastructure.
+- Participating in national economic development.
+
+Large organisations should require better systems, management and strategic decisions.
+
+Do not make late-game success equivalent to unlimited money and the disappearance of all meaningful constraints.
+
+## 87. Meaningful failure and recovery
+
+Failure should have understandable causes and reasonable paths to recovery.
+
+Examples include losing a job, running out of stock, taking on excessive debt, choosing a poor location or mismanaging employees.
+
+Consequences should be proportionate to the game's intended difficulty.
+
+Where appropriate, the player should be able to change strategy, obtain another job, restructure a business, sell assets or recover from a setback.
+
+Avoid irreversible softlocks caused by minor mistakes.
+
+---
+
+# PART XIX — ADDITIONAL SYSTEMS YOU SHOULD CONSIDER
+
+## 88. Reputation and trust
+
+Create reputation systems when they can influence real decisions.
+
+Different contexts may require separate reputations, such as:
+
+- Employment references.
+- Customer satisfaction.
+- Supplier reliability.
+- Business reputation.
+- Professional credibility.
+- Public reputation.
+
+Reputation should arise from behaviour and influence appropriate opportunities.
+
+Do not make every NPC know every fact about the player instantly.
+
+## 89. Research and innovation
+
+Businesses may improve productivity through training, research, better equipment and improved processes.
+
+Innovation should have appropriate costs, prerequisites and uncertainty.
+
+New methods may change production efficiency, product quality or operating costs.
+
+If technology becomes part of the economy, consider its effects on employment, competitiveness and capital requirements.
+
+## 90. Contracts and procurement
+
+Introduce contracts when businesses can reliably track obligations.
+
+Contracts may involve supply, transport, construction, maintenance, services or public procurement.
+
+Include quantities, pricing, deadlines, quality requirements and completion conditions as appropriate.
+
+Contract success must depend on actual fulfilment.
+
+## 91. Environmental and resource systems
+
+Where appropriate, model energy, water, waste, pollution or other resources that materially affect businesses and public infrastructure.
+
+Keep the model proportionate to gameplay.
+
+A factory may need energy and inputs. A farm may depend on water. A waste service may need vehicles and operating capacity.
+
+Environmental rules may influence operating costs, development permissions or public policy.
+
+Do not add resource meters that have no consequences.
+
+## 92. Emergencies and disruption
+
+Introduce disruptions that create interesting but manageable challenges.
+
+Examples include:
+
+- Equipment failure.
+- Vehicle breakdown.
+- Supplier interruption.
+- Staff shortages.
+- Severe weather.
+- Transport delays.
+- Unexpected repairs.
+- Sudden demand changes.
+- Infrastructure outages.
+
+Disruptions should have causes, appropriate probabilities and recovery options.
+
+Do not rely on constant random punishment to create difficulty.
+
+## 93. Player-created goals
+
+Provide flexible goals without forcing a single campaign structure.
+
+Examples include:
+
+- Obtain a particular career.
+- Become financially independent.
+- Establish a profitable business.
+- Build a property portfolio.
+- Own a fleet.
+- Employ a large workforce.
+- Expand into manufacturing.
+- Develop a town.
+- Build a corporate group.
+- Contribute to national infrastructure.
+
+Use achievements, milestones or optional objectives where they improve the experience.
+
+Players should remain free to define their own ambitions.
+
+---
+
+# PART XX — FINAL EXECUTION CONTRACT
+
+## 94. Non-negotiable rules
+
+1. Build the actual game, not just its documentation.
+2. Inspect the repository before making major changes.
+3. Preserve existing working features.
+4. Make sensible decisions autonomously.
+5. Add valuable features beyond the initial list when justified.
+6. Implement systems in dependency-aware stages.
+7. Ensure important systems share consistent state.
+8. Keep financial transactions and inventory changes reliable.
+9. Treat NPCs as persistent simulation participants.
+10. Treat animations as part of functional gameplay.
+11. Build and integrate real assets where possible.
+12. Avoid nonfunctional menus and fake statistics.
+13. Test gameplay, not just source code.
+14. Maintain save/load consistency.
+15. Monitor performance as the world grows.
+16. Maintain the roadmap and registers.
+17. Report limitations and failures honestly.
+18. Do not mark unfinished features as complete.
+19. Fix regressions before they spread.
+20. Continue beyond the first playable prototype.
+
+## 95. What to do when something is difficult
+
+Do not abandon an important system simply because the ideal implementation is difficult.
+
+Instead:
+
+1. Identify the underlying requirement.
+2. Inspect the available tools and architecture.
+3. Determine the minimum coherent implementation.
+4. Define what it must depend on.
+5. Implement that version.
+6. Test its behaviour.
+7. Document what is simplified.
+8. Design a route for future improvement.
+
+For example, if simulating every distant pedestrian is too expensive, preserve individual identities and important economic state while using aggregate movement and behaviour for distant populations.
+
+If a sophisticated character animation is unavailable, use a compatible existing animation or create a simpler but coherent substitute.
+
+If a fully detailed national economy is initially impractical, build a reliable regional economy that can later be expanded.
+
+Never silently replace an essential mechanic with a decorative placeholder.
+
+## 96. Final instruction
+
+**Begin development immediately.**
+
+Inspect the existing repository, determine the current state of the game, establish a reliable build process and identify the most important missing or broken functionality.
+
+Create or update the project assessment, roadmap, dependency register, asset register, animation register and test plan.
+
+Then implement the highest-priority playable milestone.
+
+Build connected systems. Create suitable assets. Integrate animations. Test the actual game. Fix defects. Preserve progress. Update documentation. Continue to the next milestone.
+
+Use creative freedom to introduce improvements that fit the vision and strengthen the world.
+
+Do not ask for permission for every reasonable design decision.
+
+Do not stop after producing a plan.
+
+Do not claim that untested functionality works.
+
+Do not sacrifice essential gameplay for the appearance of progress.
+
+The scope is ambitious, so work incrementally, but make every milestone a genuine improvement to the actual project.
+
+**THE BIGSHOT must become a playable, persistent, evolving world in which people work, businesses operate, goods move, buildings are constructed, money changes hands, markets react, and the player's decisions create lasting consequences.**
+
+Build the foundations properly. Connect the systems. Expand the world. Test everything possible. Keep improving the game.
