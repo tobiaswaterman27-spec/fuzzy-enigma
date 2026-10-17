@@ -4,7 +4,7 @@ import type { GameState, Person } from '../sim/types';
 import { AnimationController, buildRig, dress, type Rig } from './character';
 import { buildCar } from './world';
 import { productGeometry, productMaterial } from './products';
-import { getWorld, SHELF_LAYOUT, PALLET_X, SHOPS, U4_SECTIONS, U4_PALLET_Z } from '../sim/world/layout';
+import { buildingAt, getWorld, SHELF_LAYOUT, PALLET_X, SHOPS, U4_SECTIONS, U4_PALLET_Z } from '../sim/world/layout';
 import { ITEMS } from '../sim/items';
 import { count, total, firstItem } from '../sim/inventory';
 import { SHELF_CAPACITY } from '../sim/retail';
@@ -22,6 +22,8 @@ class PersonView {
   carriedItem = '';
   mop: THREE.Group | null = null;
   label: THREE.Sprite | null = null;
+  culled = false;
+  shadow = true;
 
   constructor(public p: Person, scene: THREE.Scene) {
     this.rig = buildRig(p.appearance);
@@ -35,8 +37,8 @@ class PersonView {
   update(state: GameState, p: Person, dt: number) {
     this.p = p;
     const root = this.rig.root;
-    root.visible = p.visible;
-    if (!p.visible) return;
+    root.visible = p.visible && !this.culled;
+    if (!root.visible) { root.position.set(p.pos.x, 0, p.pos.z); return; }
     const key = JSON.stringify(p.appearance);
     if (key !== this.outfitKey && buildBudget > 0) {
       buildBudget--;
@@ -193,11 +195,21 @@ export class Views {
     scene.add(this.queueMarker);
   }
 
-  update(state: GameState, dt: number) {
+  update(state: GameState, dt: number, viewer?: { x: number; z: number }, viewerInside?: string | null) {
     buildBudget = 1;
     for (const p of Object.values(state.people)) {
       let v = this.people.get(p.id);
       if (!v) { v = new PersonView(p, this.scene); this.people.set(p.id, v); }
+      // people far away, or inside another building while we are elsewhere, are not drawn at all
+      let near = true;
+      if (viewer && p.id !== 'player') {
+        const d = Math.hypot(p.pos.x - viewer.x, p.pos.z - viewer.z);
+        const inside = buildingAt(p.pos)?.id ?? null;
+        near = d < 75 && !(inside && inside !== viewerInside && d > 22);
+        const shadow = d < 30;
+        if (shadow !== v.shadow) { v.shadow = shadow; v.rig.root.traverse((o) => { o.castShadow = shadow; }); }
+      }
+      v.culled = !near;
       v.update(state, p, dt);
     }
     for (const [id, v] of this.shelfMeshes) {

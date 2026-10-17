@@ -5,7 +5,7 @@ import { UI } from './ui/ui';
 import { createNewGame, SKIN_TONES, HAIR_COLORS, HAIR_STYLES, BUILDS } from './sim/newgame';
 import type { Appearance } from './sim/types';
 import * as sim from './sim/index';
-import { loadHumanAsset } from './render/humanAsset';
+import { loadHumanAsset, buildRealHuman } from './render/humanAsset';
 import { buildRig } from './render/character';
 
 await loadHumanAsset();
@@ -15,7 +15,7 @@ const appearance = { frame: 'm', skin: SKIN_TONES[2], hair: 'short', hairColor: 
 const state = createNewGame(seed, { name: 'Alex Morgan', appearance });
 const game = new Game(canvas, state);
 const ui = new UI(game);
-(window as any).__bigshot = { game, ui, sim, THREE, buildRig };
+(window as any).__bigshot = { game, ui, sim, THREE, buildRig, buildRealHuman };
 document.getElementById('boot')!.remove();
 
 // --- character creator: edits the real player appearance live

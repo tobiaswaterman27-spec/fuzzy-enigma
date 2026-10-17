@@ -73,8 +73,7 @@ export class Game {
   frameMs = 0;
 
   constructor(public canvas: HTMLCanvasElement, public state: GameState) {
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: true });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -131,6 +130,24 @@ export class Game {
     this.composer = c;
   }
 
+  private slowFrames = 0;
+  private frameCount = 0;
+  private autoLowered = false;
+  onQualityAuto: () => void = () => {};
+
+  /** If high quality cannot keep up (sustained frames over ~35 ms), drop to low once, automatically. */
+  private watchFrameRate(dt: number) {
+    if (this.quality !== 'high' || this.autoLowered || document.hidden) return;
+    this.frameCount++;
+    if (this.frameCount < 120) return; // ignore start-up and shader compilation
+    this.slowFrames = dt > 0.035 ? this.slowFrames + 1 : Math.max(0, this.slowFrames - 2);
+    if (this.slowFrames > 150) {
+      this.autoLowered = true;
+      this.setQuality('low');
+      this.onQualityAuto();
+    }
+  }
+
   setQuality(q: 'high' | 'low') {
     this.quality = q;
     try { localStorage.setItem('bigshot.gfx', q); } catch { /* ignore */ }
@@ -139,6 +156,8 @@ export class Game {
   }
 
   resize() {
+    // post-processing already anti-aliases, so high quality caps the pixel ratio; low renders at CSS pixels
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.quality === 'high' ? 1.5 : 1));
     const w = this.canvas.clientWidth || window.innerWidth;
     const h = this.canvas.clientHeight || window.innerHeight;
     this.renderer.setSize(w, h, false);
@@ -228,7 +247,8 @@ export class Game {
       this.updateFocus();
       if (performance.now() > this.autosaveAt) { this.autosave(); this.autosaveAt = performance.now() + 180000; }
     }
-    this.views.update(s, this.paused ? 0 : dt);
+    this.views.update(s, this.paused ? 0 : dt, this.player.pos, this.insideId);
+    this.watchFrameRate(dt);
     this.world.update(s, dt);
     if (!this.freeCam) this.updateCamera(dt);
     this.updateLighting();

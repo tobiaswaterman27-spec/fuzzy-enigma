@@ -34,6 +34,7 @@ export class UI {
   constructor(private game: Game) {
     game.onToast = (m) => this.toast(m);
     game.onUi = (w, arg) => (w === 'jobs' || w === 'laptop' ? this.openPhone(w === 'laptop' ? this.tab : 'jobs') : w === 'interview' ? this.interviewInPerson(arg!) : this.advisor());
+    game.onQualityAuto = () => this.toast('Graphics switched to Low for smoother play (Menu > Graphics to change).');
     game.onFrame = () => this.frame();
     window.addEventListener('keydown', (e) => {
       if ((e.target as HTMLElement)?.tagName === 'INPUT') return;

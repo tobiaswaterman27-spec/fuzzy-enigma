@@ -4,6 +4,7 @@
 // (so it can never clip), eyes, and a skin shader with brows/lips/cheeks.
 import * as THREE from 'three';
 import type { Appearance } from '../sim/types';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { GARMENTS } from './human';
 
 export interface HumanAsset {
@@ -128,97 +129,13 @@ function blend(a: Appearance): Built {
   return { pos, nrm, joints, eyes };
 }
 
-/** triangle predicate -> index list */
-function selectTris(pos: Float32Array, pred: (region: string, cy: number, cz: number, nz: number, cx: number) => boolean): number[] {
-  const A = asset!;
-  const out: number[] = [];
-  const regs = A.meta.regions;
-  for (let t = 0; t < A.index.length; t += 3) {
-    const a = A.index[t], b = A.index[t + 1], c = A.index[t + 2];
-    const cy = (pos[a * 3 + 1] + pos[b * 3 + 1] + pos[c * 3 + 1]) / 3;
-    const cz = (pos[a * 3 + 2] + pos[b * 3 + 2] + pos[c * 3 + 2]) / 3;
-    const cx = (pos[a * 3] + pos[b * 3] + pos[c * 3]) / 3;
-    const ux = pos[b * 3] - pos[a * 3], uy = pos[b * 3 + 1] - pos[a * 3 + 1], uz = pos[b * 3 + 2] - pos[a * 3 + 2];
-    const vx = pos[c * 3] - pos[a * 3], vy = pos[c * 3 + 1] - pos[a * 3 + 1], vz = pos[c * 3 + 2] - pos[a * 3 + 2];
-    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
-    const nl = Math.hypot(nx, ny, nz) || 1;
-    if (pred(regs[A.region[t / 3]], cy, cz, nz / nl, cx)) out.push(a, b, c);
-  }
-  return out;
-}
 
 export const hashTri = (a: number, b: number, c: number) => {
   const s = [a, b, c].sort((x, y) => x - y);
   return s[0] * 73856093 ^ s[1] * 19349663 ^ s[2] * 83492791;
 };
 
-/** relax a garment's surface so fabric spans hollows instead of following every muscle (boundary stays put) */
-function drape(p: Float32Array, indices: number[], iterations: number) {
-  const orig = asset!.origIndex;
-  const nb = new Map<number, Set<number>>();
-  const edgeCount = new Map<string, number>();
-  const link = (a: number, b: number) => {
-    const oa = orig[a], ob = orig[b];
-    if (!nb.has(oa)) nb.set(oa, new Set());
-    if (!nb.has(ob)) nb.set(ob, new Set());
-    nb.get(oa)!.add(ob); nb.get(ob)!.add(oa);
-    const k = oa < ob ? `${oa}_${ob}` : `${ob}_${oa}`;
-    edgeCount.set(k, (edgeCount.get(k) ?? 0) + 1);
-  };
-  for (let i = 0; i < indices.length; i += 3) { link(indices[i], indices[i + 1]); link(indices[i + 1], indices[i + 2]); link(indices[i + 2], indices[i]); }
-  const boundary = new Set<number>();
-  for (const [k, n] of edgeCount) if (n === 1) for (const v of k.split('_')) boundary.add(Number(v));
-  // representative render vertex for every original vertex
-  const rep = new Map<number, number[]>();
-  for (const v of new Set(indices)) { const o = orig[v]; if (!rep.has(o)) rep.set(o, []); rep.get(o)!.push(v); }
-  const cur = new Map<number, [number, number, number]>();
-  for (const [o, vs] of rep) cur.set(o, [p[vs[0] * 3], p[vs[0] * 3 + 1], p[vs[0] * 3 + 2]]);
-  for (let it = 0; it < iterations; it++) {
-    const next = new Map<number, [number, number, number]>();
-    for (const [o, c] of cur) {
-      if (boundary.has(o)) { next.set(o, c); continue; }
-      const n = nb.get(o)!;
-      let x = 0, y = 0, z = 0, k = 0;
-      for (const q of n) { const qc = cur.get(q); if (qc) { x += qc[0]; y += qc[1]; z += qc[2]; k++; } }
-      if (!k) { next.set(o, c); continue; }
-      // never shrink inward: only accept moves that do not go below the original surface much
-      next.set(o, [c[0] * 0.5 + (x / k) * 0.5, c[1] * 0.5 + (y / k) * 0.5, c[2] * 0.5 + (z / k) * 0.5]);
-    }
-    for (const [o, c] of next) cur.set(o, c);
-  }
-  for (const [o, vs] of rep) { const c = cur.get(o)!; for (const v of vs) { p[v * 3] = c[0]; p[v * 3 + 1] = c[1]; p[v * 3 + 2] = c[2]; } }
-}
 
-function skinnedGeometry(pos: Float32Array, nrm: Float32Array, indices: number[], offset = 0, uvScale = 1, shape?: (p: Float32Array, idx: number[]) => void, smooth = 0): THREE.BufferGeometry {
-  const A = asset!;
-  const g = new THREE.BufferGeometry();
-  let p = pos;
-  if (offset || shape) {
-    p = new Float32Array(pos.length);
-    for (let i = 0; i < pos.length; i++) p[i] = pos[i];
-    if (smooth) {
-      const before = new Float32Array(p);
-      drape(p, indices, smooth);
-      // keep cloth outside the skin: push any vertex that sank back out along its normal
-      for (let v = 0; v < p.length / 3; v++) {
-        const dx = p[v * 3] - before[v * 3], dy = p[v * 3 + 1] - before[v * 3 + 1], dz = p[v * 3 + 2] - before[v * 3 + 2];
-        const along = dx * nrm[v * 3] + dy * nrm[v * 3 + 1] + dz * nrm[v * 3 + 2];
-        if (along < 0) { p[v * 3] -= along * nrm[v * 3]; p[v * 3 + 1] -= along * nrm[v * 3 + 1]; p[v * 3 + 2] -= along * nrm[v * 3 + 2]; }
-      }
-    }
-    for (let i = 0; i < pos.length; i++) p[i] += nrm[i] * offset;
-    shape?.(p, indices);
-  }
-  g.setAttribute('position', new THREE.BufferAttribute(p, 3));
-  g.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
-  if (uvScale === 1) g.setAttribute('uv', new THREE.BufferAttribute(A.uv, 2));
-  else { const u = new Float32Array(A.uv.length); for (let i = 0; i < u.length; i++) u[i] = A.uv[i] * uvScale; g.setAttribute('uv', new THREE.BufferAttribute(u, 2)); }
-  g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(Uint16Array.from(A.skinIndex), 4));
-  g.setAttribute('skinWeight', new THREE.Float32BufferAttribute(Float32Array.from(A.skinWeight, (x) => x / 255), 4));
-  g.setIndex(indices);
-  g.computeBoundingSphere();
-  return g;
-}
 
 // ------------------------------------------------------------------ materials
 const matCache = new Map<string, THREE.Material>();
@@ -379,7 +296,247 @@ function cutBody(pos: Float32Array, nrm: Float32Array, fields: Float32Array[], t
   return { pool, buckets, rest };
 }
 
-function poolGeometry(pool: Pool, indices: number[], offset: number, uvScale: number, smooth: number): THREE.BufferGeometry {
+interface Bridge { y0: number; y1: number; zc: number }
+
+/** Loose fit: cloth hangs from the widest part above instead of hugging every contour.
+ * `groups` pick vertices by dominant bone; each group's cross-section, per height band and angle,
+ * may only shrink by `taper` per metre going down. */
+interface Hang { bones: number[][]; y0: number; y1: number; taper: number; ease: number }
+
+function hangCloth(P: Float32Array, n: number, SI: Uint16Array, SW: Float32Array, h: Hang) {
+  const bins = 40, ab = 24, dy = (h.y1 - h.y0) / bins;
+  for (const group of h.bones) {
+    const members: number[] = [];
+    for (let i = 0; i < n; i++) {
+      const y = P[i * 3 + 1]; if (y < h.y0 || y > h.y1) continue;
+      let best = 0, bw = -1;
+      for (let d = 0; d < 4; d++) if (SW[i * 4 + d] > bw) { bw = SW[i * 4 + d]; best = SI[i * 4 + d]; }
+      if (group.includes(best)) members.push(i);
+    }
+    if (members.length < 20) continue;
+    // axis per band: bounding-box centre, smoothed down the column
+    const cx = new Float32Array(bins), cz = new Float32Array(bins), cnt = new Float32Array(bins);
+    const mnx = new Float32Array(bins).fill(Infinity), mxx = new Float32Array(bins).fill(-Infinity), mnz = new Float32Array(bins).fill(Infinity), mxz = new Float32Array(bins).fill(-Infinity);
+    const band = (y: number) => Math.max(0, Math.min(bins - 1, Math.floor((h.y1 - y) / dy))); // 0 = top
+    for (const i of members) { const k = band(P[i * 3 + 1]); mnx[k] = Math.min(mnx[k], P[i * 3]); mxx[k] = Math.max(mxx[k], P[i * 3]); mnz[k] = Math.min(mnz[k], P[i * 3 + 2]); mxz[k] = Math.max(mxz[k], P[i * 3 + 2]); cnt[k]++; }
+    for (let k = 0; k < bins; k++) if (cnt[k]) { cx[k] = (mnx[k] + mxx[k]) / 2; cz[k] = (mnz[k] + mxz[k]) / 2; }
+    for (let k = 0; k < bins; k++) if (!cnt[k]) { const j = k > 0 ? k - 1 : k + 1; cx[k] = cx[j]; cz[k] = cz[j]; }
+    // body radius per band and angle
+    const R = Array.from({ length: bins }, () => new Float32Array(ab));
+    const ang = (i: number, k: number) => Math.floor(((Math.atan2(P[i * 3] - cx[k], P[i * 3 + 2] - cz[k]) + Math.PI) / (2 * Math.PI)) * ab) % ab;
+    for (const i of members) { const k = band(P[i * 3 + 1]); const a = ang(i, k); R[k][a] = Math.max(R[k][a], Math.hypot(P[i * 3] - cx[k], P[i * 3 + 2] - cz[k])); }
+    for (let k = 0; k < bins; k++) for (let a = 0; a < ab; a++) if (!R[k][a]) R[k][a] = Math.max(R[k][(a + ab - 1) % ab], R[k][(a + 1) % ab]);
+    // hang: going down, the radius may only shrink slowly
+    for (let k = 1; k < bins; k++) for (let a = 0; a < ab; a++) R[k][a] = Math.max(R[k][a], R[k - 1][a] - h.taper * dy);
+    // soften around the ring
+    for (let k = 0; k < bins; k++) { const r = R[k], q = new Float32Array(ab); for (let a = 0; a < ab; a++) q[a] = Math.max(r[a], (r[(a + ab - 1) % ab] + 2 * r[a] + r[(a + 1) % ab]) / 4); R[k] = q; }
+    // also smooth down the column so the leg reads as one straight tube
+    for (let it = 0; it < 2; it++) for (let k = 1; k < bins - 1; k++) for (let a = 0; a < ab; a++) R[k][a] = Math.max(R[k][a], (R[k - 1][a] + R[k][a] * 2 + R[k + 1][a]) / 4);
+    for (const i of members) {
+      const y = P[i * 3 + 1];
+      // continuous band/angle coordinates, bilinear lookup
+      const fk = Math.max(0, Math.min(bins - 1.001, (h.y1 - y) / dy - 0.5)), k0 = Math.floor(fk), tk = fk - k0;
+      const ax = cx[k0] * (1 - tk) + cx[k0 + 1] * tk, az = cz[k0] * (1 - tk) + cz[k0 + 1] * tk;
+      const ex = P[i * 3] - ax, ez = P[i * 3 + 2] - az, d = Math.hypot(ex, ez);
+      if (d < 1e-5) continue;
+      const fa = (((Math.atan2(ex, ez) + Math.PI) / (2 * Math.PI)) * ab - 0.5 + ab) % ab, a0 = Math.floor(fa), ta = fa - a0, a1 = (a0 + 1) % ab;
+      const r = (R[k0][a0] * (1 - ta) + R[k0][a1] * ta) * (1 - tk) + (R[k0 + 1][a0] * (1 - ta) + R[k0 + 1][a1] * ta) * tk;
+      const fade = Math.min(1, (h.y1 - y) / (dy * 6));
+      const target = r + h.ease;
+      if (target > d) { const f = 1 + ((target - d) / d) * fade; P[i * 3] = ax + ex * f; P[i * 3 + 2] = az + ez * f; }
+    }
+  }
+}
+
+/** Long hair: a sheet that starts on the back of the head, just outside the skull's real cross-section,
+ * and falls to the shoulder blades, flaring slightly. Geometry is relative to the head joint. */
+function hairFall(pos: Float32Array, head: THREE.Vector3): THREE.BufferGeometry {
+  const W = topology();
+  const bins = 32, cz = head.z + 0.01;
+  const yRing = head.y + 0.12;
+  const ring = new Float32Array(bins);
+  for (let v = 0; v < pos.length / 3; v++) {
+    if (W.headNeck[v] < 0.9 || Math.abs(pos[v * 3 + 1] - yRing) > 0.015) continue;
+    const dx = pos[v * 3] - head.x, dz = pos[v * 3 + 2] - cz;
+    const k = Math.floor(((Math.atan2(dx, dz) + Math.PI) / (2 * Math.PI)) * bins) % bins;
+    ring[k] = Math.max(ring[k], Math.hypot(dx, dz));
+  }
+  for (let k = 0; k < bins; k++) if (!ring[k]) ring[k] = 0.085;
+  const radiusAt = (a: number) => {
+    const f = (((a + Math.PI) / (2 * Math.PI)) * bins - 0.5 + bins) % bins, k0 = Math.floor(f), t = f - k0;
+    return ring[k0] * (1 - t) + ring[(k0 + 1) % bins] * t;
+  };
+  const cols = 22, rows = 12, a0 = Math.PI * 0.5, a1 = Math.PI * 1.5, len = 0.4;
+  const P: number[] = [], U: number[] = [], I: number[] = [];
+  for (let r = 0; r <= rows; r++) for (let c = 0; c <= cols; c++) {
+    const t = r / rows, a = a0 + ((a1 - a0) * c) / cols;
+    const edge = Math.abs(c / cols - 0.5) * 2;
+    // sides tuck in towards the bottom so the ends look like hair, not a cut tube
+    const rad = radiusAt(a) + 0.012 + 0.045 * Math.min(1, t * 1.6) - 0.02 * t * Math.pow(edge, 3);
+    const y = yRing - 0.05 * Math.pow(edge, 2) - len * t * (1 - 0.25 * Math.pow(edge, 2));
+    P.push(Math.sin(a) * rad, y - head.y, cz + Math.cos(a) * rad - head.z);
+    U.push((c / cols) * 3, t * 4);
+  }
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    const a = r * (cols + 1) + c, b = a + 1, d = a + cols + 1, e = d + 1;
+    I.push(a, b, d, b, e, d);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2));
+  g.setIndex(I);
+  g.computeVertexNormals();
+  return g;
+}
+
+/** Neck strap and waist ties for the apron, as tubes around the body (attached rigidly to the chest/spine). */
+function apronStraps(pos: Float32Array, panel: THREE.BufferGeometry, joints: Record<string, THREE.Vector3>, waist: number): THREE.Mesh[] {
+  const P = panel.getAttribute('position') as THREE.BufferAttribute;
+  const cols = 18;
+  const tl = new THREE.Vector3().fromBufferAttribute(P, 0), tr = new THREE.Vector3().fromBufferAttribute(P, cols);
+  const nk = joints.neck;
+  // body radius around the vertical axis at a height, per angle (for the waist ties)
+  const ring = (y: number, bins = 48) => {
+    const r = new Float32Array(bins);
+    const cz = joints.thighL.z;
+    for (let v = 0; v < pos.length / 3; v++) {
+      if (Math.abs(pos[v * 3 + 1] - y) > 0.012) continue;
+      const x = pos[v * 3], z = pos[v * 3 + 2] - cz;
+      if (Math.abs(x) > 0.25) continue; // ignore hands hanging at the sides
+      const k = Math.floor(((Math.atan2(x, z) + Math.PI) / (2 * Math.PI)) * bins) % bins;
+      r[k] = Math.max(r[k], Math.hypot(x, z));
+    }
+    for (let k = 0; k < bins; k++) if (!r[k]) r[k] = (r[(k + bins - 1) % bins] + r[(k + 1) % bins]) / 2 || 0.15;
+    return { r, cz, bins };
+  };
+  const tubeGeo = (pts: THREE.Vector3[], radius: number) => new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), pts.length * 6, radius, 5, false);
+  const tube = (geo: THREE.BufferGeometry, attach: string) => {
+    const m = new THREE.Mesh(geo);
+    m.castShadow = true;
+    m.userData.attach = attach;
+    m.userData.worldPos = new THREE.Vector3(0, 0, 0);
+    return m;
+  };
+  // neck loop: from the bib corners up the sides of the neck and round the back
+  const neck = [tl.clone(), new THREE.Vector3(-0.072, nk.y - 0.03, nk.z + 0.01), new THREE.Vector3(-0.05, nk.y - 0.005, nk.z - 0.055), new THREE.Vector3(0, nk.y, nk.z - 0.07),
+    new THREE.Vector3(0.05, nk.y - 0.005, nk.z - 0.055), new THREE.Vector3(0.072, nk.y - 0.03, nk.z + 0.01), tr.clone()];
+  // waist ties: round the back at the waist, ending in a small bow
+  const y = waist - 0.01;
+  const { r, cz, bins } = ring(y);
+  const back: THREE.Vector3[] = [];
+  for (let i = 0; i <= 16; i++) {
+    const a = Math.PI * 0.42 + (i / 16) * Math.PI * 1.16; // from the left side round the back to the right side
+    const k = Math.floor(((Math.atan2(Math.sin(a), Math.cos(a)) + Math.PI) / (2 * Math.PI)) * bins) % bins;
+    const rr = r[k] + 0.012;
+    back.push(new THREE.Vector3(Math.sin(a) * rr, y, cz + Math.cos(a) * rr));
+  }
+  const bowZ = cz - r[Math.floor(bins / 2) % bins] - 0.018;
+  const bow = [new THREE.Vector3(0, y, bowZ), new THREE.Vector3(-0.03, y + 0.02, bowZ - 0.005), new THREE.Vector3(-0.045, y, bowZ - 0.004), new THREE.Vector3(-0.03, y - 0.018, bowZ - 0.004), new THREE.Vector3(0, y, bowZ),
+    new THREE.Vector3(0.03, y + 0.02, bowZ - 0.005), new THREE.Vector3(0.045, y, bowZ - 0.004), new THREE.Vector3(0.03, y - 0.018, bowZ - 0.004), new THREE.Vector3(0, y, bowZ), new THREE.Vector3(0.012, y - 0.08, bowZ - 0.004)];
+  return [tube(tubeGeo(neck, 0.006), 'chest'), tube(mergeGeometries([tubeGeo(back, 0.006), tubeGeo(bow, 0.005)])!, 'spine')];
+}
+
+/** A real apron: a cloth panel that follows the front of the chest and hangs straight from the belly
+ * over the legs, instead of a body-tight cut-out. Skinned rigidly to the torso bones. */
+function apronPanel(pos: Float32Array, joints: Record<string, THREE.Vector3>, top: number, bottom: number, waist: number): THREE.BufferGeometry {
+  const A = asset!;
+  const rows = 34, cols = 18, xb = 40, xr = 0.22;
+  const n = pos.length / 3;
+  const ys: number[] = [], zs: number[][] = [], ws: number[] = [];
+  for (let r = 0; r <= rows; r++) {
+    const y = top + ((bottom - top) * r) / rows;
+    ys.push(y);
+    // bib narrows above the waist, skirt widens a little at the hem
+    const w = y > waist ? 0.11 + 0.05 * Math.max(0, Math.min(1, (waist + 0.12 - y) / 0.12)) : 0.16 + 0.025 * ((waist - y) / (waist - bottom));
+    ws.push(w);
+    // front envelope of the body at this height
+    const env = new Float32Array(xb).fill(-Infinity);
+    for (let v = 0; v < n; v++) {
+      if (Math.abs(pos[v * 3 + 1] - y) > 0.015) continue;
+      const x = pos[v * 3]; if (Math.abs(x) >= xr) continue;
+      const k = Math.floor(((x + xr) / (2 * xr)) * xb);
+      env[k] = Math.max(env[k], pos[v * 3 + 2]);
+    }
+    // upper hull across x: the cloth spans hollows between the legs or under the chest
+    const pts: [number, number][] = [];
+    for (let k = 0; k < xb; k++) if (isFinite(env[k])) pts.push([-xr + ((k + 0.5) / xb) * 2 * xr, env[k]]);
+    const hull: [number, number][] = [];
+    for (const pt of pts) {
+      while (hull.length >= 2) { const [a, b] = [hull[hull.length - 2], hull[hull.length - 1]]; if ((b[0] - a[0]) * (pt[1] - a[1]) - (b[1] - a[1]) * (pt[0] - a[0]) >= 0) hull.pop(); else break; }
+      hull.push(pt);
+    }
+    const at = (x: number) => {
+      if (!hull.length) return joints.chest.z + 0.1;
+      if (x <= hull[0][0]) return hull[0][1];
+      for (let i = 1; i < hull.length; i++) if (x <= hull[i][0]) { const [a, b] = [hull[i - 1], hull[i]]; return a[1] + ((b[1] - a[1]) * (x - a[0])) / (b[0] - a[0]); }
+      return hull[hull.length - 1][1];
+    };
+    zs.push(Array.from({ length: cols + 1 }, (_, c) => at(-w + (2 * w * c) / cols)));
+  }
+  // below the belly the cloth falls almost straight down instead of following the thighs inward
+  for (let r = 1; r <= rows; r++) if (ys[r] < waist) for (let c = 0; c <= cols; c++) zs[r][c] = Math.max(zs[r][c], zs[r - 1][c] - 0.12 * (ys[r - 1] - ys[r]));
+  const P: number[] = [], U: number[] = [], SI: number[] = [], SW: number[] = [], I: number[] = [];
+  const bi = (nm: string) => A.meta.bones.indexOf(nm);
+  const chest = bi('chest'), spine = bi('spine'), hips = bi('hips');
+  for (let r = 0; r <= rows; r++) for (let c = 0; c <= cols; c++) {
+    const y = ys[r], x = -ws[r] + (2 * ws[r] * c) / cols;
+    // a slight curl back at the side edges reads as thick fabric
+    const edge = Math.abs(c / cols - 0.5) * 2;
+    P.push(x, y, zs[r][c] + 0.022 - 0.01 * Math.pow(edge, 6));
+    U.push(x * 6, y * 6);
+    // rigid-ish weights: chest above the sternum, spine at the belly, hips below
+    const tc = Math.max(0, Math.min(1, (y - joints.spine.y) / (joints.chest.y - joints.spine.y)));
+    const th = Math.max(0, Math.min(1, (joints.spine.y - y) / (joints.spine.y - joints.hips.y)));
+    if (y >= joints.spine.y) { SI.push(chest, spine, 0, 0); SW.push(tc, 1 - tc, 0, 0); } else { SI.push(hips, spine, 0, 0); SW.push(th, 1 - th, 0, 0); }
+  }
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    const a = r * (cols + 1) + c, b = a + 1, d = a + cols + 1, e = d + 1;
+    I.push(a, d, b, b, d, e);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2));
+  g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(SI, 4));
+  g.setAttribute('skinWeight', new THREE.Float32BufferAttribute(SW, 4));
+  g.setIndex(I);
+  g.computeVertexNormals();
+  g.computeBoundingSphere();
+  return g;
+}
+
+/** Cloth does not follow concave dips between two bulges (buttocks, crotch): per height band, raise the
+ * surface between the outermost point on each side to the straight line joining them. */
+function bridgeHollows(P: Float32Array, n: number, b: Bridge) {
+  const bins = 24, h = (b.y1 - b.y0) / bins;
+  for (const side of [-1, 1]) {
+    // side -1 = back (z < zc), +1 = front
+    const peak = Array.from({ length: bins }, () => ({ l: [0, -Infinity], r: [0, -Infinity] }));
+    for (let i = 0; i < n; i++) {
+      const y = P[i * 3 + 1]; if (y < b.y0 || y >= b.y1) continue;
+      const out = (P[i * 3 + 2] - b.zc) * side; if (out <= 0) continue;
+      const k = Math.min(bins - 1, Math.floor((y - b.y0) / h)), x = P[i * 3];
+      const pk = x < 0 ? peak[k].l : peak[k].r;
+      if (out > pk[1]) { pk[0] = x; pk[1] = out; }
+    }
+    for (let i = 0; i < n; i++) {
+      const y = P[i * 3 + 1]; if (y < b.y0 || y >= b.y1) continue;
+      const out = (P[i * 3 + 2] - b.zc) * side; if (out <= 0) continue;
+      const t = (y - b.y0) / h - 0.5, k0 = Math.max(0, Math.min(bins - 1, Math.floor(t))), k1 = Math.min(bins - 1, k0 + 1), f = Math.max(0, Math.min(1, t - k0));
+      const line = (pk: { l: number[]; r: number[] }) => {
+        const [xl, zl] = pk.l, [xr, zr] = pk.r, x = P[i * 3];
+        if (!isFinite(zl) || !isFinite(zr) || x <= xl || x >= xr) return -Infinity;
+        return zl + ((zr - zl) * (x - xl)) / (xr - xl);
+      };
+      const a0 = line(peak[k0]), a1 = line(peak[k1]);
+      const target = !isFinite(a0) ? a1 : !isFinite(a1) ? a0 : a0 * (1 - f) + a1 * f;
+      // fade in over the band ends so the bridged area blends into the untouched cloth
+      const edge = Math.min(1, (y - b.y0) / (h * 3), (b.y1 - y) / (h * 3));
+      if (isFinite(target) && target > out) P[i * 3 + 2] += (target - out) * side * edge;
+    }
+  }
+}
+
+function poolGeometry(pool: Pool, indices: number[], offset: number, uvScale: number, smooth: number, bridge?: Bridge, hang?: Hang): THREE.BufferGeometry {
   const used = Array.from(new Set(indices)).sort((a, b) => a - b);
   const remap = new Map<number, number>();
   used.forEach((v, i) => remap.set(v, i));
@@ -391,6 +548,9 @@ function poolGeometry(pool: Pool, indices: number[], offset: number, uvScale: nu
     for (let d = 0; d < 4; d++) { SI[i * 4 + d] = pool.si[v * 4 + d]; SW[i * 4 + d] = pool.sw[v * 4 + d]; }
   });
   const idx = indices.map((v) => remap.get(v)!);
+  // bridge first so the drape smoothing below blends the bridged area into the rest of the cloth
+  if (bridge) bridgeHollows(P, n, bridge);
+  if (hang) hangCloth(P, n, SI, SW, hang);
   if (smooth) {
     // relax interior vertices so the fabric bridges hollows; boundary vertices stay on the cut line
     const nb: Set<number>[] = Array.from({ length: n }, () => new Set());
@@ -436,7 +596,7 @@ function poolGeometry(pool: Pool, indices: number[], offset: number, uvScale: nu
   g.setAttribute('skinIndex', new THREE.BufferAttribute(SI, 4));
   g.setAttribute('skinWeight', new THREE.BufferAttribute(SW, 4));
   g.setIndex(idx);
-  if (smooth) g.computeVertexNormals();
+  if (smooth || bridge) g.computeVertexNormals();
   g.computeBoundingSphere();
   return g;
 }
@@ -536,6 +696,9 @@ function buildRealHumanUncached(a: Appearance): HumanBuild {
   const n = pos.length / 3;
   const W = topology();
   const fTop = new Float32Array(n), fBot = new Float32Array(n), fShoe = new Float32Array(n), fHair = new Float32Array(n);
+  const fOver = new Float32Array(n), fTopLong = new Float32Array(n);
+  const ov = g.over;
+  const hz = joints.thighL.z; // the body's front/back mid-plane (the hip joint sits towards the back)
   const nk = joints.neck, hd = joints.head;
   const style = a.hair;
   for (let v = 0; v < n; v++) {
@@ -551,7 +714,7 @@ function buildRealHumanUncached(a: Appearance): HumanBuild {
       const headish = W.headNeck[v];
       // keep the ears clear of hair
       const ear = Math.abs(dx) > 0.068 && dy < 0.055 && dy > -0.05 && Math.abs(dz) < 0.05;
-      fHair[v] = style === 'bald' ? 1 : Math.max((line - dy) * 10, (0.6 - headish), ear && style !== 'long' ? 0.3 : -1);
+      fHair[v] = style === 'bald' ? 1 : Math.max((line - dy) * 10, (0.6 - headish), ear ? 0.3 : -1);
     }
     const neck = W.headNeck[v];
     const arm = W.arm[v];
@@ -569,16 +732,32 @@ function buildRealHumanUncached(a: Appearance): HumanBuild {
     const fHand = hand - 0.5;
     const fLeg = leg - 0.5;
     fTop[v] = Math.max(fNeck, fWaist, fSleeve, fHand, fLeg);
+    // the shirt itself hangs a little lower so it overlaps the waistband (no gap line at the seam)
+    fTopLong[v] = Math.max(fNeck, (waist - 0.095 - y) * 10, fSleeve, fHand);
     // trousers: below the waistband, legs down to the ankle (or above the knee for shorts), not feet/arms
     const fAbove = (y - (waist - 0.06)) * 10;
     const fHem = pantsShort ? Math.min(0.5 - leg, (kneeY + 0.08 - y) * 10) : (0.085 - y) * 10;
     fBot[v] = Math.max(fAbove, fHem, arm - 0.5);
     // shoes: the foot and the ankle below the trouser hem
+    if (ov) {
+      // over-garments are their own smooth fields so their edges are clean curves too
+      const front = z - hz; // + is the front of the body
+      if (ov.kind === 'apron') {
+        fOver[v] = Math.max((y - (shoulderY - 0.1)) * 10, (kneeY + 0.1 - y) * 10, (Math.abs(x) - 0.165) * 12, (0.005 - front) * 14, arm - 0.4, fNeck);
+      } else if (ov.kind === 'vest') {
+        fOver[v] = Math.max((waist - 0.1 - y) * 10, fNeck, arm - 0.35, (y - (shoulderY + 0.02)) * 10);
+      } else {
+        // blazer: torso to below the hips, long sleeves to the wrist, a V opening at the front
+        const vDepth = (neckBase - y) / 0.27;
+        const fV = front > 0.02 && vDepth > 0 && vDepth < 1 ? (0.075 * (1 - vDepth) - Math.abs(x)) * 14 : -1;
+        fOver[v] = Math.max(fNeck, (hipsY - 0.08 - y) * 10, Math.min(arm - 0.5, (wristY + 0.05 - y) * 10), fHand, fV);
+      }
+    }
     fShoe[v] = Math.min(0.5 - foot, (y - 0.085) * 10);
     if (leg < 0.3) fShoe[v] = Math.max(fShoe[v], 0.5);
   }
   // smooth the fields over the mesh (shared across UV seams) so cut lines are clean curves
-  for (const F of [fTop, fBot, fShoe, fHair]) {
+  for (const F of ov ? [fTop, fBot, fShoe, fHair, fTopLong, fOver] : [fTop, fBot, fShoe, fHair, fTopLong]) {
     let cur = new Float32Array(W.nOrig), next = new Float32Array(W.nOrig);
     for (let v = 0; v < n; v++) cur[W.orig[v]] = F[v];
     for (let it = 0; it < 5; it++) {
@@ -597,7 +776,12 @@ function buildRealHumanUncached(a: Appearance): HumanBuild {
   const [hairTris, topTris, botTris, shoeTris] = buckets;
   const visibleSkin = rest;
   void hipsY; void neckBase;
-  const isArmR = ['arm_upper', 'arm_lower', 'forearm'];
+  // fabric spans the cleft between the buttocks and the hollow at the front of the crotch
+  const bi = (nm: string) => A.meta.bones.indexOf(nm);
+  const crotch = joints.thighL.y - 0.11;
+  // trouser legs fall fairly straight from the thigh instead of hugging knees and calves
+  const legHang: Hang = { bones: [[bi('thighL'), bi('shinL'), bi('footL')], [bi('thighR'), bi('shinR'), bi('footR')]], y0: 0.0, y1: crotch, taper: fem ? 0.22 : 0.16, ease: 0.002 };
+  const bridge: Bridge = { y0: joints.thighL.y - 0.11, y1: hipsY + 0.1, zc: joints.thighL.z };
   const meshes = (skeleton: THREE.Skeleton): THREE.Object3D[] => {
     const out: THREE.Object3D[] = [];
     const sk = (geo: THREE.BufferGeometry, mat: THREE.Material) => {
@@ -610,20 +794,20 @@ function buildRealHumanUncached(a: Appearance): HumanBuild {
       return m;
     };
     sk(poolGeometry(pool, visibleSkin, 0, 1, 0), skinMaterial(a.skin, a.hairColor, fem));
-    sk(poolGeometry(pool, topTris, 0.007, 6, 6), cloth(g.top.color, g.top.tex));
-    sk(poolGeometry(pool, botTris, 0.008, 6, 8), cloth(g.bottom.color, g.bottom.tex, 0.9));
+    const shirt = cutBody(pos, nrm, [fTopLong], A.index);
+    sk(poolGeometry(shirt.pool, shirt.buckets[0], 0.011, 6, 6, bridge), cloth(g.top.color, g.top.tex));
+    void topTris;
+    sk(poolGeometry(pool, botTris, 0.008, 6, 8, bridge, legHang), cloth(g.bottom.color, g.bottom.tex, 0.9));
     sk(poolGeometry(pool, shoeTris, 0.011, 4, 10), cached(`shoe${g.shoes}`, () => new THREE.MeshStandardMaterial({ color: g.shoes, roughness: 0.4, metalness: 0.05 })));
-    if (g.over) {
-      const o = g.over;
-      const overTris = selectTris(pos, (r, cy, _cz, nz, _cx) => {
-        if (o.kind === 'apron') return (r === 'torso_upper' || r === 'torso_lower' || r === 'thigh') && cy < shoulderY - 0.08 && cy > kneeY + 0.12 && nz > 0.05;
-        if (o.kind === 'vest') return (r === 'torso_upper' || r === 'torso_lower') && cy > waist - 0.08 && cy < shoulderY + 0.02;
-        const vDepth = (neckBase - cy) / 0.26;
-        const inV = nz > 0.4 && vDepth < 1 && Math.abs(_cx) < 0.075 * (1 - vDepth);
-        return ((r === 'torso_upper' || r === 'torso_lower') && cy > hipsY - 0.14 && cy < neckBase + 0.005 && !inV) || (isArmR.includes(r) && cy > wristY + 0.05);
-      });
-      const thick = o.kind === 'apron' ? 0.02 : o.kind === 'vest' ? 0.017 : 0.016;
-      sk(skinnedGeometry(pos, nrm, overTris, thick, 6, undefined, 10), cloth(o.color, o.kind === 'vest' ? 'hivis' : o.kind === 'blazer' ? 'suit' : 'twill', o.kind === 'vest' ? 0.5 : 0.85));
+    if (ov?.kind === 'apron') {
+      const apronM = cloth(ov.color, 'twill', 0.85);
+      const panel = apronPanel(pos, joints, shoulderY - 0.1, kneeY + 0.1, waist);
+      sk(panel, apronM);
+      for (const strap of apronStraps(pos, panel, joints, waist)) { strap.material = apronM; out.push(strap); }
+    } else if (ov) {
+      const over = cutBody(pos, nrm, [fOver], A.index);
+      const thick = ov.kind === 'vest' ? 0.018 : 0.017;
+      sk(poolGeometry(over.pool, over.buckets[0], thick, 6, 10, bridge), cloth(ov.color, ov.kind === 'vest' ? 'hivis' : 'suit', ov.kind === 'vest' ? 0.5 : 0.85));
     }
     if (g.tie) {
       const tieM = cached(`tie${g.tie}`, () => new THREE.MeshStandardMaterial({ color: g.tie!, roughness: 0.45, side: THREE.DoubleSide }));
@@ -643,9 +827,8 @@ function buildRealHumanUncached(a: Appearance): HumanBuild {
     if (style !== 'bald' && hairTris.length) {
       const thick = style === 'curly' ? 0.022 : style === 'long' ? 0.014 : style === 'bun' ? 0.008 : 0.007;
       const hairM = cached(`hhair${a.hairColor}${style}`, () => new THREE.MeshStandardMaterial({ color: '#ffffff', map: hairTexture(a.hairColor, style === 'curly'), roughness: 0.5, side: THREE.DoubleSide }));
-      sk(poolGeometry(pool, hairTris, thick, 9, 3), hairM);
-      // the scalp under the hair keeps a hair-coloured skin so thin spots never show bare skin
-      sk(poolGeometry(pool, hairTris, 0.001, 9, 0), hairM);
+      // the hair layer plus a hair-coloured scalp under it (so thin spots never show bare skin), as one mesh
+      sk(mergeGeometries([poolGeometry(pool, hairTris, thick, 9, 3), poolGeometry(pool, hairTris, 0.001, 9, 0)])!, hairM);
       if (style === 'bun') {
         const bun = new THREE.Mesh(new THREE.SphereGeometry(0.04, 18, 14), hairM);
         bun.userData.attach = 'head';
@@ -655,22 +838,21 @@ function buildRealHumanUncached(a: Appearance): HumanBuild {
       }
       if (style === 'long') {
         // a fall of hair down the back to the shoulder blades
-        const fall = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.095, 0.26, 18, 1, true, Math.PI * 0.6, Math.PI * 0.8), hairM);
+        const fall = new THREE.Mesh(hairFall(pos, joints.head), hairM);
         fall.userData.attach = 'head';
-        fall.position.set(0, -0.05, -0.02);
-        fall.rotation.y = Math.PI;
+        fall.userData.worldPos = joints.head.clone();
+        fall.castShadow = true;
         out.push(fall);
       }
     }
     // eyes
     const eyeColor = ['#4a6b8a', '#5a4632', '#3b2a1c', '#4f6b3a'][Math.abs(hashStr(a.skin + a.hairColor)) % 4];
-    for (const e of eyes) {
-      const em = new THREE.Mesh(new THREE.SphereGeometry(e.r * 0.98, 20, 16), cached(`eye${eyeColor}`, () => new THREE.MeshPhysicalMaterial({ map: irisTexture(eyeColor), roughness: 0.15, clearcoat: 1, clearcoatRoughness: 0.05 })));
-      em.rotation.y = -Math.PI / 2; // texture centre faces +z
-      em.userData.attach = 'head';
-      em.userData.worldPos = e.c.clone();
-      out.push(em);
-    }
+    // both eyeballs in one mesh on the head bone; texture centre faces +z
+    const eyeGeo = mergeGeometries(eyes.map((e) => new THREE.SphereGeometry(e.r * 0.98, 20, 16).rotateY(-Math.PI / 2).translate(e.c.x - joints.head.x, e.c.y - joints.head.y, e.c.z - joints.head.z)))!;
+    const em = new THREE.Mesh(eyeGeo, cached(`eye${eyeColor}`, () => new THREE.MeshPhysicalMaterial({ map: irisTexture(eyeColor), roughness: 0.15, clearcoat: 1, clearcoatRoughness: 0.05 })));
+    em.userData.attach = 'head';
+    em.userData.worldPos = joints.head.clone();
+    out.push(em);
     return out;
   };
   void A;
