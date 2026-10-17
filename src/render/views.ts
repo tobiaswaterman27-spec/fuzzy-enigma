@@ -12,6 +12,21 @@ import { SHELF_CAPACITY } from '../sim/retail';
 /** realistic bodies are costly to cut and drape, so outfit/body rebuilds are spread over frames */
 let buildBudget = 0;
 
+/** an irregular, glossy puddle (shape varies per spill) */
+const spillMat = new THREE.MeshPhysicalMaterial({ color: '#c9b48a', roughness: 0.05, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.02, transparent: true, opacity: 0.55, depthWrite: false });
+function spillGeometry(id: string): THREE.BufferGeometry {
+  let h = 0; for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) | 0;
+  const shape = new THREE.Shape();
+  const n = 28;
+  for (let i = 0; i <= n; i++) {
+    const a = (i / n) * Math.PI * 2;
+    const r = 0.5 * (1 + 0.22 * Math.sin(a * 3 + h) + 0.12 * Math.sin(a * 5 + h * 0.7) + 0.08 * Math.cos(a * 7 + h * 1.3));
+    const x = Math.cos(a) * r * (1 + 0.25 * Math.cos(a)), y = Math.sin(a) * r;
+    if (i === 0) shape.moveTo(x, y); else shape.lineTo(x, y);
+  }
+  return new THREE.ShapeGeometry(shape);
+}
+
 class PersonView {
   rig: Rig;
   anim: AnimationController;
@@ -233,7 +248,7 @@ export class Views {
     for (const d of Object.values(state.dirt)) {
       let m = this.spills.get(d.id);
       if (!m) {
-        m = new THREE.Mesh(new THREE.CircleGeometry(0.6, 18), new THREE.MeshStandardMaterial({ color: '#7a5a2a', roughness: 0.2, transparent: true, opacity: 0.7 }));
+        m = new THREE.Mesh(spillGeometry(d.id), spillMat);
         m.rotation.x = -Math.PI / 2;
         m.position.set(d.pos.x, 0.09, d.pos.z);
         this.scene.add(m);

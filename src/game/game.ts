@@ -88,6 +88,7 @@ export class Game {
     const sc = this.sun.shadow.camera;
     sc.left = -40; sc.right = 40; sc.top = 40; sc.bottom = -40; sc.near = 1; sc.far = 160;
     this.sun.shadow.bias = -0.0005;
+    this.sun.shadow.normalBias = 0.03; // removes saw-tooth acne on surfaces at grazing angles
     this.scene.add(this.sun, this.sun.target);
     this.scene.fog = new THREE.Fog('#bcd4e6', 110, 380);
     // physically based sky, image-based lighting for reflections, and a post-processing chain

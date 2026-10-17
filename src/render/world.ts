@@ -3,7 +3,7 @@
 // street furniture and detailed interiors.
 import * as THREE from 'three';
 import { getWorld, wallsFor, WALL_T, type BuildingDef, type Obstacle, type Rect } from '../sim/world/layout';
-import { tex, TILE, worldUV, planeUV, signTexture } from './textures';
+import { tex, TILE, worldUV, planeUV, signTexture, normalOf } from './textures';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { GameState } from '../sim/types';
 
@@ -18,7 +18,7 @@ const M = (color: string, rough = 0.9, extra: Partial<THREE.MeshStandardMaterial
 let glassShared: THREE.MeshStandardMaterial | null = null;
 const metal = (color: string, rough = 0.35) => M(color, rough, { metalness: 0.6 });
 const glassM = () => (glassShared ??= new THREE.MeshStandardMaterial({ color: '#9fc2d3', roughness: 0.08, metalness: 0.3, transparent: true, opacity: 0.32, depthWrite: false }));
-const texMat = (t: THREE.Texture, rough = 0.9, color = '#ffffff') => new THREE.MeshStandardMaterial({ map: t, color, roughness: rough });
+const texMat = (t: THREE.Texture, rough = 0.9, color = '#ffffff') => new THREE.MeshStandardMaterial({ map: t, color, roughness: rough, normalMap: normalOf(t) ?? null });
 
 function box(w: number, h: number, d: number, m: THREE.Material | THREE.Material[], x: number, y: number, z: number, shadow = true, tile = 0) {
   const g = new THREE.BoxGeometry(w, h, d);
@@ -115,12 +115,20 @@ export function buildWorld(scene: THREE.Scene): WorldView {
   // road markings
   const paint = M('#ecebdf', 0.6);
   const yellow = M('#e5c33a', 0.6);
-  for (let x = -94; x < 94; x += 6) if (Math.abs(x) > 9) g.add(box(3, 0.02, 0.14, paint, x, 0.04, 0, false));
-  for (let z = -46; z < 74; z += 6) if (Math.abs(z) > 9) g.add(box(0.14, 0.02, 3, paint, 0, 0.04, z, false));
-  for (const z of [-4.6, 4.6]) { g.add(box(85, 0.02, 0.1, yellow, -52, 0.035, z, false)); g.add(box(85, 0.02, 0.1, yellow, 52, 0.035, z, false)); }
-  for (const [cx, cz, rot] of [[-12, 0, 0], [12, 0, 0], [0, -11, 1], [0, 11, 1], [-24, 0, 0], [17, 0, 0], [-70, 0, 0], [57, 0, 0]] as const) for (let i = -4; i <= 4; i++) {
-    g.add(rot ? box(0.55, 0.02, 2.6, paint, i * 1.05, 0.042, cz, false) : box(2.6, 0.02, 0.55, paint, cx, 0.042, i * 1.05, false));
+  // zebra crossings sit exactly where the walking routes cross (see layout nav): Main Street at x, Harbour Road at z
+  const mainX = [-7.5, 7.5, -24, 17, -70, 57];
+  const harbourZ = [-7.5, 7.5];
+  const clearOf = (v: number, list: number[], half: number) => list.every((c) => Math.abs(v - c) > half);
+  for (let x = -94; x < 94; x += 6) if (Math.abs(x) > 9 && clearOf(x, mainX, 3)) g.add(box(3, 0.02, 0.14, paint, x, 0.04, 0, false));
+  for (let z = -46; z < 74; z += 6) if (Math.abs(z) > 9 && clearOf(z, harbourZ, 3)) g.add(box(0.14, 0.02, 3, paint, 0, 0.04, z, false));
+  // yellow edge lines, broken at the junction and at each crossing
+  for (const z of [-4.6, 4.6]) {
+    const cuts = [...mainX.map((x) => [x - 1.6, x + 1.6]), [-5.5, 5.5]].sort((a, b) => a[0] - b[0]);
+    let from = -94;
+    for (const [a, b] of [...cuts, [94, 94]]) { if (a - from > 0.5) g.add(box(a - from, 0.02, 0.1, yellow, (from + a) / 2, 0.035, z, false)); from = Math.max(from, b); }
   }
+  for (const x of mainX) for (let i = -4; i <= 4; i++) g.add(box(2.6, 0.02, 0.55, paint, x, 0.042, i * 1.05, false));
+  for (const z of harbourZ) for (let i = -4; i <= 4; i++) g.add(box(0.55, 0.02, 2.6, paint, i * 1.05, 0.042, z, false));
 
   // ---------------- buildings
   for (const b of w.buildings) buildBuilding(g, b, cutaway, windowsMat, doors);
@@ -320,9 +328,9 @@ function buildBuilding(g: THREE.Group, b: BuildingDef, cutaway: WorldView['cutaw
       g.add(par);
     }
     if (b.id !== 'flat') { const hv = box(1.6, 0.9, 1.1, metal('#9aa3a8'), x1 - 3, roofTop + 0.7, z0 + 3); roofs.push(hv); g.add(hv); }
-    const ceil = new THREE.Mesh(new THREE.PlaneGeometry(W, D), M('#f3f1ec', 0.95));
-    ceil.rotation.x = Math.PI / 2;
-    ceil.position.set(cx, 3.19, cz);
+    // a solid ceiling slab that also blocks sunlight, so no light leaks along the top of the walls
+    const ceil = box(W + WALL_T, 0.08, D + WALL_T, M('#f3f1ec', 0.95), cx, 3.2, cz, true);
+    ceil.receiveShadow = true;
     roofs.push(ceil);
     g.add(ceil);
     const panel = M('#ffffff', 0.3, { emissive: new THREE.Color('#fff6e0'), emissiveIntensity: 0.6 });
