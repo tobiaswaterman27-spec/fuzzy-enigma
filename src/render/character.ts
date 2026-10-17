@@ -5,6 +5,8 @@
 // between incompatible meshes by construction).
 import * as THREE from 'three';
 import type { Appearance } from '../sim/types';
+import { BONE_NAMES, buildHumanMeshes, buildSkeleton, type HBone } from './human';
+import { buildRealHuman, humanAsset } from './humanAsset';
 
 // --------------------------------------------------------------- outfits
 export interface OutfitStyle {
@@ -23,182 +25,129 @@ export const OUTFITS: Record<string, OutfitStyle> = {
   uniform_cafe: { top: '#f2efe8', bottom: '#242424', shoes: '#1b1b1b', kind: 'apron', accent: '#7b2d26' },
 };
 
-const BUILD_SCALE = { slim: 0.88, average: 1, broad: 1.16 } as const;
-
-// --------------------------------------------------------------- materials
-const matCache = new Map<string, THREE.MeshStandardMaterial>();
-function mat(color: string, rough = 0.85): THREE.MeshStandardMaterial {
-  const k = `${color}|${rough}`;
-  let m = matCache.get(k);
-  if (!m) { m = new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: 0 }); matCache.set(k, m); }
-  return m;
-}
-
-const geoCache = new Map<string, THREE.BufferGeometry>();
-function capsule(r: number, len: number) {
-  const k = `c${r}|${len}`;
-  let g = geoCache.get(k);
-  if (!g) { g = new THREE.CapsuleGeometry(r, len, 4, 10); geoCache.set(k, g); }
-  return g;
-}
-function boxG(w: number, h: number, d: number) {
-  const k = `b${w}|${h}|${d}`;
-  let g = geoCache.get(k);
-  if (!g) { g = new THREE.BoxGeometry(w, h, d); geoCache.set(k, g); }
-  return g;
-}
-function sphereG(r: number, ws = 12, hs = 10) {
-  const k = `s${r}|${ws}`;
-  let g = geoCache.get(k);
-  if (!g) { g = new THREE.SphereGeometry(r, ws, hs); geoCache.set(k, g); }
-  return g;
-}
-
-function mesh(g: THREE.BufferGeometry, m: THREE.Material, x = 0, y = 0, z = 0) {
-  const o = new THREE.Mesh(g, m);
-  o.position.set(x, y, z);
-  o.castShadow = true;
-  o.receiveShadow = false;
-  return o;
-}
-
 // --------------------------------------------------------------- rig
-export const BONES = ['hips', 'spine', 'chest', 'neck', 'head', 'armL', 'foreL', 'handL', 'armR', 'foreR', 'handR', 'thighL', 'shinL', 'footL', 'thighR', 'shinR', 'footR'] as const;
-export type BoneName = (typeof BONES)[number];
+export const BONES = BONE_NAMES;
+export type BoneName = HBone;
 
 export interface Rig {
   root: THREE.Group; // positioned at the feet, rotated to face
   body: THREE.Group; // scaled for height; lies down for sleeping
   bones: Record<BoneName, THREE.Object3D>;
+  skeleton: THREE.Skeleton;
+  meshes: THREE.SkinnedMesh[];
   /** attachment points */
   carry: THREE.Object3D;
   toolR: THREE.Object3D;
+  real?: boolean;
+  joints?: Record<string, THREE.Vector3>;
 }
 
-function bone(name: string, parent: THREE.Object3D, x: number, y: number, z: number) {
-  const b = new THREE.Object3D();
-  b.name = name;
-  b.position.set(x, y, z);
-  parent.add(b);
-  return b;
-}
+const BUILD_NUM = { slim: 0.88, average: 1, broad: 1.15 } as const;
 
 export function buildRig(a: Appearance): Rig {
+  if (humanAsset()) return buildRealRig(a);
   const root = new THREE.Group();
   const body = new THREE.Group();
   body.scale.setScalar(a.height);
   root.add(body);
-  const w = BUILD_SCALE[a.build];
-  const B = {} as Record<BoneName, THREE.Object3D>;
-  B.hips = bone('hips', body, 0, 0.95, 0);
-  B.spine = bone('spine', B.hips, 0, 0.1, 0);
-  B.chest = bone('chest', B.spine, 0, 0.24, 0);
-  B.neck = bone('neck', B.chest, 0, 0.24, 0);
-  B.head = bone('head', B.neck, 0, 0.08, 0);
-  B.armL = bone('armL', B.chest, 0.2 * w, 0.18, 0);
-  B.foreL = bone('foreL', B.armL, 0, -0.3, 0);
-  B.handL = bone('handL', B.foreL, 0, -0.27, 0);
-  B.armR = bone('armR', B.chest, -0.2 * w, 0.18, 0);
-  B.foreR = bone('foreR', B.armR, 0, -0.3, 0);
-  B.handR = bone('handR', B.foreR, 0, -0.27, 0);
-  B.thighL = bone('thighL', B.hips, 0.1 * w, -0.04, 0);
-  B.shinL = bone('shinL', B.thighL, 0, -0.44, 0);
-  B.footL = bone('footL', B.shinL, 0, -0.44, 0);
-  B.thighR = bone('thighR', B.hips, -0.1 * w, -0.04, 0);
-  B.shinR = bone('shinR', B.thighR, 0, -0.44, 0);
-  B.footR = bone('footR', B.shinR, 0, -0.44, 0);
-  const carry = bone('carry', B.chest, 0, -0.02, 0.36);
-  const toolR = bone('toolR', B.handR, 0, -0.04, 0.02);
-  const rig: Rig = { root, body, bones: B, carry, toolR };
+  const { bones } = buildSkeleton(a.frame ?? 'm', BUILD_NUM[a.build]);
+  body.add(bones.hips);
+  body.updateMatrixWorld(true);
+  const skeleton = new THREE.Skeleton(BONE_NAMES.map((n) => bones[n]));
+  const carry = new THREE.Object3D();
+  carry.position.set(0, -0.02, 0.33);
+  bones.chest.add(carry);
+  const toolR = new THREE.Object3D();
+  toolR.position.set(0, -0.06, 0.02);
+  bones.handR.add(toolR);
+  const rig: Rig = { root, body, bones, skeleton, meshes: [], carry, toolR };
   dress(rig, a);
   return rig;
 }
 
-/** (re)build all visible meshes for an appearance; bones and animation state are untouched */
-export function dress(rig: Rig, a: Appearance) {
-  const B = rig.bones;
-  for (const name of BONES) {
-    const b = B[name];
-    for (const c of [...b.children]) if ((c as THREE.Mesh).isMesh || c.userData.dressing) b.remove(c);
-  }
-  const w = BUILD_SCALE[a.build];
-  const o = OUTFITS[a.outfit] ?? OUTFITS.outfit_casual;
-  const skin = mat(a.skin, 0.7);
-  const top = mat(o.top);
-  const bottom = mat(o.bottom);
-  const shoe = mat(o.shoes, 0.6);
-  const hair = mat(a.hairColor, 0.9);
+/** height scale so the average MakeHuman body (1.67 m) becomes a realistic adult */
+const realScale = (a: Appearance) => a.height * ((a.frame ?? 'm') === 'f' ? 1.0 : 1.06);
 
-  // torso & pelvis
-  B.hips.add(mesh(boxG(0.34 * w, 0.2, 0.2 * w), bottom, 0, 0.02, 0));
-  B.spine.add(mesh(boxG(0.33 * w, 0.26, 0.2 * w), top, 0, 0.12, 0));
-  const chest = mesh(boxG(0.4 * w, 0.28, 0.23 * w), top, 0, 0.11, 0);
-  B.chest.add(chest);
-  B.neck.add(mesh(capsule(0.05, 0.06), skin, 0, 0.03, 0));
-  // head
-  const headM = mesh(boxG(0.2, 0.24, 0.22), skin, 0, 0.12, 0.005);
-  B.head.add(headM);
-  const eyeM = mat('#1d1d1d', 0.4);
-  B.head.add(mesh(sphereG(0.018, 8, 6), eyeM, 0.05, 0.15, 0.112));
-  B.head.add(mesh(sphereG(0.018, 8, 6), eyeM, -0.05, 0.15, 0.112));
-  B.head.add(mesh(boxG(0.035, 0.05, 0.04), skin, 0, 0.1, 0.12));
-  B.head.add(mesh(boxG(0.07, 0.012, 0.01), mat('#8a4b45', 0.6), 0, 0.05, 0.112));
-  // hair
-  switch (a.hair) {
-    case 'short':
-      B.head.add(mesh(boxG(0.215, 0.07, 0.235), hair, 0, 0.255, 0));
-      B.head.add(mesh(boxG(0.215, 0.12, 0.05), hair, 0, 0.2, -0.1));
-      break;
-    case 'long':
-      B.head.add(mesh(boxG(0.225, 0.08, 0.24), hair, 0, 0.255, 0));
-      B.head.add(mesh(boxG(0.23, 0.32, 0.06), hair, 0, 0.1, -0.11));
-      B.head.add(mesh(boxG(0.03, 0.22, 0.2), hair, 0.115, 0.14, -0.01));
-      B.head.add(mesh(boxG(0.03, 0.22, 0.2), hair, -0.115, 0.14, -0.01));
-      break;
-    case 'bun':
-      B.head.add(mesh(boxG(0.215, 0.07, 0.235), hair, 0, 0.255, 0));
-      B.head.add(mesh(sphereG(0.07), hair, 0, 0.27, -0.12));
-      break;
-    case 'curly':
-      for (const [x, z] of [[-0.07, 0.05], [0.07, 0.05], [0, -0.05], [-0.08, -0.07], [0.08, -0.07], [0, 0.07]]) B.head.add(mesh(sphereG(0.075, 8, 6), hair, x, 0.25, z));
-      break;
-    case 'bald':
-      break;
+function buildRealRig(a: Appearance): Rig {
+  const root = new THREE.Group();
+  const body = new THREE.Group();
+  body.scale.setScalar(realScale(a));
+  root.add(body);
+  const hb = buildRealHuman(a);
+  const J = hb.joints;
+  const bones = {} as Record<BoneName, THREE.Bone>;
+  for (const n of BONE_NAMES) { const b = new THREE.Bone(); b.name = n; bones[n] = b; }
+  // the clips animate hips.position around y = 0.95, so an offset node carries the real hip height
+  const pelvis = new THREE.Group();
+  pelvis.position.set(J.hips.x, J.hips.y - 0.95, J.hips.z);
+  body.add(pelvis);
+  pelvis.add(bones.hips);
+  bones.hips.position.set(0, 0.95, 0);
+  const parent: Partial<Record<BoneName, BoneName>> = { spine: 'hips', chest: 'spine', neck: 'chest', head: 'neck', armL: 'chest', foreL: 'armL', handL: 'foreL', armR: 'chest', foreR: 'armR', handR: 'foreR', thighL: 'hips', shinL: 'thighL', footL: 'shinL', thighR: 'hips', shinR: 'thighR', footR: 'shinR' };
+  for (const n of BONE_NAMES) { const pn = parent[n]; if (pn) { bones[pn].add(bones[n]); bones[n].position.copy(J[n]).sub(J[pn]); } }
+  const skeleton = new THREE.Skeleton(BONE_NAMES.map((n) => bones[n]));
+  const carry = new THREE.Object3D();
+  carry.position.set(0, -0.06, 0.3);
+  bones.chest.add(carry);
+  const toolR = new THREE.Object3D();
+  toolR.position.set(0, -0.08, 0.02);
+  bones.handR.add(toolR);
+  const rig: Rig = { root, body, bones, skeleton, meshes: [], carry, toolR, real: true, joints: J };
+  dress(rig, a);
+  return rig;
+}
+
+function dressReal(rig: Rig, a: Appearance) {
+  // geometries are shared through the build cache, so they are not disposed here
+  for (const m of rig.meshes) m.parent?.remove(m);
+  const saved = BONE_NAMES.map((n) => rig.bones[n].quaternion.clone());
+  const hipsPos = rig.bones.hips.position.clone();
+  for (const n of BONE_NAMES) rig.bones[n].quaternion.identity();
+  rig.bones.hips.position.set(0, 0.95, 0);
+  const rot = rig.body.rotation.clone(), pos = rig.body.position.clone(), scl = rig.body.scale.clone();
+  rig.body.rotation.set(0, 0, 0); rig.body.position.set(0, 0, 0); rig.body.scale.set(1, 1, 1);
+  const rootM = rig.root.matrixWorld.clone();
+  rig.root.matrixWorld.identity();
+  rig.body.updateMatrixWorld(true);
+  rig.skeleton.calculateInverses();
+  const hb = buildRealHuman(a);
+  const objs = hb.meshes(rig.skeleton);
+  rig.meshes = [];
+  for (const o of objs) {
+    if (o.userData.attach) {
+      const bone = rig.bones[o.userData.attach as BoneName];
+      if (o.userData.worldPos) o.position.copy(o.userData.worldPos).sub(rig.joints![o.userData.attach]);
+      bone.add(o);
+    } else rig.body.add(o);
+    rig.meshes.push(o as THREE.SkinnedMesh);
   }
-  // arms: sleeves in top colour, forearms skin unless long-sleeved shirt
-  const longSleeve = o.kind === 'shirt' || o.kind === 'hivis';
-  for (const [arm, fore, hand] of [[B.armL, B.foreL, B.handL], [B.armR, B.foreR, B.handR]] as const) {
-    arm.add(mesh(capsule(0.055 * w, 0.2), top, 0, -0.15, 0));
-    fore.add(mesh(capsule(0.047 * w, 0.18), longSleeve ? top : skin, 0, -0.13, 0));
-    hand.add(mesh(boxG(0.07, 0.09, 0.04), skin, 0, -0.04, 0));
-  }
-  // legs
-  for (const [thigh, shin, foot] of [[B.thighL, B.shinL, B.footL], [B.thighR, B.shinR, B.footR]] as const) {
-    thigh.add(mesh(capsule(0.075 * w, 0.3), bottom, 0, -0.22, 0));
-    shin.add(mesh(capsule(0.062 * w, 0.32), bottom, 0, -0.22, 0));
-    foot.add(mesh(boxG(0.1, 0.07, 0.24), shoe, 0, -0.01, 0.05));
-  }
-  // outfit details layered on the same bones
-  if (o.kind === 'polo_apron' || o.kind === 'apron') {
-    const ap = mat(o.accent ?? '#333', 0.9);
-    B.chest.add(mesh(boxG(0.34 * w, 0.26, 0.02), ap, 0, 0.08, 0.125 * w));
-    B.spine.add(mesh(boxG(0.32 * w, 0.28, 0.02), ap, 0, 0.1, 0.11 * w));
-    B.hips.add(mesh(boxG(0.32 * w, 0.3, 0.02), ap, 0, -0.08, 0.11 * w));
-    if (o.kind === 'polo_apron') {
-      const badge = mesh(boxG(0.06, 0.03, 0.01), mat('#f1f1f1', 0.5), 0.09 * w, 0.17, 0.137 * w);
-      B.chest.add(badge);
-    }
-  } else if (o.kind === 'hivis') {
-    const v = mat(o.accent!, 0.55);
-    const stripe = mat('#d8d8d8', 0.3);
-    B.chest.add(mesh(boxG(0.41 * w, 0.29, 0.24 * w), v, 0, 0.11, 0));
-    B.spine.add(mesh(boxG(0.34 * w, 0.27, 0.21 * w), v, 0, 0.12, 0));
-    B.spine.add(mesh(boxG(0.345 * w, 0.035, 0.215 * w), stripe, 0, 0.06, 0));
-    B.chest.add(mesh(boxG(0.415 * w, 0.035, 0.245 * w), stripe, 0, 0.02, 0));
-  } else if (o.kind === 'shirt') {
-    B.chest.add(mesh(boxG(0.04, 0.22, 0.01), mat(o.accent!, 0.6), 0, 0.09, 0.118 * w));
-  }
-  for (const name of BONES) for (const c of B[name].children) if ((c as THREE.Mesh).isMesh) c.userData.dressing = true;
+  BONE_NAMES.forEach((n, i) => rig.bones[n].quaternion.copy(saved[i]));
+  rig.bones.hips.position.copy(hipsPos);
+  rig.body.rotation.copy(rot); rig.body.position.copy(pos); rig.body.scale.copy(scl);
+  rig.root.matrixWorld.copy(rootM);
+}
+
+/** (re)build visible meshes for an appearance; bones and animation state are untouched */
+export function dress(rig: Rig, a: Appearance) {
+  if (rig.real) return dressReal(rig, a);
+  for (const m of rig.meshes) { rig.body.remove(m); m.geometry.dispose(); }
+  // bind in rest pose so every garment shares the same bind matrices
+  const saved = BONE_NAMES.map((n) => rig.bones[n].quaternion.clone());
+  const hipsPos = rig.bones.hips.position.clone();
+  for (const n of BONE_NAMES) rig.bones[n].quaternion.identity();
+  rig.bones.hips.position.set(0, 0.95, 0);
+  const rot = rig.body.rotation.clone(), pos = rig.body.position.clone();
+  rig.body.rotation.set(0, 0, 0); rig.body.position.set(0, 0, 0);
+  const rootM = rig.root.matrixWorld.clone();
+  rig.root.matrixWorld.identity();
+  rig.body.updateMatrixWorld(true);
+  rig.skeleton.calculateInverses();
+  rig.meshes = buildHumanMeshes(a, rig.skeleton);
+  for (const m of rig.meshes) rig.body.add(m);
+  BONE_NAMES.forEach((n, i) => rig.bones[n].quaternion.copy(saved[i]));
+  rig.bones.hips.position.copy(hipsPos);
+  rig.body.rotation.copy(rot); rig.body.position.copy(pos);
+  rig.root.matrixWorld.copy(rootM);
 }
 
 // --------------------------------------------------------------- clips

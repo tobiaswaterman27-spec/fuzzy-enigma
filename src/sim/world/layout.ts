@@ -64,7 +64,15 @@ export type ObstacleKind =
   | 'car'
   | 'busstop'
   | 'rack'
-  | 'sofa';
+  | 'sofa'
+  | 'shower'
+  | 'tv'
+  | 'stove'
+  | 'rug'
+  | 'plant'
+  | 'fridge'
+  | 'shelfunit'
+  | 'lampstand';
 
 export interface Obstacle {
   kind: ObstacleKind;
@@ -91,7 +99,11 @@ export type InteractKind =
   | 'advisor'
   | 'cafe_counter'
   | 'bench'
-  | 'spill';
+  | 'spill'
+  | 'person'
+  | 'shower'
+  | 'sofa'
+  | 'stove';
 
 export interface Interactable {
   id: string;
@@ -423,6 +435,15 @@ export function getWorld(): World {
   obstacles.push({ kind: 'wardrobe', rect: { x0: 27.4, z0: 10.3, x1: 29.7, z1: 11.0 }, height: 2.1, solid: true });
   add({ id: 'wardrobe', kind: 'wardrobe', label: 'Wardrobe', pos: { x: 28.5, z: 11.9 }, facing: Math.PI, obj: { x: 28.5, z: 10.65 }, locationId: 'flat' });
   obstacles.push({ kind: 'sofa', rect: { x0: 12.4, z0: 14, x1: 13.6, z1: 18 }, height: 0.8, solid: true });
+  add({ id: 'sofa', kind: 'sofa', label: 'Sofa & TV', pos: { x: 14.3, z: 16 }, facing: Math.PI / 2, obj: { x: 13, z: 16 }, locationId: 'flat' });
+  obstacles.push({ kind: 'tv', rect: { x0: 16.9, z0: 15, x1: 17.4, z1: 17 }, height: 0.55, solid: true });
+  obstacles.push({ kind: 'shower', rect: { x0: 28.3, z0: 14.6, x1: 29.85, z1: 16.6 }, height: 2.1, solid: true });
+  add({ id: 'shower', kind: 'shower', label: 'Shower', pos: { x: 27.5, z: 15.6 }, facing: Math.PI / 2, obj: { x: 29.1, z: 15.6 }, locationId: 'flat' });
+  obstacles.push({ kind: 'stove', rect: { x0: 19.05, z0: 24.7, x1: 20.4, z1: 25.7 }, height: 0.95, solid: true });
+  add({ id: 'stove', kind: 'stove', label: 'Cooker', pos: { x: 19.7, z: 23.8 }, facing: 0, obj: { x: 19.7, z: 25.2 }, locationId: 'flat' });
+  obstacles.push({ kind: 'rug', rect: { x0: 14.5, z0: 14.2, x1: 16.5, z1: 17.8 }, height: 0.01, solid: false });
+  obstacles.push({ kind: 'plant', rect: { x0: 12.5, z0: 10.5, x1: 13.2, z1: 11.2 }, height: 1.2, solid: true });
+  obstacles.push({ kind: 'lampstand', rect: { x0: 12.5, z0: 18.6, x1: 13.0, z1: 19.1 }, height: 1.6, solid: true });
 
   // ---- Job centre interior
   obstacles.push({ kind: 'board', rect: { x0: -27, z0: -27.85, x1: -21, z1: -27.5 }, height: 2.2, solid: true });

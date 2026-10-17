@@ -1,13 +1,13 @@
 // EmploymentSystem: vacancies -> applications -> offers -> contracts ->
 // attendance -> performance -> payroll -> promotion / resignation / dismissal.
-import type { Attendance, Business, Contract, GameState, Id, Person, Position, ShiftTemplate, Vacancy } from './types';
+import type { Application, Attendance, Business, Contract, GameState, Id, Person, Position, ShiftTemplate, Vacancy } from './types';
 import { at, dayIndex, dayOfWeek, fmtClock, fmtDate, MIN_PER_DAY } from './clock';
 import { clamp, nextId, rand } from './core';
 import { transfer } from './ledger';
 import { addItems } from './inventory';
 import { lifeEvent, news } from './events';
 import { skillLevel } from './needs';
-import { itemName } from './items';
+import { CLOTHING, itemName } from './items';
 import { fmtMoney } from './core';
 
 export interface ShiftSlot {
@@ -105,7 +105,7 @@ export function clockIn(state: GameState, personId: Id): { ok: boolean; msg: str
   state.attendance[key] = {
     key, contractId: c.id, day: s.day, scheduledStart: s.start, scheduledEnd: s.end,
     clockIn: state.minute, clockOut: null, minutesWorked: 0, late, tasks: 0, served: 0, waitPenalty: 0,
-    uniformOk, paid: false, closed: false, absent: false, score: null,
+    uniformOk, paid: false, closed: false, absent: false, score: null, groomed: (p.needs.hygiene ?? 80) >= 30,
   };
   if (p.isPlayer) state.flags.clockedInOnce = true;
   if (p.isPlayer) news(state, late > 0 ? 'bad' : 'good', late > 0 ? `Clocked in ${late} min late` : 'Clocked in on time', `Shift until ${fmtClock(s.end)}.`, true);
@@ -133,6 +133,7 @@ export function scoreShift(a: Attendance): number {
   s += Math.min(25, (a.tasks / hours) * 5) - 10;
   s -= Math.min(25, a.waitPenalty * 0.5);
   if (!a.uniformOk) s -= 15;
+  if (a.groomed === false) s -= 10;
   if (a.clockOut !== null && a.clockOut < a.scheduledEnd - 10) s -= Math.min(20, (a.scheduledEnd - a.clockOut) / 3);
   return Math.round(clamp(s, 0, 100));
 }
@@ -296,7 +297,7 @@ export function applyForJob(state: GameState, personId: Id, vacancyId: Id, answe
   state.applications[app.id] = app;
   v.applicants.push(app.id);
   if (p.isPlayer) {
-    news(state, 'job', `Application sent: ${pos.title} at ${b.name}`, 'The employer reviews applications within a few hours.', true);
+    news(state, 'job', `Application sent: ${pos.title} at ${b.name}`, 'The employer reads applications within a couple of hours and will invite you to an interview in person.', true);
     lifeEvent(state, p, `Applied for ${pos.title} at ${b.name}`);
   }
   return { ok: true, msg: 'Application submitted.' };
@@ -305,15 +306,59 @@ export function applyForJob(state: GameState, personId: Id, vacancyId: Id, answe
 const ROLLING_DELAY = 120; // minutes before an employer reviews an application
 const OFFER_THRESHOLD = 60;
 
+/** who interviews for a business: its manager, otherwise an NPC owner */
+export function interviewerFor(state: GameState, bid: Id): Person | null {
+  const mgr = Object.values(state.contracts).find((c) => c.status === 'active' && c.businessId === bid && c.positionId === 'manager');
+  if (mgr) return state.people[mgr.personId];
+  const b = state.businesses[bid];
+  const owner = state.people[b?.ownerId];
+  return owner && !owner.isPlayer ? owner : null;
+}
+
+/** the next 30-minute slot at least 90 minutes away when the interviewer is at work */
+export function interviewSlot(state: GameState, interviewer: Person, bid: Id): number | null {
+  const c = interviewer.contractId ? state.contracts[interviewer.contractId] : null;
+  const start = Math.ceil((state.minute + 90) / 30) * 30;
+  for (let t = start; t < start + 3 * MIN_PER_DAY; t += 30) {
+    const mod = ((t % MIN_PER_DAY) + MIN_PER_DAY) % MIN_PER_DAY;
+    if (mod < 8 * 60 || mod > 18 * 60) continue;
+    if (c && c.businessId === bid) {
+      const sh = currentShift(c, t, 0);
+      if (sh && t + 60 <= sh.end && t >= sh.start + 30) return t;
+    } else if (!c) return t;
+  }
+  return null;
+}
+
 export function processApplications(state: GameState) {
   const now = state.minute;
   for (const v of Object.values(state.vacancies)) {
     if (v.status !== 'open') continue;
     if (state.businesses[v.businessId]?.ownerDecidesHiring) continue; // the owner chooses
-    const apps = v.applicants.map((id) => state.applications[id]).filter((a) => a.status === 'pending' || a.status === 'offered');
-    if (apps.some((a) => a.status === 'offered')) continue; // waiting for a reply
+    // player applicants are invited to an in-person interview once their CV has been read
+    for (const id of v.applicants) {
+      const a = state.applications[id];
+      const ap = state.people[a.personId];
+      if (a.status === 'pending' && ap.isPlayer && now - a.submittedAt >= ROLLING_DELAY) {
+        const iv = interviewerFor(state, v.businessId);
+        const slot = iv ? interviewSlot(state, iv, v.businessId) : null;
+        const b = state.businesses[v.businessId];
+        if (a.score < 30) { reject(state, a.id, 'Your CV did not show enough relevant experience.'); continue; }
+        if (!iv || slot === null) continue; // try again later
+        a.status = 'interview';
+        a.interviewAt = slot;
+        a.interviewerId = iv.id;
+        news(state, 'job', `Interview invitation: ${b.name}`, `Meet ${iv.name} at ${b.name} on ${fmtDate(slot)} at ${fmtClock(slot)}. Find them in person and talk to them. Dress smartly and be on time.`, true);
+      }
+      if (a.status === 'interview' && a.interviewAt !== undefined && now > a.interviewAt + 60) {
+        reject(state, a.id, 'You did not turn up for your interview.');
+        ap.reputation = clamp(ap.reputation - 2, 0, 100);
+      }
+    }
+    const apps = v.applicants.map((id) => state.applications[id]).filter((a) => a.status === 'pending' || a.status === 'offered' || a.status === 'interview');
+    if (apps.some((a) => a.status === 'offered' || a.status === 'interview')) continue; // waiting for a reply or an interview
     const pending = apps.filter((a) => a.status === 'pending');
-    const reviewable = pending.filter((a) => now - a.submittedAt >= ROLLING_DELAY);
+    const reviewable = pending.filter((a) => now - a.submittedAt >= ROLLING_DELAY && !state.people[a.personId].isPlayer);
     const best = reviewable.sort((a, b) => b.score - a.score)[0];
     if (best && (best.score >= OFFER_THRESHOLD || now >= v.closesAt)) {
       if (best.score >= 35) makeOffer(state, best.id);
@@ -346,6 +391,41 @@ function reject(state: GameState, appId: Id, note: string) {
   a.status = 'rejected';
   a.note = note;
   if (state.people[a.personId].isPlayer) news(state, 'bad', 'Application unsuccessful', note, true);
+}
+
+export const interviewOpen = (state: GameState, a: Application) => a.status === 'interview' && a.interviewAt !== undefined && state.minute >= a.interviewAt - 45 && state.minute <= a.interviewAt + 60;
+
+/** the face-to-face interview: answers, appearance, hygiene and punctuality decide the outcome on the spot */
+export function attendInterview(state: GameState, appId: Id, answers: number[]): { ok: boolean; offered: boolean; score: number; feedback: string[]; msg: string } {
+  const a = state.applications[appId];
+  if (!a || !interviewOpen(state, a)) return { ok: false, offered: false, score: 0, feedback: [], msg: 'There is no interview to attend right now.' };
+  const p = state.people[a.personId];
+  const fb: string[] = [];
+  let score = a.score;
+  let ans = 0;
+  answers.forEach((ai, qi) => (ans += INTERVIEW[qi]?.pts[ai] ?? 0));
+  score += ans;
+  fb.push(ans >= 20 ? 'Strong, customer-focused answers.' : ans >= 14 ? 'Reasonable answers.' : 'Your answers did not convince them.');
+  const formality = CLOTHING[p.appearance.outfit]?.formality ?? 0;
+  score += formality * 4;
+  fb.push(formality >= 2 ? 'You were smartly dressed (+8).' : formality === 1 ? 'Neatly dressed (+4).' : 'Casual clothes made no impression either way.');
+  if ((p.needs.hygiene ?? 80) < 30) { score -= 10; fb.push('Personal hygiene let you down (-10). Shower before important meetings.'); }
+  const late = Math.max(0, Math.round(state.minute - (a.interviewAt ?? state.minute) - 5));
+  if (late > 0) { score -= Math.min(15, late); fb.push(`You were ${late} minutes late (-${Math.min(15, late)}).`); }
+  else fb.push('You arrived on time.');
+  if ((p.needs.mood ?? 60) > 70) { score += 2; fb.push('You came across as upbeat (+2).'); }
+  score = Math.round(clamp(score, 0, 100));
+  a.score = score;
+  a.answers = answers;
+  a.interviewFeedback = fb;
+  if (score >= OFFER_THRESHOLD) {
+    a.status = 'offered';
+    a.offerExpires = state.minute + MIN_PER_DAY;
+    lifeEvent(state, p, `Interviewed at ${state.businesses[state.vacancies[a.vacancyId].businessId].name}: offered the job`);
+    return { ok: true, offered: true, score, feedback: fb, msg: 'They offer you the job on the spot!' };
+  }
+  reject(state, a.id, 'Thank you for coming in, but we have decided not to go ahead.');
+  return { ok: true, offered: false, score, feedback: fb, msg: 'Not this time.' };
 }
 
 export function acceptOffer(state: GameState, appId: Id): { ok: boolean; msg: string } {

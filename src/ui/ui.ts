@@ -5,7 +5,7 @@ import type { GameState, Person } from '../sim/types';
 import { fmtClock, fmtDate, fmtDuration, dayIndex } from '../sim/clock';
 import { fmtMoney } from '../sim/core';
 import { accountTxns } from '../sim/ledger';
-import { acceptOffer, acceptPromotion, applyForJob, canApply, currentShift, declineOffer, hoursPerWeek, INTERVIEW, nextShift, openAttendance, positionOf, promotionEligible, resign, shiftLabel, scoreShift } from '../sim/employment';
+import { acceptOffer, acceptPromotion, applyForJob, attendInterview, canApply, currentShift, declineOffer, hoursPerWeek, INTERVIEW, nextShift, openAttendance, positionOf, promotionEligible, resign, shiftLabel, scoreShift } from '../sim/employment';
 import { conditionLabel, skillLevel } from '../sim/needs';
 import { currentObjective } from '../sim/objectives';
 import { activeLease, reRent } from '../sim/housing';
@@ -33,7 +33,7 @@ export class UI {
 
   constructor(private game: Game) {
     game.onToast = (m) => this.toast(m);
-    game.onUi = (w) => (w === 'jobs' ? this.openPhone('jobs') : this.advisor());
+    game.onUi = (w, arg) => (w === 'jobs' || w === 'laptop' ? this.openPhone(w === 'laptop' ? this.tab : 'jobs') : w === 'interview' ? this.interviewInPerson(arg!) : this.advisor());
     game.onFrame = () => this.frame();
     window.addEventListener('keydown', (e) => {
       if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
@@ -54,7 +54,7 @@ export class UI {
   get s(): GameState { return this.game.state; }
   get p(): Person { return this.s.people[this.s.playerId]; }
 
-  syncModal() { this.game.uiOpen = this.phoneOpen || this.menuOpen || !$('#dialog').hidden; this.game.paused = this.menuOpen; if (this.game.uiOpen) this.game.releaseMouse(); }
+  syncModal() { this.game.uiOpen = this.phoneOpen || this.menuOpen || !$('#dialog').hidden; this.game.paused = this.menuOpen || !$('#dialog').hidden; if (this.game.uiOpen) this.game.releaseMouse(); }
 
   toast(msg: string) {
     if (!msg) return;
@@ -148,6 +148,12 @@ export class UI {
       const pos = b.positions.find((x) => x.id === v.positionId)!;
       h += `<div class="card good"><b>Job offer: ${esc(pos.title)}</b><br>${esc(b.name)} · ${fmtMoney(pos.wage)}/h · paid ${pos.payEvery}<br>${pos.shifts.map(shiftLabel).join('; ')} (${hoursPerWeek(pos.shifts)}h/week)<br><span class="muted">Expires ${fmtDate(a.offerExpires!)} ${fmtClock(a.offerExpires!)}</span>
         <div class="row"><button data-accept="${a.id}" class="primary">Accept offer</button><button data-decline="${a.id}">Decline</button></div></div>`;
+    }
+    for (const a of Object.values(s.applications).filter((x) => x.personId === p.id && x.status === 'interview')) {
+      const v = s.vacancies[a.vacancyId];
+      const b = s.businesses[v.businessId];
+      const iv = s.people[a.interviewerId!];
+      h += `<div class="card good"><b>Interview booked</b><br>${esc(b.name)} with <b>${esc(iv.name)}</b><br>${fmtDate(a.interviewAt!)} at <b>${fmtClock(a.interviewAt!)}</b> (arrive within 45 min before to 1h after)<br><span class="muted">Go there, find ${esc(iv.name.split(' ')[0])} and talk to them (E). Smart clothes and a shower help. Being late costs points.</span></div>`;
     }
     h += '<h3>Open vacancies</h3>';
     const vacs = Object.values(s.vacancies).filter((v) => v.status === 'open');
@@ -328,7 +334,7 @@ export class UI {
     const s = this.s;
     if (d.tab) { this.tab = d.tab as Tab; if (d.tab === 'jobs') s.flags.viewedJobs = true; this.renderPhone(); return; }
     if (d.close) return this.closePhone();
-    if (d.apply) return this.interview(d.apply);
+    if (d.apply) { this.toast(applyForJob(s, this.p.id, d.apply, []).msg); this.lastBody = ''; this.renderPhone(); return; }
     if (d.accept) this.toast(acceptOffer(s, d.accept).msg);
     if (d.decline) declineOffer(s, d.decline);
     if (d.promote) this.toast(acceptPromotion(s, d.promote).msg);
@@ -360,6 +366,37 @@ export class UI {
     this.syncModal();
   }
   closeDialog() { $('#dialog').hidden = true; this.syncModal(); }
+
+  /** the in-person interview, started by talking to the interviewer at the workplace */
+  interviewInPerson(appId: string) {
+    const s = this.s;
+    const a = s.applications[appId];
+    const v = s.vacancies[a.vacancyId];
+    const b = s.businesses[v.businessId];
+    const iv = s.people[a.interviewerId!];
+    const pos = b.positions.find((x) => x.id === v.positionId)!;
+    const answers: number[] = [];
+    const ask = () => {
+      const qi = answers.length;
+      if (qi >= INTERVIEW.length) {
+        const r = attendInterview(s, appId, answers);
+        this.dialog(`<div class="dlg"><h2>${r.offered ? 'Job offered' : 'Not this time'}</h2><p>${esc(iv.name)}: ${r.offered ? '"We would like you to join us."' : '"Thanks for coming in. We have decided not to go ahead."'}</p>
+          <p class="muted">Interview score ${r.score} (60 needed)</p><ul>${r.feedback.map((f) => `<li>${esc(f)}</li>`).join('')}</ul>
+          <div class="row">${r.offered ? `<button class="primary" data-acc="1">Accept the job</button><button data-later="1">Think about it (24h)</button>` : '<button data-later="1">Leave</button>'}</div></div>`, (btn) => {
+          if (btn.dataset.acc) this.toast(acceptOffer(s, appId).msg);
+          this.closeDialog();
+        });
+        return;
+      }
+      const Q = INTERVIEW[qi];
+      this.dialog(`<div class="dlg"><h2>Interview: ${esc(pos.title)}</h2><p class="muted">${esc(b.name)} · with ${esc(iv.name)} · question ${qi + 1} of ${INTERVIEW.length}</p><p><b>${esc(iv.name.split(' ')[0])}:</b> "${esc(Q.q)}"</p>${Q.a.map((x, i) => `<button class="answer" data-a="${i}">${esc(x)}</button>`).join('')}</div>`, (btn) => {
+        if (btn.dataset.a === undefined) return;
+        answers.push(Number(btn.dataset.a));
+        ask();
+      });
+    };
+    ask();
+  }
 
   interview(vacancyId: string) {
     const s = this.s;
@@ -420,6 +457,7 @@ export class UI {
       <button data-m="load">Load saved game</button>
       <button data-m="loadauto">Load autosave <span class="muted">(${esc(sum(auto))})</span></button>
       <button data-m="new">New game</button>
+      <button data-m="gfx">Graphics: ${this.game.quality === 'high' ? 'High (ambient occlusion, bloom, anti-aliasing)' : 'Low (faster)'} - click to switch</button>
       <h3>Controls</h3><p class="muted">Click the game to capture the mouse, then move the mouse to look. WASD or arrows: move · Shift: run · E: use · 1-6: other options · wheel: zoom · V: overview camera · Tab or P: phone · Esc: release mouse / pause</p>
       <p class="muted">Day ${dayIndex(this.s.minute) + 1}. Time passes at ${this.game.speedMult}× (1× = 20 game minutes per real minute). Sleeping fast-forwards.</p>`;
   }
@@ -430,6 +468,7 @@ export class UI {
     if (m === 'resume') return this.toggleMenu();
     if (m === 'save') { const r = this.game.save(); this.renderMenu(r.ok ? 'Saved.' : r.error ?? 'Save failed'); }
     if (m === 'load' || m === 'loadauto') { const r = this.game.load(m === 'load' ? 'bigshot.slot1' : 'bigshot.auto'); this.renderMenu(r.ok ? 'Loaded.' : (r as any).error); }
+    if (m === 'gfx') { this.game.setQuality(this.game.quality === 'high' ? 'low' : 'high'); this.renderMenu(); return; }
     if (m === 'new') { if (b.dataset.confirm) location.reload(); else { b.dataset.confirm = '1'; b.textContent = 'Click again: unsaved progress will be lost'; } }
   }
 }

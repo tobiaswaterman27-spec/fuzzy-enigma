@@ -4,7 +4,7 @@
 import type { ActionState, ActionType, GameState, Id, Person } from './types';
 import { dist, fmtMoney, clamp } from './core';
 import { count, firstItem, isEmpty, moveAll, moveItems, removeItems, spaceFor, total } from './inventory';
-import { ITEMS, isFood, itemName } from './items';
+import { CLOTHING, ITEMS, isFood, itemName } from './items';
 import { clockIn, clockOut, isOnShift, openAttendance } from './employment';
 import { basketValue, completeSale, completeTask, isOpen, isStaff, leaveQueue, priceOf, productAt, queueSlot, RESTOCK_DONE } from './retail';
 import { checkInDeliveries } from './logistics';
@@ -22,7 +22,7 @@ export interface ActionOption {
   enabled: boolean;
   reason?: string;
   arg?: string;
-  ui?: 'jobs' | 'advisor';
+  ui?: 'jobs' | 'advisor' | 'interview' | 'laptop';
 }
 
 export function interactable(state: GameState, id: Id): Interactable | null {
@@ -30,12 +30,17 @@ export function interactable(state: GameState, id: Id): Interactable | null {
   if (w.interactables[id]) return w.interactables[id];
   const d = state.dirt[id];
   if (d) return { id, kind: 'spill', label: 'Spill', pos: d.pos, facing: 0, obj: d.pos, locationId: d.locationId, businessId: d.locationId, range: 1.4 };
+  if (id.startsWith('person:')) {
+    const o = state.people[id.slice(7)];
+    if (o && o.visible) return { id, kind: 'person', label: o.name, pos: o.pos, facing: 0, obj: o.pos, locationId: locationOf(o.pos), range: 1.9 };
+  }
   return null;
 }
 
 export function allInteractables(state: GameState): Interactable[] {
   const out = Object.values(getWorld().interactables);
   for (const d of Object.values(state.dirt)) out.push(interactable(state, d.id)!);
+  for (const o of Object.values(state.people)) if (!o.isPlayer && o.visible && !o.sleeping) out.push(interactable(state, `person:${o.id}`)!);
   return out;
 }
 
@@ -60,7 +65,13 @@ export function focusInteractable(state: GameState, actor: Person): Interactable
     const ang = Math.atan2(it.obj.x - actor.pos.x, it.obj.z - actor.pos.z);
     let diff = Math.abs(((ang - actor.facing + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
     if (dObj < 0.9) diff = 0;
-    const score = d + diff * 1.2;
+    let score = d + diff * 1.2;
+    if (it.kind === 'person') {
+      // people you are facing come first; someone you have an appointment with comes before anything else
+      score -= 0.4;
+      const pid = it.id.slice(7);
+      if (Object.values(state.applications).some((a) => a.personId === actor.id && a.status === 'interview' && a.interviewerId === pid)) score -= 3;
+    }
     if (score < bestScore) { bestScore = score; best = it; }
   }
   return best;
@@ -167,12 +178,38 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
       const home = hasHomeAccess(state, actorId, it.locationId);
       const wr = p.wardrobeId ? state.containers[p.wardrobeId] : null;
       const outfits = wr ? Object.keys(wr.items).filter((k) => ITEMS[k]?.category === 'clothing') : [];
-      for (const o of outfits) out.push(opt('change_outfit', `Wear ${itemName(o)}`, !home ? 'This is no longer your home' : p.appearance.outfit === o ? 'Already wearing' : undefined, o));
+      for (const o of outfits) out.push(opt('change_outfit', `Wear ${itemName(o)} - ${CLOTHING[o]?.label ?? ''}`, !home ? 'This is no longer your home' : p.appearance.outfit === o ? 'Already wearing' : undefined, o));
       break;
     }
     case 'chair':
       out.push(opt('sit', 'Sit down'));
+      out.push({ type: 'ui', label: 'Use laptop (job sites, bank, business)', enabled: true, ui: 'laptop' });
       break;
+    case 'sofa':
+      out.push(opt('watch_tv', 'Watch TV (raises mood)', hasHomeAccess(state, actorId, it.locationId) ? undefined : 'Not your home'));
+      out.push(opt('sit', 'Sit and rest'));
+      break;
+    case 'shower':
+      out.push(opt('shower', `Shower (hygiene ${Math.round(p.needs.hygiene ?? 0)})`, hasHomeAccess(state, actorId, it.locationId) ? undefined : 'Not your home'));
+      break;
+    case 'stove': {
+      const pantry = p.pantryId ? state.containers[p.pantryId] : null;
+      const has = (k: string) => count(pantry ?? undefined, k) + count(state.containers[p.bagId], k);
+      const base = has('pasta') > 0 ? 'pasta' : has('soup') > 0 ? 'soup' : null;
+      out.push(opt('cook', base === 'pasta' ? `Cook a pasta dinner (+50 food, +mood)${has('soup') || has('apples') ? ' with extras' : ''}` : base === 'soup' ? 'Heat soup (+40 food)' : 'Cook a meal', !hasHomeAccess(state, actorId, it.locationId) ? 'Not your home' : !base ? 'Needs pasta or soup - buy some at the shop' : undefined, base ?? undefined));
+      break;
+    }
+    case 'person': {
+      const other = state.people[it.id.slice(7)];
+      const iv = Object.values(state.applications).find((a) => a.personId === actorId && a.status === 'interview' && a.interviewerId === other.id);
+      if (iv) {
+        const open = state.minute >= iv.interviewAt! - 45 && state.minute <= iv.interviewAt! + 60;
+        out.push({ type: 'ui', label: `Attend your interview with ${other.name}`, enabled: open, reason: open ? undefined : 'Not yet - check the time on your invitation', ui: 'interview', arg: iv.id });
+      }
+      const fam = Math.round(p.relations?.[other.id] ?? 0);
+      out.push(opt('talk', `Chat with ${other.name}${fam ? ` (familiarity ${fam})` : ''}`, other.action?.type === 'serve_customer' ? 'Busy serving' : undefined));
+      break;
+    }
     case 'bench':
       out.push(opt('sit', 'Sit on bench'));
       out.push(opt('sleep', 'Sleep rough until 07:00 (poor rest)', undefined, 'morning'));
@@ -271,7 +308,18 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
       break;
     }
     case 'sit':
+    case 'watch_tv':
       begin(p, type, itId, { duration: 600 }, now); break;
+    case 'shower':
+      begin(p, type, itId, { duration: 8 }, now); break;
+    case 'cook':
+      begin(p, type, itId, { duration: 15, arg }, now); break;
+    case 'talk': {
+      begin(p, type, itId, { duration: 2 }, now);
+      const o = state.people[itId.slice(7)];
+      if (o) p.facing = Math.atan2(o.pos.x - p.pos.x, o.pos.z - p.pos.z);
+      break;
+    }
   }
   const started = p.action as ActionState | null;
   if (started && arg !== undefined && started.arg === undefined) started.arg = arg;
@@ -326,6 +374,7 @@ export function tickAction(state: GameState, p: Person, dt: number): string | nu
   if (a.progress < a.duration) {
     if (a.type === 'sleep' && p.needs.energy >= 100 && a.arg !== 'morning' && a.progress > 30) { finish(state, p); return 'You wake up rested.'; }
     if (a.type === 'buy_meal') p.needs.satiety = clamp(p.needs.satiety + (55 / 8) * dt, 0, 100);
+    if (a.type === 'watch_tv') p.needs.energy = clamp(p.needs.energy + 0.04 * dt, 0, 100);
     return null;
   }
   // fixed-duration completion
@@ -386,8 +435,38 @@ export function tickAction(state: GameState, p: Person, dt: number): string | nu
       msg = 'That hit the spot.';
       break;
     case 'sit':
+    case 'watch_tv':
       msg = null;
       break;
+    case 'shower':
+      p.needs.hygiene = 100;
+      msg = 'Fresh and clean.';
+      break;
+    case 'cook': {
+      const pantry = p.pantryId ? state.containers[p.pantryId] : null;
+      const bag = state.containers[p.bagId];
+      const take = (k: string) => (pantry && removeItems(pantry, k, 1)) || removeItems(bag, k, 1);
+      if (!a.arg || !take(a.arg)) { msg = 'The ingredients are gone.'; break; }
+      let food = a.arg === 'pasta' ? 50 : 40;
+      let extras = 0;
+      if (a.arg === 'pasta') for (const k of ['soup', 'apples']) if (take(k)) { food += 10; extras++; }
+      p.needs.satiety = clamp(p.needs.satiety + food, 0, 100);
+      p.needs.mood = clamp((p.needs.mood ?? 60) + 8 + extras * 3, 0, 100);
+      if (p.isPlayer) state.flags.ateHome = true;
+      msg = a.arg === 'pasta' ? `Home-cooked pasta${extras ? ' with extras' : ''}. Delicious (+${food} food).` : `Hot soup (+${food} food).`;
+      break;
+    }
+    case 'talk': {
+      const o = state.people[a.target.slice(7)];
+      if (o) {
+        p.relations[o.id] = clamp((p.relations[o.id] ?? 0) + 5, 0, 100);
+        o.relations[p.id] = clamp((o.relations[p.id] ?? 0) + 5, 0, 100);
+        p.needs.mood = clamp((p.needs.mood ?? 60) + 6, 0, 100);
+        const lines = [`${o.name}: "Morning! Busy day?"`, `${o.name}: "Nice to see a new face around Harbourside."`, `${o.name}: "Corner Market's always short of staff, you know."`, `${o.name}: "Rent's gone up again, hasn't it."`, `${o.name}: "Have you tried the cafe? Rosa does a good lunch."`];
+        msg = lines[Math.floor(state.minute) % lines.length];
+      }
+      break;
+    }
   }
   finish(state, p);
   return msg;

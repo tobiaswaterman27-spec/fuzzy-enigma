@@ -3,10 +3,14 @@ import * as THREE from 'three';
 import type { GameState, Person } from '../sim/types';
 import { AnimationController, buildRig, dress, type Rig } from './character';
 import { buildCar } from './world';
+import { productGeometry, productMaterial } from './products';
 import { getWorld, SHELF_LAYOUT, PALLET_X, SHOPS, U4_SECTIONS, U4_PALLET_Z } from '../sim/world/layout';
 import { ITEMS } from '../sim/items';
 import { count, total, firstItem } from '../sim/inventory';
 import { SHELF_CAPACITY } from '../sim/retail';
+
+/** realistic bodies are costly to cut and drape, so outfit/body rebuilds are spread over frames */
+let buildBudget = 0;
 
 class PersonView {
   rig: Rig;
@@ -34,9 +38,10 @@ class PersonView {
     root.visible = p.visible;
     if (!p.visible) return;
     const key = JSON.stringify(p.appearance);
-    if (key !== this.outfitKey) {
+    if (key !== this.outfitKey && buildBudget > 0) {
+      buildBudget--;
       const prev = JSON.parse(this.outfitKey);
-      if (prev.build !== p.appearance.build || prev.height !== p.appearance.height) {
+      if (prev.build !== p.appearance.build || prev.height !== p.appearance.height || prev.frame !== p.appearance.frame || prev.skin !== p.appearance.skin) {
         const parent = this.rig.root.parent!;
         const pos = this.rig.root.position.clone(), rot = this.rig.root.rotation.y;
         parent.remove(this.rig.root);
@@ -131,13 +136,13 @@ export class Views {
       ...U4_SECTIONS.map((x) => ({ id: x.id, bid: 'unit4', gx: x.gx, zc: x.zc, len: 5 })),
     ];
     for (const sct of sections) {
-      const m = new THREE.InstancedMesh(new THREE.BoxGeometry(0.3, 0.27, 0.3), new THREE.MeshStandardMaterial({ color: '#888888', roughness: 0.55 }), SHELF_CAPACITY);
+      const m = new THREE.InstancedMesh(productGeometry('bread'), productMaterial, SHELF_CAPACITY);
       const dummy = new THREE.Object3D();
       for (let i = 0; i < SHELF_CAPACITY; i++) {
         const level = Math.floor(i / 10);
         const col = i % 10;
         const side = col % 2 === 0 ? -1 : 1;
-        dummy.position.set(sct.gx + side * 0.42, 0.31 + level * 0.45, sct.zc - sct.len * 0.42 + Math.floor(col / 2) * (sct.len * 0.21));
+        dummy.position.set(sct.gx + side * 0.42, 0.19 + level * 0.45, sct.zc - sct.len * 0.4 + Math.floor(col / 2) * (sct.len * 0.2));
         dummy.updateMatrix();
         m.setMatrixAt(i, dummy.matrix);
       }
@@ -189,6 +194,7 @@ export class Views {
   }
 
   update(state: GameState, dt: number) {
+    buildBudget = 1;
     for (const p of Object.values(state.people)) {
       let v = this.people.get(p.id);
       if (!v) { v = new PersonView(p, this.scene); this.people.set(p.id, v); }
@@ -198,7 +204,7 @@ export class Views {
       const b = state.businesses[v.bid];
       const k = b?.sections[id];
       if (!k) { v.mesh.count = 0; continue; }
-      if (k !== v.product) { (v.mesh.material as THREE.MeshStandardMaterial).color.set(ITEMS[k].color); v.product = k; }
+      if (k !== v.product) { v.mesh.geometry = productGeometry(k); v.product = k; }
       v.mesh.count = Math.min(SHELF_CAPACITY, count(state.containers[id], k));
     }
     for (const v of this.palletMeshes.values()) {

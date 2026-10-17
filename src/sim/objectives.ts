@@ -5,7 +5,8 @@ import { activeLease } from './housing';
 export const OBJECTIVES: { id: string; text: string; done: (s: GameState) => boolean }[] = [
   { id: 'find_job', text: 'Find work: check the vacancy board at the Job Centre (or Phone > Jobs)', done: (s) => !!s.flags.viewedJobs },
   { id: 'apply', text: 'Apply for the Retail Assistant job at Corner Market', done: (s) => Object.values(s.applications).some((a) => a.personId === s.playerId) },
-  { id: 'accept', text: 'Wait for a reply and accept the job offer (Phone > Jobs)', done: (s) => Object.values(s.contracts).some((c) => c.personId === s.playerId) },
+  { id: 'interview', text: 'Wait for an interview invitation (Phone > Jobs), then meet the manager in person at the booked time. Dress smartly!', done: (s) => Object.values(s.applications).some((a) => a.personId === s.playerId && (a.status === 'offered' || a.status === 'accepted')) || Object.values(s.contracts).some((c) => c.personId === s.playerId) },
+  { id: 'accept', text: 'Accept the job offer (Phone > Jobs)', done: (s) => Object.values(s.contracts).some((c) => c.personId === s.playerId) },
   { id: 'uniform', text: 'Put on your uniform at the wardrobe in your flat', done: (s) => s.people[s.playerId].appearance.outfit === 'uniform_market' || !!s.flags.clockedInOnce },
   { id: 'clock_in', text: 'Go to Corner Market for your shift and clock in at the staff terminal (store room)', done: (s) => !!s.flags.clockedInOnce },
   { id: 'work', text: 'Work your shift: serve customers, restock shelves, clean spills, then clock out', done: (s) => Object.values(s.attendance).some((a) => s.contracts[a.contractId].personId === s.playerId && a.closed && !a.absent) },

@@ -1,17 +1,21 @@
 import './style.css';
 import { Game } from './game/game';
+import * as THREE from 'three';
 import { UI } from './ui/ui';
 import { createNewGame, SKIN_TONES, HAIR_COLORS, HAIR_STYLES, BUILDS } from './sim/newgame';
 import type { Appearance } from './sim/types';
 import * as sim from './sim/index';
+import { loadHumanAsset } from './render/humanAsset';
+import { buildRig } from './render/character';
 
+await loadHumanAsset();
 const canvas = document.getElementById('view') as HTMLCanvasElement;
 const seed = (Date.now() % 100000) + 1;
-const appearance = { skin: SKIN_TONES[2], hair: 'short', hairColor: HAIR_COLORS[1], build: 'average' } as Omit<Appearance, 'outfit' | 'height'>;
+const appearance = { frame: 'm', skin: SKIN_TONES[2], hair: 'short', hairColor: HAIR_COLORS[1], build: 'average' } as Omit<Appearance, 'outfit' | 'height'>;
 const state = createNewGame(seed, { name: 'Alex Morgan', appearance });
 const game = new Game(canvas, state);
 const ui = new UI(game);
-(window as any).__bigshot = { game, ui, sim };
+(window as any).__bigshot = { game, ui, sim, THREE, buildRig };
 document.getElementById('boot')!.remove();
 
 // --- character creator: edits the real player appearance live
@@ -20,15 +24,16 @@ function creator() {
   el.hidden = false;
   document.body.classList.add('creating');
   game.uiOpen = true;
-  game.camDist = 4.2;
-  game.camPitch = 0.3;
-  game.camYaw = Math.PI * 0.85;
+  game.camDist = 2.6;
+  game.camPitch = 0.12;
+  game.camYaw = Math.PI * 0.92;
   const p = () => game.state.people.player;
   const chip = (group: string, vals: readonly string[], cur: string, swatch = false) => `<div class="chips">${vals.map((v) => `<button data-g="${group}" data-v="${v}" class="${v === cur ? 'on' : ''} ${swatch ? 'swatch' : ''}" ${swatch ? `style="background:${v}" aria-label="${v}"` : ''}>${swatch ? '' : v}</button>`).join('')}</div>`;
   const render = () => {
     const a = p().appearance;
     el.innerHTML = `<h1>THE <span>BIGSHOT</span></h1><p class="muted">You have just moved to Harbourside with Cr 180 in the bank and a week's rent paid. Make a life: work, save, and build from there.</p>
       <label for="cc-name">Name</label><input id="cc-name" type="text" maxlength="24" value="${p().name}">
+      <label>Body</label><div class="chips">${[['m', 'masculine'], ['f', 'feminine']].map(([v, l]) => `<button data-g="frame" data-v="${v}" class="${(a.frame ?? 'm') === v ? 'on' : ''}">${l}</button>`).join('')}</div>
       <label>Skin</label>${chip('skin', SKIN_TONES, a.skin, true)}
       <label>Hair</label>${chip('hair', HAIR_STYLES, a.hair)}
       <label>Hair colour</label>${chip('hairColor', HAIR_COLORS, a.hairColor, true)}
@@ -47,8 +52,8 @@ function creator() {
       el.hidden = true;
       document.body.classList.remove('creating');
       game.uiOpen = false;
-      game.camDist = 9;
-      game.camPitch = 0.75;
+      game.camDist = 4.2;
+      game.camPitch = 0.22;
       game.camYaw = Math.PI;
       return;
     }

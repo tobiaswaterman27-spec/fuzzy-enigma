@@ -14,7 +14,7 @@ import { rand, randInt, pick } from './core';
 import { news } from './events';
 import { spawnDirt, SHELF_CAPACITY, shelfId } from './retail';
 
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 
 export interface PlayerSetup {
   name: string;
@@ -59,9 +59,11 @@ function randomTraits(state: GameState): Traits {
 }
 
 function randomAppearance(state: GameState, outfit: string): Appearance {
+  const frame = rand(state) < 0.5 ? 'f' : 'm';
+  const hair = frame === 'f' ? pick(state, ['long', 'bun', 'curly', 'long', 'short'] as const) : pick(state, ['short', 'short', 'curly', 'bald', 'bun'] as const);
   return {
-    skin: pick(state, SKIN_TONES), hair: pick(state, HAIR_STYLES), hairColor: pick(state, HAIR_COLORS), build: pick(state, BUILDS),
-    height: Math.round((0.93 + rand(state) * 0.14) * 100) / 100, outfit,
+    frame, skin: pick(state, SKIN_TONES), hair, hairColor: pick(state, HAIR_COLORS), build: pick(state, BUILDS),
+    height: Math.round(((frame === 'f' ? 0.9 : 0.96) + rand(state) * 0.1) * 100) / 100, outfit,
   };
 }
 
@@ -80,9 +82,9 @@ function makePerson(state: GameState, id: Id, name: string, opts: { homeId: Id |
   const traits = { ...randomTraits(state), ...(opts.traits ?? {}) };
   const p: Person = {
     id, name, isPlayer: !!opts.isPlayer, appearance, homeId: opts.homeId, accountId: acc, pos: { ...start }, facing: 0,
-    where: opts.homeId ?? 'offsite', visible: false, needs: { energy: 80 + randInt(state, 0, 20), satiety: 60 + randInt(state, 0, 30) },
+    where: opts.homeId ?? 'offsite', visible: false, needs: { energy: 80 + randInt(state, 0, 20), satiety: 60 + randInt(state, 0, 30), hygiene: 85, mood: 60 },
     skills: {}, traits, contractId: null, handsId: hands.id, bagId: bag.id, basketId: basket.id, pantryId: pantry?.id ?? null,
-    wardrobeId: wardrobe?.id ?? null, action: null, move: null, history: [], reputation: 50, equipment: null, sleeping: false,
+    wardrobeId: wardrobe?.id ?? null, action: null, move: null, history: [], reputation: 50, equipment: null, sleeping: false, relations: {},
     npc: opts.isPlayer ? null : {
       goal: 'idle_home', goalSince: state.minute, nextDecision: state.minute + randInt(state, 0, 5), step: 'run', plan: [], log: [],
       homeOutfit, bedtime: 22 * 60 + randInt(state, 0, 90), wake: 6 * 60 + randInt(state, 0, 60),
@@ -201,7 +203,7 @@ export function createNewGame(seed: number, setup: PlayerSetup): GameState {
   pl.facing = Math.PI;
   pl.where = 'flat';
   pl.visible = true;
-  pl.needs = { energy: 85, satiety: 55 };
+  pl.needs = { energy: 85, satiety: 55, hygiene: 70, mood: 60 };
   addItems(state.containers[pl.pantryId!], 'bread', 1);
   addItems(state.containers[pl.pantryId!], 'pasta', 1);
   createLease(state, 'player', 'estates', 'flat', 'Flat 1, Marlow Court', 14000, 7);

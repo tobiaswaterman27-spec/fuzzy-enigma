@@ -99,11 +99,14 @@ export interface Appearance {
   build: Build;
   height: number; // scale factor ~0.92 - 1.08
   outfit: string; // item id of equipped outfit
+  frame?: 'm' | 'f'; // body frame
 }
 
 export interface Needs {
   energy: number; // 0..100
   satiety: number; // 0..100 (100 = full)
+  hygiene: number; // 0..100 (shower restores)
+  mood: number; // 0..100 (leisure, food, company raise it)
 }
 
 export interface Traits {
@@ -137,6 +140,10 @@ export type ActionType =
   | 'change_outfit'
   | 'buy_meal'
   | 'store_food'
+  | 'shower'
+  | 'watch_tv'
+  | 'cook'
+  | 'talk'
   | 'sit';
 
 export interface ActionState {
@@ -232,6 +239,8 @@ export interface Person {
   reputation: number; // professional reputation 0..100
   equipment: string | null; // 'mop' etc held tool
   sleeping: boolean;
+  /** familiarity with other people built through conversation and working together (0..100) */
+  relations: Record<Id, number>;
 }
 
 // ------------------------------------------------------------- business
@@ -353,6 +362,7 @@ export interface Attendance {
   closed: boolean;
   absent: boolean;
   score: number | null;
+  groomed?: boolean;
 }
 
 export interface Vacancy {
@@ -370,11 +380,15 @@ export interface Application {
   vacancyId: Id;
   personId: Id;
   submittedAt: number;
-  status: 'pending' | 'offered' | 'rejected' | 'accepted' | 'declined' | 'expired';
+  status: 'pending' | 'interview' | 'offered' | 'rejected' | 'accepted' | 'declined' | 'expired';
   score: number;
   answers: number[];
   offerExpires?: number;
   note?: string;
+  /** in-person interview appointment (player applicants) */
+  interviewAt?: number;
+  interviewerId?: Id;
+  interviewFeedback?: string[];
 }
 
 // --------------------------------------------------------------- tasks

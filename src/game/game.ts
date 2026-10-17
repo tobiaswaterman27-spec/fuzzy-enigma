@@ -1,6 +1,14 @@
 // Game: owns the authoritative GameState, advances the simulation from real
 // time, runs the player controller and camera, and feeds the renderer & UI.
 import * as THREE from 'three';
+import { Sky } from 'three/examples/jsm/objects/Sky.js';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
 import type { GameState } from '../sim/types';
 import { step } from '../sim/sim';
 import { cancelAction, focusInteractable, optionsFor, startAction, enforceLocationRules, type ActionOption } from '../sim/actions';
@@ -43,6 +51,8 @@ export class Game {
   camPitch = 0.22;
   camDist = 4.2;
   overview = false;
+  /** debug/photo mode: the camera is positioned externally */
+  freeCam = false;
   private raycaster = new THREE.Raycaster();
   private camCur = new THREE.Vector3();
   speedMult = 1;
@@ -56,6 +66,9 @@ export class Game {
   private lastMouse = { x: 0, y: 0 };
   private autosaveAt = performance.now() + 120000;
   insideId: string | null = null;
+  sky!: Sky;
+  composer: EffectComposer | null = null;
+  quality: 'high' | 'low' = 'high';
   private cutawayOn = false;
   frameMs = 0;
 
@@ -69,6 +82,7 @@ export class Game {
     this.camera = new THREE.PerspectiveCamera(55, 1, 0.1, 500);
     this.hemi = new THREE.HemisphereLight('#cfe6ff', '#5d6b4a', 0.9);
     this.scene.add(this.hemi);
+    this.scene.add(new THREE.AmbientLight('#fff6ea', 0.35));
     this.sun = new THREE.DirectionalLight('#fff3dd', 2.2);
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
@@ -76,7 +90,18 @@ export class Game {
     sc.left = -40; sc.right = 40; sc.top = 40; sc.bottom = -40; sc.near = 1; sc.far = 160;
     this.sun.shadow.bias = -0.0005;
     this.scene.add(this.sun, this.sun.target);
-    this.scene.fog = new THREE.Fog('#bcd4e6', 90, 220);
+    this.scene.fog = new THREE.Fog('#bcd4e6', 110, 380);
+    // physically based sky, image-based lighting for reflections, and a post-processing chain
+    this.sky = new Sky();
+    this.sky.scale.setScalar(450);
+    const su = this.sky.material.uniforms;
+    su.turbidity.value = 4; su.rayleigh.value = 1.2; su.mieCoefficient.value = 0.004; su.mieDirectionalG.value = 0.8;
+    this.scene.add(this.sky);
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    this.renderer.toneMappingExposure = 0.95;
+    this.quality = (() => { try { return (localStorage.getItem('bigshot.gfx') as 'high' | 'low') ?? 'high'; } catch { return 'high'; } })();
+    this.setupComposer();
     this.world = buildWorld(this.scene);
     this.views = new Views(this.scene);
     this.resize();
@@ -91,10 +116,33 @@ export class Game {
     this.state = s;
   }
 
+  setupComposer() {
+    if (this.quality !== 'high') { this.composer = null; return; }
+    const w = this.canvas.clientWidth || window.innerWidth, h = this.canvas.clientHeight || window.innerHeight;
+    const c = new EffectComposer(this.renderer);
+    c.addPass(new RenderPass(this.scene, this.camera));
+    const ao = new GTAOPass(this.scene, this.camera, w, h);
+    ao.updateGtaoMaterial({ radius: 0.35, distanceExponent: 1.5, thickness: 1.2, scale: 1.0 });
+    ao.blendIntensity = 0.85;
+    c.addPass(ao);
+    c.addPass(new UnrealBloomPass(new THREE.Vector2(w, h), 0.12, 0.4, 0.985));
+    c.addPass(new OutputPass());
+    c.addPass(new SMAAPass());
+    this.composer = c;
+  }
+
+  setQuality(q: 'high' | 'low') {
+    this.quality = q;
+    try { localStorage.setItem('bigshot.gfx', q); } catch { /* ignore */ }
+    this.setupComposer();
+    this.resize();
+  }
+
   resize() {
     const w = this.canvas.clientWidth || window.innerWidth;
     const h = this.canvas.clientHeight || window.innerHeight;
     this.renderer.setSize(w, h, false);
+    this.composer?.setSize(w, h);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
   }
@@ -144,13 +192,13 @@ export class Game {
     const o = n === 0 ? enabled[0] ?? f.options[0] : f.options[n];
     if (!o) return null;
     if (!o.enabled) { this.onToast(o.reason ?? 'Not possible'); return { ok: false, msg: o.reason ?? '' }; }
-    if (o.type === 'ui') { this.onUi(o.ui!); return { ok: true, msg: '' }; }
+    if (o.type === 'ui') { this.onUi(o.ui!, o.arg); return { ok: true, msg: '' }; }
     const r = startAction(this.state, p.id, f.id, o.type, o.arg);
     if (!r.ok) this.onToast(r.msg);
     return r;
   }
 
-  onUi: (which: 'jobs' | 'advisor') => void = () => {};
+  onUi: (which: 'jobs' | 'advisor' | 'interview' | 'laptop', arg?: string) => void = () => {};
 
   /** game minutes per real second right now */
   get rate() {
@@ -181,9 +229,10 @@ export class Game {
       if (performance.now() > this.autosaveAt) { this.autosave(); this.autosaveAt = performance.now() + 180000; }
     }
     this.views.update(s, this.paused ? 0 : dt);
-    this.updateCamera(dt);
+    this.world.update(s, dt);
+    if (!this.freeCam) this.updateCamera(dt);
     this.updateLighting();
-    this.renderer.render(this.scene, this.camera);
+    if (this.composer && !this.freeCam) this.composer.render(); else this.renderer.render(this.scene, this.camera);
     this.onFrame();
   }
 
@@ -266,11 +315,17 @@ export class Game {
     this.sun.position.set(p.pos.x + Math.cos(ang) * 50, Math.max(8, Math.sin(ang) * 70), p.pos.z + 30);
     this.sun.intensity = 0.15 + 2.1 * d;
     this.sun.color.set(d < 0.6 ? '#ffc58a' : '#fff3dd');
-    this.hemi.intensity = 0.25 + 0.75 * d;
-    const day = new THREE.Color('#9cc7ea'), dusk = new THREE.Color('#f0a46b'), night = new THREE.Color('#0d1626');
-    const sky = d > 0.5 ? dusk.clone().lerp(day, (d - 0.5) * 2) : night.clone().lerp(dusk, d * 2);
-    this.scene.background = sky;
-    (this.scene.fog as THREE.Fog).color = sky;
+    // sun direction drives the sky shader; the horizon colour feeds the fog so distance blends naturally
+    const sunDir = new THREE.Vector3(Math.cos(ang), Math.sin(ang), 0.45).normalize();
+    this.sky.material.uniforms.sunPosition.value.copy(sunDir);
+    this.sky.position.set(p.pos.x, 0, p.pos.z);
+    const day = new THREE.Color('#b9cfdf'), dusk = new THREE.Color('#e8a878'), night = new THREE.Color('#0d1626');
+    const horizon = d > 0.5 ? dusk.clone().lerp(day, (d - 0.5) * 2) : night.clone().lerp(dusk, d * 2);
+    (this.scene.fog as THREE.Fog).color = horizon;
+    this.scene.background = d < 0.05 ? night : null;
+    this.sky.visible = d >= 0.05;
+    this.scene.environmentIntensity = (this.insideId ? 0.25 : 0.15 + 0.55 * d);
+    this.hemi.intensity = (0.25 + 0.75 * d) * (this.insideId ? 0.45 : 1);
     const lit = d < 0.45;
     this.world.lampBulbs.emissiveIntensity = lit ? 1.6 : 0;
     const lamps = getWorld().lamps.slice().sort((a, b) => Math.hypot(a.x - p.pos.x, a.z - p.pos.z) - Math.hypot(b.x - p.pos.x, b.z - p.pos.z));

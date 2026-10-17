@@ -25,6 +25,13 @@ const MIGRATIONS: Record<number, (s: any) => void> = {
     for (const sh of Object.values<any>(s.shipments ?? {})) if (sh.paid === undefined) sh.paid = sh.status === 'received';
     for (const d of Object.values<any>(s.districts ?? {})) if (d.cafeAccumulator === undefined) d.cafeAccumulator = 0;
   },
+  2: (s) => {
+    // v2 -> v3: hygiene & mood needs, relationships, business sections/equipment, per-shop demand
+    for (const p of Object.values<any>(s.people ?? {})) { p.needs.hygiene ??= 80; p.needs.mood ??= 60; p.relations ??= {}; }
+    for (const b of Object.values<any>(s.businesses ?? {})) { b.sections ??= {}; b.equipment ??= {}; }
+    if (s.businesses?.market && !Object.keys(s.businesses.market.sections).length) for (const k of ['bread', 'milk', 'apples', 'soup', 'pasta', 'coffee', 'snacks', 'soap']) s.businesses.market.sections[`shelf_${k}`] = k;
+    for (const d of Object.values<any>(s.districts ?? {})) d.shopDemand ??= { market: d.demandAccumulator ?? 0 };
+  },
 };
 
 export function serialize(state: GameState, summary = ''): string {

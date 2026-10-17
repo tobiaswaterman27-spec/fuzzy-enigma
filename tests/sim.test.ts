@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   createNewGame, step, transfer, auditLedger, moneySupply, getWorld, segIntersectsRect, planRoute, astar,
-  applyForJob, acceptOffer, startAction, runPayroll, serialize, deserialize, safeWrite, loadSlot, worldCount,
+  applyForJob, acceptOffer, attendInterview, startAction, runPayroll, serialize, deserialize, safeWrite, loadSlot, worldCount,
   PRODUCTS, at, openAttendance, total, count, hire, completeSale, moveItems, minuteOfDay,
   type GameState, type KV,
 } from '../src/sim/index';
@@ -70,13 +70,24 @@ describe('Journey A - start a life', () => {
     expect(applyForJob(s, 'player', vac.id, [1, 1, 1]).ok).toBe(false); // no duplicate applications
     advance(s, 150);
     const app = Object.values(s.applications).find((a) => a.personId === 'player')!;
-    expect(app.status).toBe('offered');
+    // the employer invites the player to an in-person interview with the manager
+    expect(app.status).toBe('interview');
+    expect(app.interviewerId).toBe('p_harlan');
+    expect(attendInterview(s, app.id, [1, 1, 1]).ok).toBe(false); // too early
+    advanceTo(s, app.interviewAt! - 10);
+    p.appearance.outfit = 'outfit_smart';
+    p.needs.hygiene = 90;
+    const res = attendInterview(s, app.id, [1, 1, 1]);
+    expect(res.ok).toBe(true);
+    expect(res.offered).toBe(true);
+    expect(res.feedback.some((f) => f.includes('smartly'))).toBe(true);
     expect(acceptOffer(s, app.id).ok).toBe(true);
     const c = s.contracts[p.contractId!];
-    expect(c.startDay).toBe(1); // today's shift already started
+    expect(c.startDay).toBeGreaterThanOrEqual(1); // today's shift already started
     expect(count(s.containers[p.wardrobeId!], 'uniform_market')).toBe(1);
     // clocking in without the uniform is refused
-    advanceTo(s, at(1, 7, 50));
+    advanceTo(s, at(c.startDay, 7, 50));
+    p.appearance.outfit = 'outfit_casual';
     expect(act(s, 'terminal', 'clock_in').ok).toBe(true);
     expect(openAttendance(s, 'player')).toBeNull();
     p.appearance.outfit = 'uniform_market';
@@ -94,13 +105,13 @@ describe('Journey A - start a life', () => {
     expect(count(s.containers.market_backroom, 'milk') + count(s.containers.shelf_milk, 'milk') + total(s.containers[p.handsId])).toBeLessThanOrEqual(back0 + shelf0 + 12);
     if (total(s.containers[p.handsId])) act(s, 'pallet_milk', 'return_case');
     // finish the shift
-    advanceTo(s, at(1, 14, 0));
+    advanceTo(s, at(c.startDay, 14, 0));
     expect(act(s, 'terminal', 'clock_out').ok).toBe(true);
     const a2 = s.attendance[att.key];
     expect(a2.closed).toBe(true);
     expect(a2.minutesWorked).toBe(360 - (a2.clockIn! - a2.scheduledStart > 0 ? a2.clockIn! - a2.scheduledStart : 0));
     const bal0 = s.ledger.accounts[p.accountId].balance;
-    advanceTo(s, at(1, 22, 5));
+    advanceTo(s, at(c.startDay, 22, 5));
     const gross = Math.round((a2.minutesWorked * c.wage) / 60);
     const net = gross - Math.round(gross * 0.1);
     expect(s.ledger.accounts[p.accountId].balance - bal0).toBe(net);
@@ -221,7 +232,8 @@ describe('Journey I - save and resume', () => {
     const copy = (r as any).state as GameState;
     advance(s, 600);
     advance(copy, 600);
-    expect(JSON.stringify(copy)).toBe(JSON.stringify(s));
+    const canon = (v: unknown): unknown => Array.isArray(v) ? v.map(canon) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v as object).sort().map((k) => [k, canon((v as any)[k])])) : v;
+    expect(JSON.stringify(canon(copy))).toBe(JSON.stringify(canon(s)));
   });
   it('safe write keeps a backup and refuses corrupted saves', () => {
     const mem = new Map<string, string>();
