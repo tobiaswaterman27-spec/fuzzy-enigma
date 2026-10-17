@@ -10,4 +10,8 @@ html = html.replace(/<script type="module" crossorigin src="\.\/assets\/[^"]+\.j
 fs.mkdirSync(out, { recursive: true });
 fs.writeFileSync(`${out}/bigshot.html`, html.trim() + '\n');
 fs.copyFileSync(`dist/assets/${js}`, `${out}/game.js`);
+// artifacts do not serve .bin, so the body mesh also ships as base64 text
+fs.mkdirSync(`${out}/assets/human`, { recursive: true });
+for (const f of ['body.json', 'skin_masks.png']) fs.copyFileSync(`dist/assets/human/${f}`, `${out}/assets/human/${f}`);
+fs.writeFileSync(`${out}/assets/human/body.bin.txt`, fs.readFileSync('dist/assets/human/body.bin').toString('base64'));
 console.log('ok', js);

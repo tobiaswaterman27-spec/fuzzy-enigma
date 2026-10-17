@@ -22,9 +22,20 @@ export interface HumanAsset {
 let asset: HumanAsset | null = null;
 export const humanAsset = () => asset;
 
+/** body.bin, or a base64 text copy where the host does not serve binary files (artifact builds) */
+async function loadBin(base: string): Promise<ArrayBuffer> {
+  const r = await fetch(base + 'body.bin');
+  if (r.ok && !(r.headers.get('content-type') ?? '').includes('text/html')) return r.arrayBuffer();
+  const txt = await (await fetch(base + 'body.bin.txt')).text();
+  const raw = atob(txt.trim());
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out.buffer;
+}
+
 export async function loadHumanAsset(base = 'assets/human/'): Promise<boolean> {
   try {
-    const [meta, bin] = await Promise.all([fetch(base + 'body.json').then((r) => r.json()), fetch(base + 'body.bin').then((r) => r.arrayBuffer())]);
+    const [meta, bin] = await Promise.all([fetch(base + 'body.json').then((r) => r.json()), loadBin(base)]);
     const get = (name: string) => meta.layout.find((l: any) => l.name === name);
     const view = (name: string): any => {
       const l = get(name);
