@@ -293,6 +293,7 @@ export function tickAction(state: GameState, p: Person, dt: number): string | nu
   if (!a) return null;
   const it = interactable(state, a.target);
   if (!it && a.type !== 'sleep') { cancelAction(state, p); return 'Target is gone.'; }
+  if (it && Math.min(dist(p.pos, it.pos), dist(p.pos, it.obj)) > it.range + 1.5) { cancelAction(state, p); return 'Stopped: you moved away.'; }
   a.progress += dt;
   const h = hands(state, p);
   // unit-based actions

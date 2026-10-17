@@ -25,6 +25,8 @@ export class UI {
   tab: Tab = 'jobs';
   menuOpen = false;
   private lastPhoneRender = 0;
+  private lastTabs = '';
+  private lastBody = '';
   private toastTimer = 0;
 
   constructor(private game: Game) {
@@ -121,11 +123,12 @@ export class UI {
     this.lastPhoneRender = performance.now();
     const tabs: [Tab, string][] = [['jobs', 'Jobs'], ['work', 'Work'], ['bank', 'Bank'], ['status', 'Me'], ['news', 'News'], ['map', 'Map'], ['shop', 'Market']];
     const unread = this.s.news.filter((n) => n.personal && !n.read).length;
-    $('#phone-tabs').innerHTML = tabs.map(([t, l]) => `<button data-tab="${t}" class="${t === this.tab ? 'on' : ''}">${l}${t === 'news' && unread ? ` <i class="dot">${unread}</i>` : ''}</button>`).join('');
+    const tabsHtml = tabs.map(([t, l]) => `<button data-tab="${t}" class="${t === this.tab ? 'on' : ''}">${l}${t === 'news' && unread ? ` <i class="dot">${unread}</i>` : ''}</button>`).join('');
+    if (tabsHtml !== this.lastTabs) { $('#phone-tabs').innerHTML = tabsHtml; this.lastTabs = tabsHtml; }
     const body = $('#phone-body');
-    const scroll = body.scrollTop;
-    body.innerHTML = this[`tab_${this.tab}`]();
-    body.scrollTop = scroll;
+    const html = this[`tab_${this.tab}`]();
+    // only touch the DOM when content changed, so clicks are never lost mid-render
+    if (html !== this.lastBody) { const scroll = body.scrollTop; body.innerHTML = html; body.scrollTop = scroll; this.lastBody = html; }
     if (this.tab === 'news') for (const n of this.s.news) n.read = true;
   }
 

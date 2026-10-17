@@ -128,18 +128,19 @@ export class Views {
     const w = getWorld();
     // shelf products: one instanced mesh per product section, 30 slots
     for (const s of SHELF_LAYOUT) {
-      const m = new THREE.InstancedMesh(new THREE.BoxGeometry(0.22, 0.26, 0.2), new THREE.MeshStandardMaterial({ color: ITEMS[s.product].color, roughness: 0.6 }), SHELF_CAPACITY);
+      const m = new THREE.InstancedMesh(new THREE.BoxGeometry(0.3, 0.27, 0.3), new THREE.MeshStandardMaterial({ color: ITEMS[s.product].color, roughness: 0.55, emissive: new THREE.Color(ITEMS[s.product].color), emissiveIntensity: 0.12 }), SHELF_CAPACITY);
       m.castShadow = true;
       const dummy = new THREE.Object3D();
       for (let i = 0; i < SHELF_CAPACITY; i++) {
         const level = Math.floor(i / 10);
         const col = i % 10;
         const side = col % 2 === 0 ? -1 : 1;
-        dummy.position.set(s.gx + side * 0.36, 0.3 + level * 0.45, s.zc - 1.9 + Math.floor(col / 2) * 0.95);
+        dummy.position.set(s.gx + side * 0.42, 0.31 + level * 0.45, s.zc - 1.9 + Math.floor(col / 2) * 0.95);
         dummy.updateMatrix();
         m.setMatrixAt(i, dummy.matrix);
       }
       m.count = 0;
+      m.frustumCulled = false;
       scene.add(m);
       this.shelfMeshes.set(s.product, m);
     }
@@ -154,6 +155,7 @@ export class Views {
       }
       m.castShadow = true;
       m.count = 0;
+      m.frustumCulled = false;
       scene.add(m);
       // product colour tag on the pallet
       const tag = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.12, 0.04), new THREE.MeshStandardMaterial({ color: ITEMS[p].color }));
@@ -169,6 +171,7 @@ export class Views {
       this.bayMesh.setMatrixAt(k, dummy.matrix);
     }
     this.bayMesh.count = 0;
+    this.bayMesh.frustumCulled = false;
     this.bayMesh.castShadow = true;
     scene.add(this.bayMesh);
     this.van = buildCar('#f2f2f2', 0, 0, 0, true);

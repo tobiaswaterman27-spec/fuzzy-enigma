@@ -220,9 +220,16 @@ export class Game {
       this.insideId = inside;
     }
     const dist = inside ? Math.min(this.camDist, 10) : this.camDist;
-    const pitch = inside ? Math.max(this.camPitch, 0.85) : this.camPitch;
+    const pitch = inside ? Math.max(this.camPitch, 0.7) : this.camPitch;
     const off = new THREE.Vector3(Math.sin(this.camYaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(this.camYaw) * Math.cos(pitch)).multiplyScalar(dist);
     const want = target.clone().add(off);
+    // keep the camera out of other buildings: pull it in along the view line
+    const blds = getWorld().buildings;
+    for (let t = 0.15; t <= 1.001; t += 0.05) {
+      const pt = target.clone().addScaledVector(off, t);
+      const hit = blds.some((bb) => bb.id !== inside && pt.y < bb.height + 0.5 && pt.x > bb.rect.x0 - 0.3 && pt.x < bb.rect.x1 + 0.3 && pt.z > bb.rect.z0 - 0.3 && pt.z < bb.rect.z1 + 0.3);
+      if (hit) { want.copy(target).addScaledVector(off, Math.max(0.12, t - 0.06)); break; }
+    }
     this.camera.position.lerp(want, Math.min(1, dt * 8 + 0.02));
     this.camera.lookAt(target);
     this.sun.target.position.set(p.pos.x, 0, p.pos.z);
