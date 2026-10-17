@@ -48,6 +48,29 @@ function mergeByMaterial(root: THREE.Object3D): THREE.Group {
 
 export function hasModel(name: string): boolean { return templates.has(name); }
 
+const sizes = new Map<string, THREE.Vector3>();
+/** Native size of a model (metres): x = width, y = height, z = depth (front faces +z). */
+export function modelSize(name: string): THREE.Vector3 | null {
+  const t = templates.get(name);
+  if (!t) return null;
+  let v = sizes.get(name);
+  if (!v) { v = new THREE.Box3().setFromObject(t).getSize(new THREE.Vector3()); sizes.set(name, v); }
+  return v;
+}
+
+/** Instance a model rotated by `rot` about Y and scaled to fill the footprint x0..x1 × z0..z1 (height kept unless given). */
+export function fitModel(name: string, r: { x0: number; z0: number; x1: number; z1: number }, rot: number, paint?: string, height?: number): THREE.Group | null {
+  const m = modelInstance(name, paint);
+  const size = modelSize(name);
+  if (!m || !size) return null;
+  const swap = Math.abs(Math.sin(rot)) > 0.5;
+  const W = r.x1 - r.x0, D = r.z1 - r.z0;
+  m.scale.set((swap ? D : W) / size.x, height ? height / size.y : 1, (swap ? W : D) / size.z);
+  m.rotation.y = rot;
+  m.position.set((r.x0 + r.x1) / 2, 0, (r.z0 + r.z1) / 2);
+  return m;
+}
+
 /** A new instance sharing geometry; the material named `paint` is swapped for one in `paint` colour. */
 export function modelInstance(name: string, paint?: string): THREE.Group | null {
   const t = templates.get(name);

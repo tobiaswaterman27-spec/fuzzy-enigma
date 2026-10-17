@@ -40,7 +40,7 @@ await ev(() => { const g = window.__bigshot.game; for (let i = 0; i < 150; i++) 
 const inv = await ev(() => { const s = window.__bigshot.game.state; const a = Object.values(s.applications).find((x) => x.personId === 'player'); return { status: a.status, at: a.interviewAt, who: a.interviewerId }; });
 console.log('application', JSON.stringify(inv));
 // dress smartly at the wardrobe first
-await tp(28.5, 11.9, Math.PI); await waitFocus('Smart');
+await tp(23.7, 23.1, -Math.PI / 2); await waitFocus('Smart');
 const smartIdx = await ev(() => window.__bigshot.game.focus?.options.findIndex((o) => o.label.includes('Smart')));
 await page.keyboard.press(`Digit${smartIdx + 1}`); await page.waitForTimeout(300); await waitIdle();
 // go to the shop at the interview time and talk to the manager in person
@@ -63,7 +63,7 @@ await shot('06-interview-result');
 await page.click('[data-acc]', { timeout: 60000 }).catch(() => console.log('no accept button'));
 await page.waitForTimeout(300);
 // put on uniform at the wardrobe
-await tp(28.5, 11.9, Math.PI);
+await tp(23.7, 23.1, -Math.PI / 2);
 await waitFocus('Smart');
 const opts = await ev(() => window.__bigshot.game.focus?.options.map((o) => o.label));
 console.log('wardrobe options', opts);

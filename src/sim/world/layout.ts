@@ -46,6 +46,11 @@ export interface BuildingDef {
 
 export type ObstacleKind =
   | 'gondola'
+  | 'toilet'
+  | 'tilefloor'
+  | 'drawers'
+  | 'coffee_table'
+  | 'bookcase'
   | 'counter'
   | 'pallet'
   | 'kiosk'
@@ -189,6 +194,16 @@ const B: BuildingDef[] = [
       { side: 'zmin', a: 26, b: 28, open: false },
     ],
     interior: true, floorColor: '#a07850',
+    // open-plan living/kitchen with a hall; bedroom and bathroom behind doorways;
+    // the communal stair lobby for the upstairs flat (closed street door) is walled off
+    internalWalls: [
+      { x0: 25.35, z0: 10, x1: 25.65, z1: 14.4 },
+      { x0: 25.35, z0: 15.6, x1: 25.65, z1: 17.65 },
+      { x0: 25.65, z0: 12.85, x1: 30, z1: 13.15 },
+      { x0: 22, z0: 17.35, x1: 22.9, z1: 17.65 },
+      { x0: 24.1, z0: 17.35, x1: 30, z1: 17.65 },
+      { x0: 21.85, z0: 17.65, x1: 22.15, z1: 26 },
+    ],
   },
   {
     id: 'cafe', name: 'Tidewater Cafe', category: 'simplified', role: 'Cafe - buy a hot meal (simplified kitchen)',
@@ -425,25 +440,36 @@ export function getWorld(): World {
   add({ id: 'cupboard', kind: 'cupboard', label: 'Cleaning cupboard', pos: { x: 34.5, z: -30 }, facing: Math.PI / 2, obj: { x: 35.5, z: -30 }, locationId: 'market', businessId: 'market' });
   add({ id: 'bay', kind: 'bay', label: 'Loading bay', pos: { x: 24, z: -37.4 }, facing: Math.PI, obj: { x: 24, z: -38.7 }, locationId: 'market', businessId: 'market', range: 2.2 });
 
-  // ---- Flat interior
-  obstacles.push({ kind: 'bed', rect: { x0: 25.5, z0: 21, x1: 29.6, z1: 25.6 }, height: 0.6, solid: true });
-  add({ id: 'bed', kind: 'bed', label: 'Bed', pos: { x: 24.7, z: 23.3 }, facing: Math.PI / 2, obj: { x: 27.5, z: 23.3 }, locationId: 'flat', range: 1.8 });
-  obstacles.push({ kind: 'kitchen', rect: { x0: 12.3, z0: 24.7, x1: 19, z1: 25.7 }, height: 0.95, solid: true });
-  add({ id: 'kitchen', kind: 'kitchen', label: 'Kitchen', pos: { x: 15.5, z: 23.8 }, facing: 0, obj: { x: 15.5, z: 25.2 }, locationId: 'flat' });
-  obstacles.push({ kind: 'table', rect: { x0: 19, z0: 17, x1: 21, z1: 19 }, height: 0.75, solid: true });
-  add({ id: 'chair', kind: 'chair', label: 'Chair', pos: { x: 20, z: 16.2 }, facing: 0, obj: { x: 20, z: 16.2 }, locationId: 'flat' });
-  obstacles.push({ kind: 'wardrobe', rect: { x0: 27.4, z0: 10.3, x1: 29.7, z1: 11.0 }, height: 2.1, solid: true });
-  add({ id: 'wardrobe', kind: 'wardrobe', label: 'Wardrobe', pos: { x: 28.5, z: 11.9 }, facing: Math.PI, obj: { x: 28.5, z: 10.65 }, locationId: 'flat' });
-  obstacles.push({ kind: 'sofa', rect: { x0: 12.4, z0: 14, x1: 13.6, z1: 18 }, height: 0.8, solid: true });
-  add({ id: 'sofa', kind: 'sofa', label: 'Sofa & TV', pos: { x: 14.3, z: 16 }, facing: Math.PI / 2, obj: { x: 13, z: 16 }, locationId: 'flat' });
-  obstacles.push({ kind: 'tv', rect: { x0: 16.9, z0: 15, x1: 17.4, z1: 17 }, height: 0.55, solid: true });
-  obstacles.push({ kind: 'shower', rect: { x0: 28.3, z0: 14.6, x1: 29.85, z1: 16.6 }, height: 2.1, solid: true });
-  add({ id: 'shower', kind: 'shower', label: 'Shower', pos: { x: 27.5, z: 15.6 }, facing: Math.PI / 2, obj: { x: 29.1, z: 15.6 }, locationId: 'flat' });
-  obstacles.push({ kind: 'stove', rect: { x0: 19.05, z0: 24.7, x1: 20.4, z1: 25.7 }, height: 0.95, solid: true });
-  add({ id: 'stove', kind: 'stove', label: 'Cooker', pos: { x: 19.7, z: 23.8 }, facing: 0, obj: { x: 19.7, z: 25.2 }, locationId: 'flat' });
-  obstacles.push({ kind: 'rug', rect: { x0: 14.5, z0: 14.2, x1: 16.5, z1: 17.8 }, height: 0.01, solid: false });
+  // ---- Flat interior (real furniture sizes)
+  // bedroom
+  obstacles.push({ kind: 'bed', rect: { x0: 27.75, z0: 20.6, x1: 29.85, z1: 22.2 }, height: 0.6, solid: true });
+  add({ id: 'bed', kind: 'bed', label: 'Bed', pos: { x: 26.9, z: 21.4 }, facing: Math.PI / 2, obj: { x: 28.8, z: 21.4 }, locationId: 'flat', range: 1.8 });
+  obstacles.push({ kind: 'wardrobe', rect: { x0: 22.15, z0: 22.0, x1: 22.85, z1: 24.2 }, height: 2.1, solid: true });
+  add({ id: 'wardrobe', kind: 'wardrobe', label: 'Wardrobe', pos: { x: 23.7, z: 23.1 }, facing: -Math.PI / 2, obj: { x: 22.5, z: 23.1 }, locationId: 'flat' });
+  obstacles.push({ kind: 'drawers', rect: { x0: 28.0, z0: 25.35, x1: 28.9, z1: 25.83 }, height: 0.85, solid: true });
+  obstacles.push({ kind: 'rug', rect: { x0: 25.6, z0: 20.2, x1: 27.6, z1: 22.6 }, height: 0.01, solid: false, color: '#c9b79c' });
+  // bathroom
+  obstacles.push({ kind: 'shower', rect: { x0: 28.85, z0: 13.2, x1: 29.85, z1: 14.2 }, height: 2.1, solid: true });
+  add({ id: 'shower', kind: 'shower', label: 'Shower', pos: { x: 28.2, z: 14.7 }, facing: Math.PI / 2, obj: { x: 29.35, z: 13.7 }, locationId: 'flat' });
+  obstacles.push({ kind: 'tilefloor', rect: { x0: 25.65, z0: 13.15, x1: 29.85, z1: 17.35 }, height: 0.01, solid: false });
+  obstacles.push({ kind: 'toilet', rect: { x0: 29.2, z0: 16.0, x1: 29.85, z1: 16.7 }, height: 0.8, solid: true });
+  // living room
+  obstacles.push({ kind: 'sofa', rect: { x0: 12.2, z0: 14.0, x1: 13.15, z1: 16.2 }, height: 0.85, solid: true });
+  add({ id: 'sofa', kind: 'sofa', label: 'Sofa & TV', pos: { x: 13.8, z: 15.1 }, facing: Math.PI / 2, obj: { x: 12.7, z: 15.1 }, locationId: 'flat' });
+  obstacles.push({ kind: 'tv', rect: { x0: 16.4, z0: 14.3, x1: 16.85, z1: 15.9 }, height: 0.5, solid: true });
+  obstacles.push({ kind: 'rug', rect: { x0: 13.6, z0: 14.0, x1: 16.0, z1: 16.2 }, height: 0.01, solid: false });
+  obstacles.push({ kind: 'coffee_table', rect: { x0: 14.65, z0: 14.55, x1: 15.2, z1: 15.65 }, height: 0.45, solid: true });
+  obstacles.push({ kind: 'bookcase', rect: { x0: 12.2, z0: 11.8, x1: 12.52, z1: 12.7 }, height: 1.9, solid: true });
   obstacles.push({ kind: 'plant', rect: { x0: 12.5, z0: 10.5, x1: 13.2, z1: 11.2 }, height: 1.2, solid: true });
-  obstacles.push({ kind: 'lampstand', rect: { x0: 12.5, z0: 18.6, x1: 13.0, z1: 19.1 }, height: 1.6, solid: true });
+  obstacles.push({ kind: 'lampstand', rect: { x0: 12.3, z0: 16.6, x1: 12.8, z1: 17.1 }, height: 1.6, solid: true });
+  // dining table with the laptop
+  obstacles.push({ kind: 'table', rect: { x0: 18.6, z0: 17.3, x1: 20.0, z1: 18.2 }, height: 0.75, solid: true });
+  add({ id: 'chair', kind: 'chair', label: 'Chair', pos: { x: 19.3, z: 16.6 }, facing: 0, obj: { x: 19.3, z: 16.6 }, locationId: 'flat' });
+  // kitchen run along the back wall
+  obstacles.push({ kind: 'kitchen', rect: { x0: 12.2, z0: 25.2, x1: 17.6, z1: 25.85 }, height: 0.92, solid: true });
+  add({ id: 'kitchen', kind: 'kitchen', label: 'Kitchen', pos: { x: 15.0, z: 24.4 }, facing: 0, obj: { x: 15.0, z: 25.5 }, locationId: 'flat' });
+  obstacles.push({ kind: 'stove', rect: { x0: 17.6, z0: 25.2, x1: 18.2, z1: 25.85 }, height: 0.92, solid: true });
+  add({ id: 'stove', kind: 'stove', label: 'Cooker', pos: { x: 17.9, z: 24.4 }, facing: 0, obj: { x: 17.9, z: 25.5 }, locationId: 'flat' });
 
   // ---- Job centre interior
   obstacles.push({ kind: 'board', rect: { x0: -27, z0: -27.85, x1: -21, z1: -27.5 }, height: 2.2, solid: true });
@@ -661,8 +687,8 @@ export function getWorld(): World {
   // Flat (player only, but graph allows player-follow tests)
   N('fl_out', 16, 8.6); N('fl_in', 16, 11.6, 'flat');
   L('se_16', 'fl_out', 'fl_in');
-  N('fl_c', 23.5, 14.5, 'flat'); N('fl_k', 15.5, 20, 'flat'); N('fl_bed', 24.2, 20, 'flat');
-  L('fl_in', 'fl_c', 'fl_bed'); L('fl_in', 'fl_k');
+  N('fl_c', 23.5, 14.5, 'flat'); N('fl_k', 15.5, 20, 'flat'); N('fl_bed', 23.5, 19.5, 'flat'); N('fl_bath', 27.2, 15.0, 'flat');
+  L('fl_in', 'fl_c', 'fl_bed'); L('fl_in', 'fl_k'); L('fl_c', 'fl_bath');
   N('door_upper', 27, 9.3, 'flat_upper'); L('se_27', 'door_upper');
   // Wholesale staff door
   N('door_wholesale', -43, 13.3, 'wholesale'); L('sw_-43', 'door_wholesale');

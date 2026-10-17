@@ -3,7 +3,7 @@
 // street furniture and detailed interiors.
 import * as THREE from 'three';
 import { getWorld, wallsFor, WALL_T, type BuildingDef, type Obstacle, type Rect } from '../sim/world/layout';
-import { hasModel, modelInstance } from './models';
+import { fitModel, hasModel, modelInstance } from './models';
 import { tex, TILE, worldUV, planeUV, signTexture, normalOf } from './textures';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { GameState } from '../sim/types';
@@ -477,6 +477,59 @@ function buildObstacle(o: Obstacle): THREE.Object3D {
   const r = o.rect;
   const cx = (r.x0 + r.x1) / 2, cz = (r.z0 + r.z1) / 2, W = r.x1 - r.x0, D = r.z1 - r.z0;
   const grp = new THREE.Group();
+  // Blender-modelled furniture where available (front of each model faces +z; rotate into place)
+  const fit = (name: string, rr: Rect, rot: number, paint?: string, h?: number) => { const m = fitModel(name, rr, rot, paint, h); if (m) grp.add(m); return !!m; };
+  switch (o.kind) {
+    case 'sofa': if (fit('sofa', r, Math.PI / 2, '#4f6d60')) return grp; break;
+    case 'bed':
+      if (fit('bed', r, -Math.PI / 2, '#4e6e9e')) {
+        grp.add(box(0.45, 0.5, 0.4, M('#6b4f3a', 0.6), r.x1 - 0.25, 0.25, r.z0 - 0.3)); // bedside table
+        grp.add(cyl(0.08, 0.1, 0.22, M('#f3e8d0', 0.8, { emissive: new THREE.Color('#ffdca0'), emissiveIntensity: 0.3 }), r.x1 - 0.25, 0.63, r.z0 - 0.3, 14));
+        return grp;
+      }
+      break;
+    case 'wardrobe': {
+      // doors face away from the wall the wardrobe stands against
+      const w = getWorld().interactables.wardrobe;
+      const rot = w && Math.abs(w.pos.x - w.obj.x) > Math.abs(w.pos.z - w.obj.z) ? (w.pos.x > w.obj.x ? Math.PI / 2 : -Math.PI / 2) : (w && w.pos.z < w.obj.z ? Math.PI : 0);
+      if (fit('wardrobe', r, rot)) return grp;
+      break;
+    }
+    case 'drawers': if (fit('drawers', r, Math.PI)) return grp; break;
+    case 'coffee_table': if (fit('coffee_table', r, Math.PI / 2)) return grp; break;
+    case 'bookcase': if (fit('bookcase', r, Math.PI / 2)) return grp; break;
+    case 'tv': if (fit('tvunit', r, -Math.PI / 2)) return grp; break;
+    case 'stove': if (fit('cooker', r, Math.PI)) return grp; break;
+    case 'table':
+      if (hasModel('table') && hasModel('chair')) {
+        fit('table', r, 0, undefined, o.height);
+        for (const dz of [-1, 1]) {
+          const chz = cz + dz * (D / 2 + 0.25);
+          fit('chair', { x0: cx - 0.22, z0: chz - 0.22, x1: cx + 0.22, z1: chz + 0.22 }, dz < 0 ? 0 : Math.PI, '#5a5550');
+        }
+        if (D < 1.0) {
+          // the laptop on the player's dining table (cafe tables are square)
+          grp.add(box(0.36, 0.02, 0.25, M('#2b2f33', 0.3), cx, o.height + 0.01, cz - 0.15));
+          const scr = box(0.36, 0.24, 0.015, M('#1a2a3a', 0.2, { emissive: new THREE.Color('#2b5f8f'), emissiveIntensity: 0.6 }), cx, o.height + 0.13, cz - 0.28);
+          scr.rotation.x = 0.25;
+          grp.add(scr);
+        }
+        return grp;
+      }
+      break;
+    case 'kitchen':
+      if (hasModel('kitchen_base') && hasModel('fridge')) {
+        // fridge at the left end, a run of 60 cm base units, a sink in the worktop, wall cupboards above
+        fit('fridge', { x0: r.x0, z0: r.z0, x1: r.x0 + 0.7, z1: r.z1 }, Math.PI);
+        const n = Math.max(1, Math.round((W - 0.7) / 0.6)), uw = (W - 0.7) / n;
+        for (let k = 0; k < n; k++) fit('kitchen_base', { x0: r.x0 + 0.7 + k * uw, z0: r.z0, x1: r.x0 + 0.7 + (k + 1) * uw, z1: r.z1 }, Math.PI, '#e9e6df', o.height);
+        grp.add(box(0.55, 0.02, 0.42, metal('#c6c9cc', 0.2), cx + 0.6, o.height + 0.005, cz));
+        grp.add(box(0.48, 0.015, 0.36, metal('#9da1a5', 0.25), cx + 0.6, o.height + 0.012, cz));
+        grp.add(cyl(0.015, 0.015, 0.3, metal('#d0d3d6', 0.2), cx + 0.6, o.height + 0.15, r.z1 - 0.08, 10));
+        return grp;
+      }
+      break;
+  }
   switch (o.kind) {
     case 'gondola': {
       const frame = metal('#dfe2e6', 0.4);
@@ -607,7 +660,17 @@ function buildObstacle(o: Obstacle): THREE.Object3D {
       grp.add(box(0.5, 0.4, 0.4, M('#fafafa', 0.3), r.x1 - 0.25, 0.85, r.z1 + 0.6));
       grp.add(box(0.02, 0.7, 0.6, M('#cfe3ea', 0.05, { metalness: 0.8 }), r.x1 - 0.02, 1.5, r.z1 + 0.6, false));
       break;
-    case 'rug': grp.add(box(W, 0.015, D, texMat(tex.carpet('#8a3e3a'), 1), cx, 0.09, cz, false, 1)); break;
+    case 'tilefloor': grp.add(box(W, 0.012, D, texMat(tex.tiles('#eef0f1', '#e2e6e8', 8), 0.35), cx, 0.087, cz, false, TILE['tiles#eef0f1#e2e6e8'] ?? 1.2)); break;
+    case 'toilet': {
+      const ceramic = M('#f7f7f5', 0.15);
+      grp.add(box(0.36, 0.4, 0.5, ceramic, cx - 0.02, 0.2, cz));
+      const bowl = cyl(0.2, 0.17, 0.12, ceramic, cx - 0.08, 0.44, cz, 20); bowl.scale.set(1.15, 1, 0.9); grp.add(bowl);
+      grp.add(box(0.06, 0.03, 0.42, M('#ececea', 0.3), cx - 0.08, 0.51, cz));
+      grp.add(box(0.18, 0.38, 0.46, ceramic, r.x1 - 0.09, 0.62, cz));
+      grp.add(cyl(0.025, 0.025, 0.02, metal('#ccc'), r.x1 - 0.09, 0.82, cz, 10));
+      break;
+    }
+    case 'rug': grp.add(box(W, 0.015, D, texMat(tex.carpet(o.color ?? '#8a3e3a'), 1), cx, 0.09, cz, false, 1)); break;
     case 'plant':
       grp.add(cyl(0.22, 0.17, 0.4, M('#9a5b3a', 0.8), cx, 0.2, cz, 12));
       for (let i = 0; i < 5; i++) { const lf = new THREE.Mesh(new THREE.IcosahedronGeometry(0.22, 0), M('#3f7f45', 0.9)); lf.position.set(cx + Math.sin(i * 1.3) * 0.12, 0.6 + i * 0.12, cz + Math.cos(i * 1.3) * 0.12); lf.castShadow = true; grp.add(lf); }
