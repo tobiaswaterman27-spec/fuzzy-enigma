@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>THE BIGSHOT</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+</head>
+<body>
+<canvas id="view"></canvas>
+<div id="hud">
+  <div id="topbar">
+    <div class="clockbox"><div id="clock">07:30</div><div id="date">Monday, Day 1</div></div>
+    <div class="speeds"><button data-speed="1" title="1x">1×</button><button data-speed="2">2×</button><button data-speed="4">4×</button><button data-speed="8">8×</button></div>
+    <div id="sleep-ind" hidden>Sleeping · fast-forward</div>
+    <div class="spacer"></div>
+    <div id="money">Cr 0.00</div>
+    <button id="btn-phone" title="Phone (Tab)">Phone</button>
+    <button id="btn-menu" title="Menu (Esc)">Menu</button>
+  </div>
+  <div id="needs">
+    <div class="need"><span>Energy</span><div class="bar"><i id="bar-energy"></i></div></div>
+    <div class="need"><span>Food</span><div class="bar"><i id="bar-food"></i></div></div>
+    <div id="cond"></div>
+  </div>
+  <div id="objective"><span class="lbl">Goal</span><div id="objective-text"></div></div>
+  <div id="shift" hidden></div>
+  <div id="prompt" hidden></div>
+  <div id="toasts"></div>
+  <div id="perf"></div>
+</div>
+<div id="phone" hidden><div class="phone-head"><b>Phone</b><button data-close="1">Close (Tab)</button></div><div id="phone-tabs"></div><div id="phone-body"></div></div>
+<div id="dialog" hidden></div>
+<div id="menu" hidden><div id="menu-body"></div></div>
+<div id="creator" hidden></div>
+<div id="boot">Loading Harbourside…</div>
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>

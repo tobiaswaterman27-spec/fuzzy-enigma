@@ -1,0 +1,368 @@
+// UIController: every panel reads authoritative state and requests changes
+// through simulation functions; it never computes money or outcomes itself.
+import type { Game } from '../game/game';
+import type { GameState, Person } from '../sim/types';
+import { fmtClock, fmtDate, fmtDuration, dayIndex } from '../sim/clock';
+import { fmtMoney } from '../sim/core';
+import { accountTxns } from '../sim/ledger';
+import { acceptOffer, acceptPromotion, applyForJob, canApply, currentShift, declineOffer, hoursPerWeek, INTERVIEW, nextShift, openAttendance, positionOf, promotionEligible, resign, shiftLabel, scoreShift } from '../sim/employment';
+import { conditionLabel, skillLevel } from '../sim/needs';
+import { currentObjective } from '../sim/objectives';
+import { activeLease, reRent } from '../sim/housing';
+import { openTasks, inventoryValue, stockPosition } from '../sim/retail';
+import { demandFactors } from '../sim/economy';
+import { total } from '../sim/inventory';
+import { ITEMS, PRODUCTS, itemName } from '../sim/items';
+import { getWorld } from '../sim/world/layout';
+
+const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector(sel) as T;
+const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
+
+type Tab = 'jobs' | 'work' | 'bank' | 'status' | 'news' | 'map' | 'shop';
+
+export class UI {
+  phoneOpen = false;
+  tab: Tab = 'jobs';
+  menuOpen = false;
+  private lastPhoneRender = 0;
+  private toastTimer = 0;
+
+  constructor(private game: Game) {
+    game.onToast = (m) => this.toast(m);
+    game.onUi = (w) => (w === 'jobs' ? this.openPhone('jobs') : this.advisor());
+    game.onFrame = () => this.frame();
+    window.addEventListener('keydown', (e) => {
+      if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
+      if (e.code === 'Tab' || e.code === 'KeyP') { e.preventDefault(); this.phoneOpen ? this.closePhone() : this.openPhone(this.tab); }
+      if (e.code === 'Escape') { if (this.phoneOpen) this.closePhone(); else if ($('#dialog').hidden === false) this.closeDialog(); else this.toggleMenu(); }
+    });
+    $('#phone').addEventListener('click', (e) => this.onPhoneClick(e));
+    document.querySelectorAll<HTMLButtonElement>('[data-speed]').forEach((b) => b.addEventListener('click', () => { game.speedMult = Number(b.dataset.speed); }));
+    $('#btn-phone').addEventListener('click', () => (this.phoneOpen ? this.closePhone() : this.openPhone(this.tab)));
+    $('#btn-menu').addEventListener('click', () => this.toggleMenu());
+    $('#menu').addEventListener('click', (e) => this.onMenuClick(e));
+  }
+
+  get s(): GameState { return this.game.state; }
+  get p(): Person { return this.s.people[this.s.playerId]; }
+
+  syncModal() { this.game.uiOpen = this.phoneOpen || this.menuOpen || !$('#dialog').hidden; this.game.paused = this.menuOpen; }
+
+  toast(msg: string) {
+    if (!msg) return;
+    const t = document.createElement('div');
+    t.className = 'toast';
+    t.textContent = msg;
+    $('#toasts').prepend(t);
+    while ($('#toasts').children.length > 4) $('#toasts').lastChild!.remove();
+    setTimeout(() => t.classList.add('fade'), 3800);
+    setTimeout(() => t.remove(), 4600);
+    void this.toastTimer;
+  }
+
+  // ------------------------------------------------------------ HUD
+  frame() {
+    const s = this.s, p = this.p;
+    $('#clock').textContent = fmtClock(s.minute);
+    $('#date').textContent = fmtDate(s.minute);
+    $('#money').textContent = fmtMoney(s.ledger.accounts[p.accountId].balance);
+    document.querySelectorAll<HTMLButtonElement>('[data-speed]').forEach((b) => b.classList.toggle('on', Number(b.dataset.speed) === this.game.speedMult));
+    $('#sleep-ind').hidden = !p.sleeping;
+    setBar('#bar-energy', p.needs.energy);
+    setBar('#bar-food', p.needs.satiety);
+    $('#cond').textContent = conditionLabel(p).join(' · ');
+    const obj = currentObjective(s);
+    $('#objective').hidden = !obj;
+    if (obj) $('#objective-text').textContent = obj.text;
+    // shift card
+    const att = openAttendance(s, p.id);
+    const shiftCard = $('#shift');
+    if (att) {
+      shiftCard.hidden = false;
+      const left = att.scheduledEnd - s.minute;
+      const tasks = openTasks(s, s.contracts[att.contractId].businessId);
+      const by: Record<string, number> = {};
+      for (const t of tasks) by[t.kind] = (by[t.kind] ?? 0) + 1;
+      const preview = scoreShift({ ...att, clockOut: null });
+      shiftCard.innerHTML = `<b>On shift</b> · ${left > 0 ? `${fmtDuration(left)} left` : '<span class="warn">Shift over: clock out</span>'}<br>
+        Tasks done: ${att.tasks} · Served: ${att.served}${att.late ? ` · <span class="warn">${att.late}m late</span>` : ''}<br>
+        <span class="muted">Waiting work:</span> ${Object.entries(by).map(([k, n]) => `${n} ${k}`).join(', ') || 'none'}${s.tills.till.queue.length ? ` · <span class="warn">${s.tills.till.queue.length} at till</span>` : ''}<br>
+        <span class="muted">Score so far ~${preview}</span>`;
+    } else shiftCard.hidden = true;
+    // interaction prompt
+    const f = this.game.focus;
+    const pr = $('#prompt');
+    if (p.action) {
+      const a = p.action;
+      const pct = a.duration > 0 ? Math.min(100, (a.progress / a.duration) * 100) : null;
+      pr.hidden = false;
+      pr.innerHTML = `<div class="busy">${esc(actionLabel(a.type))}${pct !== null && a.type !== 'sit' ? `<div class="prog"><i style="width:${pct}%"></i></div>` : ''}<span class="muted">Move to stop</span></div>`;
+    } else if (f && f.options.length) {
+      pr.hidden = false;
+      const firstEnabled = f.options.findIndex((o) => o.enabled);
+      pr.innerHTML = f.options.map((o, i) => `<div class="opt ${o.enabled ? '' : 'dis'}"><kbd>${i === firstEnabled ? 'E' : i + 1}</kbd>${esc(o.label)}${!o.enabled && o.reason ? `<span class="why">${esc(o.reason)}</span>` : ''}</div>`).join('');
+    } else pr.hidden = true;
+    if (this.phoneOpen && performance.now() - this.lastPhoneRender > 500) this.renderPhone();
+    $('#perf').textContent = `${this.game.frameMs.toFixed(1)} ms`;
+  }
+
+  // ------------------------------------------------------------ phone
+  openPhone(tab: Tab) {
+    this.tab = tab;
+    this.phoneOpen = true;
+    $('#phone').hidden = false;
+    if (tab === 'jobs') this.s.flags.viewedJobs = true;
+    this.renderPhone();
+    this.syncModal();
+  }
+  closePhone() { this.phoneOpen = false; $('#phone').hidden = true; this.syncModal(); }
+
+  renderPhone() {
+    this.lastPhoneRender = performance.now();
+    const tabs: [Tab, string][] = [['jobs', 'Jobs'], ['work', 'Work'], ['bank', 'Bank'], ['status', 'Me'], ['news', 'News'], ['map', 'Map'], ['shop', 'Market']];
+    const unread = this.s.news.filter((n) => n.personal && !n.read).length;
+    $('#phone-tabs').innerHTML = tabs.map(([t, l]) => `<button data-tab="${t}" class="${t === this.tab ? 'on' : ''}">${l}${t === 'news' && unread ? ` <i class="dot">${unread}</i>` : ''}</button>`).join('');
+    const body = $('#phone-body');
+    const scroll = body.scrollTop;
+    body.innerHTML = this[`tab_${this.tab}`]();
+    body.scrollTop = scroll;
+    if (this.tab === 'news') for (const n of this.s.news) n.read = true;
+  }
+
+  tab_jobs(): string {
+    const s = this.s, p = this.p;
+    let h = '';
+    const offers = Object.values(s.applications).filter((a) => a.personId === p.id && a.status === 'offered');
+    for (const a of offers) {
+      const v = s.vacancies[a.vacancyId];
+      const b = s.businesses[v.businessId];
+      const pos = b.positions.find((x) => x.id === v.positionId)!;
+      h += `<div class="card good"><b>Job offer: ${esc(pos.title)}</b><br>${esc(b.name)} · ${fmtMoney(pos.wage)}/h · paid ${pos.payEvery}<br>${pos.shifts.map(shiftLabel).join('; ')} (${hoursPerWeek(pos.shifts)}h/week)<br><span class="muted">Expires ${fmtDate(a.offerExpires!)} ${fmtClock(a.offerExpires!)}</span>
+        <div class="row"><button data-accept="${a.id}" class="primary">Accept offer</button><button data-decline="${a.id}">Decline</button></div></div>`;
+    }
+    h += '<h3>Open vacancies</h3>';
+    const vacs = Object.values(s.vacancies).filter((v) => v.status === 'open');
+    if (!vacs.length) h += '<p class="muted">No open vacancies right now. Employers post new ones when they are short of staff.</p>';
+    for (const v of vacs) {
+      const b = s.businesses[v.businessId];
+      const pos = b.positions.find((x) => x.id === v.positionId)!;
+      const err = canApply(s, p.id, v.id);
+      const mine = Object.values(s.applications).find((a) => a.vacancyId === v.id && a.personId === p.id);
+      h += `<div class="card"><b>${esc(pos.title)}</b> <span class="tag">${pos.playable ? 'Playable' : 'Not yet playable'}</span><br>${esc(b.name)} · <b>${fmtMoney(pos.wage)}/h</b> · paid ${pos.payEvery}<br>
+        <span class="muted">${pos.shifts.map(shiftLabel).join('; ')} · ${hoursPerWeek(pos.shifts)}h/week${pos.uniform ? ` · uniform: ${itemName(pos.uniform)}` : ''}</span>
+        ${pos.description ? `<p>${esc(pos.description)}</p>` : ''}${pos.duties.length ? `<ul>${pos.duties.map((d) => `<li>${esc(d)}</li>`).join('')}</ul>` : ''}
+        <span class="muted">${v.applicants.length} applicant(s) · closes ${fmtDate(v.closesAt)}</span>
+        <div class="row">${mine ? `<span class="tag">Application ${mine.status}</span>` : err ? `<span class="muted">${esc(err)}</span>` : `<button data-apply="${v.id}" class="primary">Apply</button>`}</div></div>`;
+    }
+    const apps = Object.values(s.applications).filter((a) => a.personId === p.id && a.status !== 'offered');
+    if (apps.length) {
+      h += '<h3>Your applications</h3>';
+      for (const a of apps) {
+        const v = s.vacancies[a.vacancyId];
+        const pos = s.businesses[v.businessId].positions.find((x) => x.id === v.positionId)!;
+        h += `<div class="line"><span>${esc(pos.title)} · ${esc(s.businesses[v.businessId].name)}</span><span class="tag">${a.status}</span></div>`;
+      }
+    }
+    return h;
+  }
+
+  tab_work(): string {
+    const s = this.s, p = this.p;
+    if (!p.contractId) return '<p>You are not employed. Check <b>Jobs</b> for vacancies.</p>' + this.history();
+    const c = s.contracts[p.contractId];
+    const b = s.businesses[c.businessId];
+    const pos = positionOf(s, c);
+    const cur = currentShift(c, s.minute, 30);
+    const next = nextShift(c, s.minute);
+    const atts = Object.values(s.attendance).filter((a) => a.contractId === c.id).sort((a, b2) => b2.day - a.day).slice(0, 6);
+    return `<div class="card"><b>${esc(c.title)}</b> at ${esc(b.name)}<br>${fmtMoney(c.wage)}/hour · paid ${c.payEvery} at 22:00${c.payEvery === 'weekly' ? ' on Fridays' : ''} · income tax ${Math.round(s.policy.incomeTax * 100)}%<br>
+      ${c.shifts.map(shiftLabel).join('; ')}<br>
+      Performance <b>${c.performance}</b>/100 · shifts worked ${c.shiftsWorked} · warnings <b class="${c.warnings ? 'warn' : ''}">${c.warnings}/3</b><br>
+      ${pos?.uniform ? `Uniform: ${itemName(pos.uniform)} (${p.appearance.outfit === pos.uniform ? 'wearing' : '<span class="warn">not wearing</span>'})<br>` : ''}
+      ${cur ? `<b>Shift now:</b> ${fmtClock(cur.start)}-${fmtClock(cur.end)}` : next ? `Next shift: ${fmtDate(next.start)} ${fmtClock(next.start)}-${fmtClock(next.end)}` : ''}</div>
+      ${promotionEligible(s, c) ? `<div class="card good"><b>Promotion available</b><br>Your manager offers you a senior role (+16% pay).<div class="row"><button class="primary" data-promote="${c.id}">Accept promotion</button></div></div>` : `<p class="muted">Promotion needs 5+ shifts, performance 72+ and no warnings.</p>`}
+      <h3>How performance is scored</h3><p class="muted">Start at 70. Lose a point per minute late, lose points for customers left waiting at the till and for leaving early, gain up to +15 for tasks per hour, and lose 15 without the uniform.</p>
+      <h3>Recent shifts</h3>${atts.map((a) => `<div class="line"><span>${fmtDate(a.scheduledStart)}</span><span>${a.absent ? '<span class="warn">absent</span>' : `${(a.minutesWorked / 60).toFixed(1)}h · ${a.tasks} tasks · score ${a.score ?? '…'} · ${a.paid ? 'paid' : 'unpaid'}`}</span></div>`).join('') || '<p class="muted">None yet.</p>'}
+      <div class="row"><button data-resign="1">Resign</button></div>${this.history()}`;
+  }
+
+  history() {
+    const h = this.p.history.slice(-8).reverse();
+    return h.length ? `<h3>Life history</h3>${h.map((e) => `<div class="line"><span class="muted">${fmtDate(e.time)}</span><span>${esc(e.text)}</span></div>`).join('')}` : '';
+  }
+
+  tab_bank(): string {
+    const s = this.s, p = this.p;
+    const acc = s.ledger.accounts[p.accountId];
+    const l = activeLease(s, p.id);
+    const ended = Object.values(s.leases).find((x) => x.tenantId === p.id && x.status === 'ended');
+    const txns = accountTxns(s, acc.id, 30);
+    return `<div class="card"><span class="muted">Current account</span><div class="big">${fmtMoney(acc.balance)}</div></div>
+      <h3>Obligations</h3>
+      ${l ? `<div class="line"><span>Rent · ${esc(l.label)}</span><span>${fmtMoney(l.weeklyRent)} every Monday 09:00</span></div><div class="line"><span>Paid until</span><span>${fmtDate(l.paidThroughDay * 1440)}</span></div>${l.arrears ? `<div class="line warn"><span>Arrears (${l.missedPayments}/3 missed)</span><span>${fmtMoney(l.arrears)}</span></div>` : ''}` : '<p class="warn">You have no home.</p>'}
+      ${ended ? `<div class="card"><b>${esc(ended.label)}</b> is available again for ${fmtMoney(ended.arrears + ended.weeklyRent)} (arrears + 1 week).<div class="row"><button data-rerent="${ended.id}" class="primary">Rent again</button></div></div>` : ''}
+      <h3>Transactions</h3>${txns.map((t) => `<div class="line"><span><span class="muted">${fmtDate(t.time).split(',')[1]} ${fmtClock(t.time)}</span> ${esc(t.memo)}</span><span class="${t.to === acc.id ? 'pos' : 'neg'}">${t.to === acc.id ? '+' : '-'}${fmtMoney(t.amount).replace('Cr ', '')}</span></div>`).join('') || '<p class="muted">No transactions yet.</p>'}`;
+  }
+
+  tab_status(): string {
+    const s = this.s, p = this.p;
+    const bag = s.containers[p.bagId];
+    const pantry = p.pantryId ? s.containers[p.pantryId] : null;
+    const inv = (c: typeof bag | null) => c && total(c) ? Object.entries(c.items).map(([k, n]) => `${n}× ${itemName(k)}`).join(', ') : 'empty';
+    return `<div class="card"><b>${esc(p.name)}</b><br>Energy ${p.needs.energy.toFixed(0)} · Food ${p.needs.satiety.toFixed(0)}<br><span class="muted">${conditionLabel(p).join(' · ') || 'Feeling fine'}</span><br>Professional reputation ${p.reputation.toFixed(0)}/100</div>
+      <h3>Effects</h3><p class="muted">Below 25 energy you move and work 20% slower (36% below 10). Starving slows work. Sleep in your bed to recover. Eat food from your kitchen or a cafe meal.</p>
+      <h3>Skills</h3>${['retail', 'cleaning', 'warehouse'].map((k) => `<div class="line"><span>${k}</span><span>level ${skillLevel(p.skills[k] ?? 0)} (${p.skills[k] ?? 0} xp)</span></div>`).join('')}
+      <p class="muted">Each level makes related work 6% faster and improves job applications.</p>
+      <h3>Inventory</h3><div class="line"><span>Shopping bag</span><span>${inv(bag)}</span></div><div class="line"><span>Kitchen</span><span>${inv(pantry)}</span></div>
+      <h3>Goals</h3>${s.objectives.map((o) => `<div class="line"><span>${o.done ? '✔' : '○'} ${esc(o.text)}</span></div>`).join('')}`;
+  }
+
+  tab_news(): string {
+    return this.s.news.slice(0, 60).map((n) => `<div class="news ${n.kind}"><span class="muted">${fmtDate(n.time).split(',')[1]} ${fmtClock(n.time)}${n.personal ? ' · you' : ''}</span><b>${esc(n.title)}</b>${n.body ? `<p>${esc(n.body)}</p>` : ''}</div>`).join('');
+  }
+
+  tab_map(): string {
+    const w = getWorld();
+    const p = this.p;
+    const sx = (x: number) => ((x - w.bounds.x0) / (w.bounds.x1 - w.bounds.x0)) * 300;
+    const sz = (z: number) => ((z - w.bounds.z0) / (w.bounds.z1 - w.bounds.z0)) * 193;
+    const rect = (r: { x0: number; z0: number; x1: number; z1: number }) => `x="${sx(r.x0)}" y="${sz(r.z0)}" width="${sx(r.x1) - sx(r.x0)}" height="${sz(r.z1) - sz(r.z0)}"`;
+    const cat = { functional: '#2e8b57', simplified: '#c48a2c', decorative: '#8c949c' };
+    let svg = `<svg viewBox="0 0 300 193" class="map">`;
+    for (const r of w.roads) svg += `<rect ${rect(r.rect)} fill="${r.kind === 'road' || r.kind === 'lane' ? '#4a4f55' : r.kind === 'grass' ? '#7fae63' : '#b9b6ae'}"/>`;
+    for (const b of w.buildings) svg += `<rect ${rect(b.rect)} fill="${cat[b.category]}" stroke="#222" stroke-width=".3"><title>${b.name}</title></rect>`;
+    svg += `<circle cx="${sx(p.pos.x)}" cy="${sz(p.pos.z)}" r="2.6" fill="#ff3b30" stroke="#fff" stroke-width=".8"/></svg>`;
+    const legend = w.buildings.filter((b) => b.category !== 'decorative' && !b.id.startsWith('house_')).map((b) => `<div class="line"><span><i class="sw" style="background:${cat[b.category]}"></i>${esc(b.name)}</span><span class="muted">${esc(b.role)}</span></div>`).join('');
+    return `${svg}<p class="muted"><i class="sw" style="background:#2e8b57"></i>usable &nbsp; <i class="sw" style="background:#c48a2c"></i>simulated, limited access &nbsp; <i class="sw" style="background:#8c949c"></i>background only</p>${legend}`;
+  }
+
+  tab_shop(): string {
+    const s = this.s;
+    const b = s.businesses.market;
+    const f = demandFactors(s, b);
+    const days = b.stats.slice(-7);
+    const row = (d: typeof days[0]) => `<div class="line"><span>Day ${d.day + 1}</span><span>rev ${fmtMoney(d.revenue)} · gross ${fmtMoney(d.revenue - d.cogs)} · ${d.customers} cust · ${d.lostSales} lost · ${d.walkouts} walkouts</span></div>`;
+    const isStaff = this.p.contractId && s.contracts[this.p.contractId]?.businessId === 'market';
+    return `<p class="muted">Public information about Corner Market${isStaff ? ' plus staff view' : ''}. Figures are actual records.</p>
+      <div class="card">Reputation <b>${b.reputation.toFixed(0)}</b>/100 · cleanliness ${b.cleanliness.toFixed(0)}%<br>
+      Demand factors: reputation ×${f.rep.toFixed(2)}, cleanliness ×${f.clean.toFixed(2)}, prices ×${f.price.toFixed(2)}, stock availability ×${f.availability.toFixed(2)}</div>
+      ${isStaff ? `<h3>Stock (shelf / total incl. orders)</h3>${PRODUCTS.map((k) => `<div class="line"><span><i class="sw" style="background:${ITEMS[k].color}"></i>${itemName(k)}</span><span>${s.containers['shelf_' + k].items[k] ?? 0} / ${stockPosition(s, b, k)}</span></div>`).join('')}
+      <div class="line"><span>Stock value at cost</span><span>${fmtMoney(inventoryValue(s, b))}</span></div>` : ''}
+      <h3>Recent days</h3>${days.map(row).join('') || '<p class="muted">No trading recorded yet.</p>'}`;
+  }
+
+  onPhoneClick(e: Event) {
+    const t = e.target as HTMLElement;
+    const btn = t.closest('button');
+    if (!btn) return;
+    const d = btn.dataset;
+    const s = this.s;
+    if (d.tab) { this.tab = d.tab as Tab; if (d.tab === 'jobs') s.flags.viewedJobs = true; this.renderPhone(); return; }
+    if (d.close) return this.closePhone();
+    if (d.apply) return this.interview(d.apply);
+    if (d.accept) this.toast(acceptOffer(s, d.accept).msg);
+    if (d.decline) declineOffer(s, d.decline);
+    if (d.promote) this.toast(acceptPromotion(s, d.promote).msg);
+    if (d.resign) { if (btn.dataset.confirm) { resign(s, this.p.id); this.toast('You resigned.'); } else { btn.dataset.confirm = '1'; btn.textContent = 'Click again to confirm resignation'; return; } }
+    if (d.rerent) this.toast(reRent(s, this.p.id, d.rerent).msg);
+    this.renderPhone();
+  }
+
+  // ------------------------------------------------------------ dialogs
+  dialog(html: string, onClick: (btn: HTMLButtonElement) => void) {
+    const dlg = $('#dialog');
+    dlg.innerHTML = html;
+    dlg.hidden = false;
+    dlg.onclick = (e) => { const b = (e.target as HTMLElement).closest('button'); if (b) onClick(b as HTMLButtonElement); };
+    this.syncModal();
+  }
+  closeDialog() { $('#dialog').hidden = true; this.syncModal(); }
+
+  interview(vacancyId: string) {
+    const s = this.s;
+    const v = s.vacancies[vacancyId];
+    const b = s.businesses[v.businessId];
+    const pos = b.positions.find((x) => x.id === v.positionId)!;
+    const answers: number[] = [];
+    const render = () => {
+      const qi = answers.length;
+      if (qi >= INTERVIEW.length) {
+        const r = applyForJob(s, this.p.id, vacancyId, answers);
+        this.toast(r.msg);
+        this.closeDialog();
+        this.renderPhone();
+        return;
+      }
+      const Q = INTERVIEW[qi];
+      this.dialog(`<h2>Application: ${esc(pos.title)}</h2><p class="muted">${esc(b.name)} · question ${qi + 1} of ${INTERVIEW.length}</p><p><b>${esc(Q.q)}</b></p>${Q.a.map((a, i) => `<button class="answer" data-a="${i}">${esc(a)}</button>`).join('')}<div class="row"><button data-cancel="1">Cancel</button></div>`, (btn) => {
+        if (btn.dataset.cancel) return this.closeDialog();
+        answers.push(Number(btn.dataset.a));
+        render();
+      });
+    };
+    render();
+  }
+
+  advisor() {
+    const s = this.s, p = this.p;
+    const open = Object.values(s.vacancies).filter((v) => v.status === 'open');
+    const playable = open.filter((v) => s.businesses[v.businessId].positions.find((x) => x.id === v.positionId)?.playable);
+    const ruthHere = openAttendance(s, 'p_ruth');
+    const lines = [
+      ruthHere ? `"Hello ${esc(p.name.split(' ')[0])}, I'm Ruth. Let's see what's out there."` : '"(The advisor desk is unstaffed right now. Open Monday to Friday, 09:00 to 17:00. The vacancy board still works.)"',
+      playable.length ? `There ${playable.length === 1 ? 'is' : 'are'} ${playable.length} vacanc${playable.length === 1 ? 'y' : 'ies'} you could do right now: ${playable.map((v) => esc(s.businesses[v.businessId].positions.find((x) => x.id === v.positionId)!.title + ' at ' + s.businesses[v.businessId].name)).join(', ')}.` : 'No suitable vacancies are open right now. Employers advertise when they are short-staffed, so check back daily.',
+      'Tips: employers like punctual people who put customers first. Your answers in the application questions matter, and so does your reputation from past jobs.',
+      `Your rent is ${fmtMoney(activeLease(s, p.id)?.weeklyRent ?? 0)} a week, collected on Mondays at 09:00. Keep at least that much in your account.`,
+    ];
+    this.dialog(`<h2>Employment advisor</h2>${lines.map((l) => `<p>${l}</p>`).join('')}<div class="row"><button class="primary" data-jobs="1">Open vacancies</button><button data-cancel="1">Close</button></div>`, (btn) => {
+      this.closeDialog();
+      if (btn.dataset.jobs) this.openPhone('jobs');
+    });
+  }
+
+  // ------------------------------------------------------------ menu
+  toggleMenu() {
+    this.menuOpen = !this.menuOpen;
+    $('#menu').hidden = !this.menuOpen;
+    if (this.menuOpen) this.renderMenu();
+    this.syncModal();
+  }
+  renderMenu(msg = '') {
+    const slot = localStorageGet('bigshot.slot1');
+    const auto = localStorageGet('bigshot.auto');
+    const sum = (t: string | null) => { try { return t ? JSON.parse(t).summary : 'empty'; } catch { return 'unreadable'; } };
+    $('#menu-body').innerHTML = `<h2>Paused</h2>${msg ? `<p class="${msg.startsWith('Saved') || msg.startsWith('Loaded') ? 'pos' : 'warn'}">${esc(msg)}</p>` : ''}
+      <button class="primary" data-m="resume">Resume</button>
+      <button data-m="save">Save game <span class="muted">(${esc(sum(slot))})</span></button>
+      <button data-m="load">Load saved game</button>
+      <button data-m="loadauto">Load autosave <span class="muted">(${esc(sum(auto))})</span></button>
+      <button data-m="new">New game</button>
+      <h3>Controls</h3><p class="muted">WASD or arrows: move · Shift: run · E: use · 1-6: other options · drag the mouse: turn the camera · wheel: zoom · [ ]: rotate · Tab or P: phone · Esc: pause</p>
+      <p class="muted">Day ${dayIndex(this.s.minute) + 1}. Time passes at ${this.game.speedMult}× (1× = 20 game minutes per real minute). Sleeping fast-forwards.</p>`;
+  }
+  onMenuClick(e: Event) {
+    const b = (e.target as HTMLElement).closest('button');
+    if (!b) return;
+    const m = b.dataset.m;
+    if (m === 'resume') return this.toggleMenu();
+    if (m === 'save') { const r = this.game.save(); this.renderMenu(r.ok ? 'Saved.' : r.error ?? 'Save failed'); }
+    if (m === 'load' || m === 'loadauto') { const r = this.game.load(m === 'load' ? 'bigshot.slot1' : 'bigshot.auto'); this.renderMenu(r.ok ? 'Loaded.' : (r as any).error); }
+    if (m === 'new') { if (b.dataset.confirm) location.reload(); else { b.dataset.confirm = '1'; b.textContent = 'Click again: unsaved progress will be lost'; } }
+  }
+}
+
+function localStorageGet(k: string) { try { return localStorage.getItem(k); } catch { return null; } }
+
+function setBar(sel: string, v: number) {
+  const el = document.querySelector(sel) as HTMLElement;
+  el.style.width = `${v}%`;
+  el.classList.toggle('low', v < 25);
+}
+
+const ACTION_LABELS: Record<string, string> = {
+  clock_in: 'Clocking in…', clock_out: 'Clocking out…', take_case: 'Picking up a case…', return_case: 'Returning stock…', stock_shelf: 'Stocking the shelf…',
+  serve_customer: 'Scanning items…', self_checkout: 'Scanning and paying…', take_mop: 'Getting the mop…', return_mop: 'Putting the mop away…', clean: 'Mopping…',
+  check_in_delivery: 'Counting the delivery in…', pick_item: 'Taking item…', sleep: 'Sleeping… (time is fast-forwarding)', eat: 'Eating…', store_food: 'Putting shopping away…',
+  change_outfit: 'Changing clothes…', buy_meal: 'Eating a cafe meal…', sit: 'Sitting (resting slowly)',
+};
+const actionLabel = (t: string) => ACTION_LABELS[t] ?? t;

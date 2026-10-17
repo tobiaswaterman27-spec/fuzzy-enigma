@@ -245,7 +245,7 @@ for (const zc of houseZ) {
 export const HOUSE_IDS = B.filter((b) => b.id.startsWith('house_')).map((b) => b.id);
 
 // ------------------------------------------------------------ geometry helpers
-function wallsFor(b: BuildingDef): Rect[] {
+export function wallsFor(b: BuildingDef): Rect[] {
   const { x0, z0, x1, z1 } = b.rect;
   const h = WALL_T / 2;
   const out: Rect[] = [];
