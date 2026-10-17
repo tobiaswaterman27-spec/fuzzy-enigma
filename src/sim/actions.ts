@@ -5,12 +5,13 @@ import type { ActionState, ActionType, GameState, Id, Person } from './types';
 import { dist, fmtMoney, clamp } from './core';
 import { count, firstItem, isEmpty, moveAll, moveItems, removeItems, spaceFor, total } from './inventory';
 import { ITEMS, isFood, itemName } from './items';
-import { clockIn, clockOut, isOnShift, openAttendance, positionOf } from './employment';
-import { basketValue, completeSale, completeTask, isOpen, leaveQueue, priceOf, queueSlot, RESTOCK_DONE, shelfId } from './retail';
+import { clockIn, clockOut, isOnShift, openAttendance } from './employment';
+import { basketValue, completeSale, completeTask, isOpen, isStaff, leaveQueue, priceOf, productAt, queueSlot, RESTOCK_DONE } from './retail';
 import { checkInDeliveries } from './logistics';
 import { hasHomeAccess } from './housing';
 import { addXp, capability, skillLevel } from './needs';
-import { getWorld, locationOf, type Interactable } from './world/layout';
+import { getWorld, locationOf, SHOPS, type Interactable } from './world/layout';
+import { clearLine } from './world/nav';
 import { transfer } from './ledger';
 import { news } from './events';
 import { minuteOfDay } from './clock';
@@ -39,10 +40,19 @@ export function allInteractables(state: GameState): Interactable[] {
 }
 
 /** the interactable the actor is facing within range, preferring the closest / most frontal */
+/** an actor can only use things in the same space (inside the same building, or both outside) with nothing solid in between */
+export function canReach(actor: Person, it: Interactable): boolean {
+  const here = locationOf(actor.pos);
+  const there = locationOf(it.pos);
+  if (here !== there) return false;
+  return clearLine(actor.pos, it.pos, 0.05);
+}
+
 export function focusInteractable(state: GameState, actor: Person): Interactable | null {
   let best: Interactable | null = null;
   let bestScore = Infinity;
   for (const it of allInteractables(state)) {
+    if (!canReach(actor, it)) continue;
     const dPos = dist(actor.pos, it.pos);
     const dObj = dist(actor.pos, it.obj);
     const d = Math.min(dPos, dObj);
@@ -71,41 +81,48 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
   if (!it) return [];
   const out: ActionOption[] = [];
   const bid = it.businessId;
-  const onShift = bid ? isOnShift(state, actorId, bid) : false;
   const h = hands(state, p);
   const carrying = firstItem(h);
-  const b = bid ? state.businesses[bid] : null;
+  const b = bid ? state.businesses[bid] ?? null : null;
+  const onShift = bid ? isStaff(state, actorId, bid) : false;
+  const product = productAt(state, it);
+  const shopKinds = ['shelf', 'pallet', 'till', 'cupboard', 'spill', 'bay', 'terminal'];
+  if (bid && !b && shopKinds.includes(it.kind)) return [opt('stock_shelf', 'Vacant unit', 'Lease this unit and start a business from Phone > Business')];
   switch (it.kind) {
     case 'shelf': {
-      const shelf = state.containers[shelfId(it.product!)];
-      const n = count(shelf, it.product!);
-      if (onShift || carrying === it.product) {
-        if (carrying === it.product) out.push(opt('stock_shelf', `Stock shelf with ${itemName(it.product!)} (${count(h, it.product!)} in case)`, spaceFor(shelf, it.product!) === 0 ? 'Shelf is full' : undefined));
-        else if (onShift) out.push(opt('stock_shelf', `Restock ${itemName(it.product!)} (${n}/${shelf.capacity})`, carrying ? `You are carrying ${itemName(carrying)}` : p.equipment ? 'Put the mop away first' : `Fetch a case of ${itemName(it.product!)} from the store room`));
+      if (!product) { out.push(opt('stock_shelf', 'Empty shelf section', b && b.ownerId === actorId ? 'Choose a product for it in Phone > Business' : 'Not in use')); break; }
+      const shelf = state.containers[it.container!];
+      const n = count(shelf, product);
+      if (onShift || carrying === product) {
+        if (carrying === product) out.push(opt('stock_shelf', `Stock shelf with ${itemName(product)} (${count(h, product)} in case)`, spaceFor(shelf, product) === 0 ? 'Shelf is full' : undefined));
+        else if (onShift) out.push(opt('stock_shelf', `Restock ${itemName(product)} (${n}/${shelf.capacity})`, carrying ? `You are carrying ${itemName(carrying)}` : p.equipment ? 'Put the mop away first' : `Fetch a case of ${itemName(product)} from the store room`));
       }
       if (b && !onShift) {
-        const price = priceOf(b, it.product!);
-        out.push(opt('pick_item', `Take 1 ${itemName(it.product!)} - ${fmtMoney(price)}`, n === 0 ? 'Out of stock' : !isOpen(b, state.minute) ? 'Shop is closed' : !handsFree(state, p) ? 'Your hands are full' : undefined));
+        const price = priceOf(b, product);
+        out.push(opt('pick_item', `Take 1 ${itemName(product)} - ${fmtMoney(price)}`, n === 0 ? 'Out of stock' : !isOpen(b, state.minute) ? 'Shop is closed' : !handsFree(state, p) ? 'Your hands are full' : undefined));
       }
       break;
     }
     case 'pallet': {
+      if (!product) { out.push(opt('take_case', 'Empty pallet', 'No product assigned to this section')); break; }
       const back = state.containers[it.container!];
-      const n = count(back, it.product!);
-      if (carrying === it.product) out.push(opt('return_case', `Put ${itemName(it.product!)} back in store room`));
-      else out.push(opt('take_case', `Pick up a case of ${itemName(it.product!)} (${n} in store)`, !onShift ? 'Staff only - clock in first' : !handsFree(state, p) ? 'Your hands are full' : n === 0 ? 'None in stock' : undefined));
+      const n = count(back, product);
+      if (carrying === product) out.push(opt('return_case', `Put ${itemName(product)} back in store room`));
+      else out.push(opt('take_case', `Pick up a case of ${itemName(product)} (${n} in store)`, !onShift ? 'Staff only - clock in first' : !handsFree(state, p) ? 'Your hands are full' : n === 0 ? 'None in stock' : undefined));
       break;
     }
     case 'terminal': {
       const a = openAttendance(state, actorId);
       if (a) out.push(opt('clock_out', 'Clock out', carrying || p.equipment ? 'Put away what you are carrying first' : undefined));
+      else if (b && b.ownerId === actorId && !(p.contractId && state.contracts[p.contractId]?.businessId === bid)) out.push(opt('clock_in', 'Owner: you can work here any time without clocking in', 'No timesheet needed for the owner'));
       else out.push(opt('clock_in', 'Clock in', p.contractId && state.contracts[p.contractId].businessId === bid ? undefined : 'You do not work here'));
       break;
     }
     case 'till': {
       const till = state.tills[it.id];
+      if (!till || (b && b.equipment.till === false)) { out.push(opt('serve_customer', 'Checkout counter', 'No till system installed - buy one in Phone > Business')); break; }
       const head = till.queue[0] ? state.people[till.queue[0]] : null;
-      const atTill = head && dist(head.pos, queueSlot(0)) < 1.2;
+      const atTill = head && dist(head.pos, queueSlot(bid!, 0)) < 1.2;
       out.push(opt('serve_customer', head ? `Serve ${head.name} (${total(state.containers[head.basketId])} items)` : 'Serve customers', !onShift ? 'Staff only' : !isEmpty(h) ? 'Put down what you are carrying' : !head ? 'No customer waiting' : !atTill ? 'Customer is still walking up' : undefined));
       break;
     }
@@ -191,6 +208,7 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
   const it = interactable(state, itId);
   if (!it) return { ok: false, msg: 'Nothing there.' };
   if (Math.min(dist(p.pos, it.pos), dist(p.pos, it.obj)) > it.range + 0.7) return { ok: false, msg: 'Too far away.' };
+  if (!canReach(p, it)) return { ok: false, msg: 'You cannot reach that from here.' };
   const o = optionsFor(state, actorId, itId).find((x) => x.type === type && (arg === undefined || x.arg === undefined || x.arg === arg));
   if (!o) return { ok: false, msg: 'Not possible here.' };
   if (!o.enabled) return { ok: false, msg: o.reason ?? 'Not possible.' };
@@ -316,8 +334,9 @@ export function tickAction(state: GameState, p: Person, dt: number): string | nu
     case 'clock_in': msg = clockIn(state, p.id).msg; break;
     case 'clock_out': msg = clockOut(state, p.id).msg; break;
     case 'take_case': {
-      const n = moveItems(state, it!.container!, p.handsId, it!.product!, ITEMS[it!.product!].caseSize);
-      msg = n ? `Picked up ${n} ${itemName(it!.product!)}.` : 'Nothing left.';
+      const prod = productAt(state, it!);
+      const n = prod ? moveItems(state, it!.container!, p.handsId, prod, ITEMS[prod].caseSize) : 0;
+      msg = n ? `Picked up ${n} ${itemName(prod!)}.` : 'Nothing left.';
       break;
     }
     case 'return_case': {
@@ -383,10 +402,10 @@ function completeTaskAll(state: GameState, bid: Id, kind: 'receive', by: Id) {
 function doUnit(state: GameState, p: Person, a: ActionState, it: Interactable, h: ReturnType<typeof hands>): string | null {
   switch (a.type) {
     case 'stock_shelf': {
-      const prod = it.product!;
-      const moved = moveItems(state, p.handsId, shelfId(prod), prod, 1);
+      const prod = productAt(state, it)!;
+      const moved = moveItems(state, p.handsId, it.container!, prod, 1);
       if (moved) { a.units++; addXp(p, 'retail', 1); }
-      const shelf = state.containers[shelfId(prod)];
+      const shelf = state.containers[it.container!];
       if (!moved || count(h, prod) === 0 || spaceFor(shelf, prod) === 0) {
         if (a.units >= 3) creditTask(state, p);
         if (count(shelf, prod) >= RESTOCK_DONE) completeTask(state, it.businessId!, 'restock', shelf.id, p.id);
@@ -399,7 +418,7 @@ function doUnit(state: GameState, p: Person, a: ActionState, it: Interactable, h
       const till = state.tills[it.id];
       const custId = till.queue[0];
       const cust = custId ? state.people[custId] : null;
-      if (!cust || dist(cust.pos, queueSlot(0)) > 1.5) { finish(state, p); return 'No customer at the till.'; }
+      if (!cust || dist(cust.pos, queueSlot(it.businessId!, 0)) > 1.5) { finish(state, p); return 'No customer at the till.'; }
       const basket = state.containers[cust.basketId];
       // scan one unscanned item
       for (const [item, n] of Object.entries(basket.items)) {
@@ -434,12 +453,13 @@ function doUnit(state: GameState, p: Person, a: ActionState, it: Interactable, h
     }
     case 'pick_item': {
       const want = Number(a.arg ?? 1);
-      const moved = moveItems(state, shelfId(it.product!), p.basketId, it.product!, 1);
+      const prod = productAt(state, it)!;
+      const moved = moveItems(state, it.container!, p.basketId, prod, 1);
       if (moved) a.units++;
       if (!moved || a.units >= want) {
         finish(state, p);
-        if (!moved && a.units === 0) return `${itemName(it.product!)} is out of stock.`;
-        return `Added ${a.units} ${itemName(it.product!)} to your basket.`;
+        if (!moved && a.units === 0) return `${itemName(prod)} is out of stock.`;
+        return `Added ${a.units} ${itemName(prod)} to your basket.`;
       }
       return null;
     }
@@ -462,26 +482,26 @@ export function enforceLocationRules(state: GameState, p: Person) {
   if (loc === p.where) return;
   const prev = p.where;
   p.where = loc;
-  if (prev === 'market' && loc !== 'market') {
-    const b = state.businesses.market;
+  const S = SHOPS[prev];
+  const b = state.businesses[prev];
+  if (S && b && loc !== prev) {
     const basket = state.containers[p.basketId];
     if (total(basket) > 0) {
       for (const [item, n] of Object.entries({ ...basket.items })) {
-        const moved = moveItems(state, basket.id, shelfId(item), item, n);
-        if (moved < n) moveItems(state, basket.id, b.stockContainers[0], item, n - moved);
+        const sh = Object.entries(b.sections).find(([, prod]) => prod === item)?.[0];
+        const moved = sh ? moveItems(state, basket.id, sh, item, n) : 0;
+        if (moved < n) moveItems(state, basket.id, S.backroom, item, n - moved);
       }
       if (p.isPlayer) news(state, 'info', 'Basket left at the door', 'Unpaid items were returned to the shelves.', true);
     }
     const h = hands(state, p);
-    if (total(h) > 0 && p.pos.z > -36) {
-      moveAll(state, p.handsId, b.stockContainers[0]);
+    const viaGoodsDoor = loc === 'outside' && Math.hypot(p.pos.x - S.dropZone.x, p.pos.z - S.dropZone.z) < 4;
+    if (total(h) > 0 && !viaGoodsDoor) {
+      moveAll(state, p.handsId, S.backroom);
       if (p.isPlayer) news(state, 'info', 'Stock stays in the shop', 'The case you were carrying was returned to the store room.', true);
     }
     if (p.equipment === 'mop') p.equipment = null;
-    if (p.isPlayer) {
-      const till = state.tills.till;
-      if (till.queue.includes(p.id)) leaveQueue(state, till.id, p.id);
-    }
+    const till = state.tills[S.till];
+    if (till && till.queue.includes(p.id)) leaveQueue(state, till.id, p.id);
   }
-  void positionOf;
 }

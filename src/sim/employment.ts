@@ -309,6 +309,7 @@ export function processApplications(state: GameState) {
   const now = state.minute;
   for (const v of Object.values(state.vacancies)) {
     if (v.status !== 'open') continue;
+    if (state.businesses[v.businessId]?.ownerDecidesHiring) continue; // the owner chooses
     const apps = v.applicants.map((id) => state.applications[id]).filter((a) => a.status === 'pending' || a.status === 'offered');
     if (apps.some((a) => a.status === 'offered')) continue; // waiting for a reply
     const pending = apps.filter((a) => a.status === 'pending');

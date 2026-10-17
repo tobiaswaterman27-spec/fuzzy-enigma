@@ -13,12 +13,14 @@ import { openTasks, inventoryValue, stockPosition } from '../sim/retail';
 import { demandFactors } from '../sim/economy';
 import { total } from '../sim/inventory';
 import { ITEMS, PRODUCTS, itemName } from '../sim/items';
-import { getWorld } from '../sim/world/layout';
+import { getWorld, U4_SECTIONS } from '../sim/world/layout';
+import * as E from '../sim/enterprise';
+import { isOpen } from '../sim/retail';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector(sel) as T;
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
 
-type Tab = 'jobs' | 'work' | 'bank' | 'status' | 'news' | 'map' | 'shop';
+type Tab = 'jobs' | 'work' | 'bank' | 'status' | 'news' | 'map' | 'shop' | 'biz';
 
 export class UI {
   phoneOpen = false;
@@ -39,6 +41,10 @@ export class UI {
       if (e.code === 'Escape') { if (this.phoneOpen) this.closePhone(); else if ($('#dialog').hidden === false) this.closeDialog(); else this.toggleMenu(); }
     });
     $('#phone').addEventListener('click', (e) => this.onPhoneClick(e));
+    $('#phone').addEventListener('change', (e) => {
+      const t = e.target as HTMLSelectElement;
+      if (t.dataset.section) { this.toast(E.setSection(this.s, t.dataset.section, t.value || null).msg); this.lastBody = ''; this.renderPhone(); }
+    });
     document.querySelectorAll<HTMLButtonElement>('[data-speed]').forEach((b) => b.addEventListener('click', () => { game.speedMult = Number(b.dataset.speed); }));
     $('#btn-phone').addEventListener('click', () => (this.phoneOpen ? this.closePhone() : this.openPhone(this.tab)));
     $('#btn-menu').addEventListener('click', () => this.toggleMenu());
@@ -48,7 +54,7 @@ export class UI {
   get s(): GameState { return this.game.state; }
   get p(): Person { return this.s.people[this.s.playerId]; }
 
-  syncModal() { this.game.uiOpen = this.phoneOpen || this.menuOpen || !$('#dialog').hidden; this.game.paused = this.menuOpen; }
+  syncModal() { this.game.uiOpen = this.phoneOpen || this.menuOpen || !$('#dialog').hidden; this.game.paused = this.menuOpen; if (this.game.uiOpen) this.game.releaseMouse(); }
 
   toast(msg: string) {
     if (!msg) return;
@@ -88,7 +94,7 @@ export class UI {
       const preview = scoreShift({ ...att, clockOut: null });
       shiftCard.innerHTML = `<b>On shift</b> · ${left > 0 ? `${fmtDuration(left)} left` : '<span class="warn">Shift over: clock out</span>'}<br>
         Tasks done: ${att.tasks} · Served: ${att.served}${att.late ? ` · <span class="warn">${att.late}m late</span>` : ''}<br>
-        <span class="muted">Waiting work:</span> ${Object.entries(by).map(([k, n]) => `${n} ${k}`).join(', ') || 'none'}${s.tills.till.queue.length ? ` · <span class="warn">${s.tills.till.queue.length} at till</span>` : ''}<br>
+        <span class="muted">Waiting work:</span> ${Object.entries(by).map(([k, n]) => `${n} ${k}`).join(', ') || 'none'}${(() => { const q = Object.values(s.tills).find((t) => t.businessId === s.contracts[att.contractId].businessId)?.queue.length ?? 0; return q ? ` · <span class="warn">${q} at till</span>` : ''; })()}<br>
         <span class="muted">Score so far ~${preview}</span>`;
     } else shiftCard.hidden = true;
     // interaction prompt
@@ -121,7 +127,7 @@ export class UI {
 
   renderPhone() {
     this.lastPhoneRender = performance.now();
-    const tabs: [Tab, string][] = [['jobs', 'Jobs'], ['work', 'Work'], ['bank', 'Bank'], ['status', 'Me'], ['news', 'News'], ['map', 'Map'], ['shop', 'Market']];
+    const tabs: [Tab, string][] = [['jobs', 'Jobs'], ['work', 'Work'], ['bank', 'Bank'], ['biz', 'Business'], ['status', 'Me'], ['news', 'News'], ['map', 'Map'], ['shop', 'Market']];
     const unread = this.s.news.filter((n) => n.personal && !n.read).length;
     const tabsHtml = tabs.map(([t, l]) => `<button data-tab="${t}" class="${t === this.tab ? 'on' : ''}">${l}${t === 'news' && unread ? ` <i class="dot">${unread}</i>` : ''}</button>`).join('');
     if (tabsHtml !== this.lastTabs) { $('#phone-tabs').innerHTML = tabsHtml; this.lastTabs = tabsHtml; }
@@ -254,6 +260,66 @@ export class UI {
       <h3>Recent days</h3>${days.map(row).join('') || '<p class="muted">No trading recorded yet.</p>'}`;
   }
 
+  tab_biz(): string {
+    const s = this.s, p = this.p;
+    const b = E.playerBusiness(s);
+    const myBal = s.ledger.accounts[p.accountId].balance;
+    if (!b) {
+      const taken = !!s.businesses[E.UNIT4];
+      return `<div class="card"><b>Property to let: Dockside Unit 4</b><br><span class="muted">Empty shop unit on the east end of Main Street. Shelving for four product lines, counter, store room, goods-in door.</span>
+        <div class="line"><span>Rent</span><span>${fmtMoney(E.UNIT4_RENT)}/week</span></div><div class="line"><span>Deposit</span><span>${fmtMoney(E.UNIT4_DEPOSIT)}</span></div>
+        <div class="line"><span>Business registration</span><span>${fmtMoney(E.REGISTRATION_FEE)}</span></div><div class="line"><span>Till system (needed to sell)</span><span>${fmtMoney(E.TILL_COST)}</span></div>
+        <p class="muted">You also need money for opening stock (about Cr 1 per item from Harbour Wholesale) and for wages if you hire staff. Location: quieter than Corner Market, so fewer passing customers.</p>
+        ${taken ? '<p class="warn">Already let.</p>' : `<label class="muted" for="biz-name">Business name</label><input id="biz-name" type="text" maxlength="28" value="${esc(p.name.split(' ')[0])}'s Store">
+        <p>Invest from your account (you have ${fmtMoney(myBal)}):</p><div class="row">${[E.START_MIN_CAPITAL + E.TILL_COST + 20000, 100000, 150000, 250000].map((a) => `<button data-found="${a}" class="${myBal >= a ? 'primary' : ''}" ${myBal >= a ? '' : 'disabled'}>${fmtMoney(a)}</button>`).join('')}</div>
+        <p class="muted">Minimum ${fmtMoney(E.START_MIN_CAPITAL)} covers deposit, first week and registration only.</p>`}</div>`;
+    }
+    const acc = s.ledger.accounts[b.accountId];
+    const days = b.stats.slice(-7);
+    const sum = (k: 'revenue' | 'cogs' | 'wages' | 'otherCosts' | 'customers' | 'lostSales' | 'walkouts') => days.reduce((a, d) => a + d[k], 0);
+    const profit = sum('revenue') - sum('cogs') - sum('wages') - sum('otherCosts');
+    const open = isOpen(b, s.minute);
+    const checklist = [
+      ['Lease & registration', true], ['Till system', !!b.equipment.till], ['Products chosen', Object.keys(b.sections).length > 0],
+      ['Stock on shelves', Object.entries(b.sections).some(([sh, k]) => (s.containers[sh].items[k] ?? 0) > 0)], ['Someone at the till during opening hours', true],
+    ] as const;
+    const shipments = Object.values(s.shipments).filter((x) => x.buyerId === b.id && x.status !== 'received');
+    const staff = Object.values(s.contracts).filter((c) => c.businessId === b.id && c.status === 'active');
+    const apps = Object.values(s.applications).filter((a) => a.status === 'pending' && s.vacancies[a.vacancyId]?.businessId === b.id);
+    const sectionRow = (sct: { id: string }, i: number) => {
+      const k = b.sections[sct.id];
+      const c = s.containers[sct.id];
+      const n = k ? c.items[k] ?? 0 : 0;
+      const back = k ? s.containers.unit4_backroom.items[k] ?? 0 : 0;
+      const opts = ['', ...PRODUCTS].map((x) => `<option value="${x}" ${x === (k ?? '') ? 'selected' : ''}>${x ? itemName(x) : 'none'}</option>`).join('');
+      return `<div class="card"><b>Section ${i + 1}</b> <select data-section="${sct.id}">${opts}</select> ${k ? `<span class="muted">shelf ${n}/30 · store room ${back}</span>` : ''}
+        ${k ? `<div class="row">Price <button data-price="${k}" data-d="-0.05">−5%</button><b>${fmtMoney(b.prices[k])}</b><button data-price="${k}" data-d="0.05">+5%</button><span class="muted">wholesale ${fmtMoney(s.businesses.wholesale.prices[k])} · usual ${fmtMoney(ITEMS[k].retail)}</span></div>
+        <div class="row">Order <button data-order="${k}" data-q="1">1 case (${ITEMS[k].caseSize})</button><button data-order="${k}" data-q="3">3 cases</button></div>` : ''}</div>`;
+    };
+    return `<div class="card"><b>${esc(b.name)}</b> · Dockside Unit 4 · <span class="${open ? 'pos' : 'warn'}">${open ? 'OPEN' : 'CLOSED'}</span><br>
+      Business cash <b>${fmtMoney(acc.balance)}</b> · reputation ${b.reputation.toFixed(0)}
+      <div class="row"><button data-invest="10000">Invest Cr 100</button><button data-invest="50000">Invest Cr 500</button><button data-withdraw="10000">Withdraw Cr 100</button><button data-closed="${b.manualClosed ? '0' : '1'}">${b.manualClosed ? 'Open doors' : 'Close doors'}</button></div>
+      <div class="row">${Object.entries(E.HOURS_PRESETS).map(([k, h]) => `<button data-hours="${k}" class="${JSON.stringify(b.open) === JSON.stringify(h.open) ? 'primary' : ''}">${h.label}</button>`).join('')}</div></div>
+      <h3>Getting ready</h3>${checklist.map(([t, d]) => `<div class="line"><span>${d ? '✔' : '○'} ${t}</span></div>`).join('')}
+      ${!b.equipment.till ? `<div class="row"><button class="primary" data-till="1">Buy till system (${fmtMoney(E.TILL_COST)})</button></div>` : ''}
+      <p class="muted">Customers only pay when someone is at the till: you (standing in your shop) or a clocked-in employee. Without anyone there they leave empty-handed.</p>
+      <h3>Shelf sections & stock</h3>${U4_SECTIONS.map(sectionRow).join('')}
+      ${shipments.map((x) => `<div class="line"><span>Order ${x.id}: ${Object.entries(x.items).map(([k, n]) => `${n} ${itemName(k)}`).join(', ')}</span><span class="tag">${x.status === 'arrived' ? 'at goods-in: check it in' : x.status}</span></div>`).join('')}
+      <h3>Last 7 days (actual)</h3>
+      <div class="line"><span>Sales (excl. tax)</span><span>${fmtMoney(sum('revenue'))}</span></div><div class="line"><span>Cost of goods sold</span><span>-${fmtMoney(sum('cogs'))}</span></div>
+      <div class="line"><span>Wages</span><span>-${fmtMoney(sum('wages'))}</span></div><div class="line"><span>Rent, utilities & fees</span><span>-${fmtMoney(sum('otherCosts'))}</span></div>
+      <div class="line"><b>Operating profit</b><b class="${profit >= 0 ? 'pos' : 'neg'}">${fmtMoney(profit)}</b></div>
+      <div class="line"><span>Customers · lost sales · walk-outs</span><span>${sum('customers')} · ${sum('lostSales')} · ${sum('walkouts')}</span></div>
+      <p class="muted">Cash is not profit: stock you buy leaves the account before it is sold.</p>
+      <h3>Staff</h3>
+      ${staff.map((c) => `<div class="line"><span>${esc(s.people[c.personId].name)} · ${esc(c.title)} · ${fmtMoney(c.wage)}/h</span><span>perf ${c.performance} <button data-dismiss="${c.id}">Let go</button></span></div>`).join('') || '<p class="muted">No employees.</p>'}
+      ${b.positions.map((pos) => `<div class="card"><b>${esc(pos.title)}</b> · ${fmtMoney(pos.wage)}/h · ${pos.shifts.map(shiftLabel).join('; ')}<br><span class="muted">${esc(pos.description)}</span>
+        <div class="row">Positions: <button data-staff="${pos.id}" data-n="${pos.headcount - 1}">−</button><b>${pos.headcount}</b><button data-staff="${pos.id}" data-n="${pos.headcount + 1}">+</button>
+        ${pos.id === 'assistant' ? Object.entries(E.SHIFT_PRESETS).map(([k, sp]) => `<button data-shift="${k}">${sp.label.replace('Mon-Sat ', '')}</button>`).join('') : ''}</div></div>`).join('')}
+      <p class="muted">A manager reorders stock every day at 16:00. Without one, you order yourself.</p>
+      ${apps.length ? `<h3>Applicants</h3>${apps.map((a) => { const ap = s.people[a.personId]; const pos = b.positions.find((x) => x.id === s.vacancies[a.vacancyId].positionId)!; return `<div class="card"><b>${esc(ap.name)}</b> for ${esc(pos.title)} · score ${a.score}<br><span class="muted">retail lvl ${skillLevel(ap.skills.retail ?? 0)} · reputation ${ap.reputation.toFixed(0)} · reliability ${Math.round(ap.traits.conscientiousness * 100)}%</span><div class="row"><button class="primary" data-hire="${a.id}">Hire</button><button data-reject="${a.id}">Turn down</button></div></div>`; }).join('')}` : ''}`;
+  }
+
   onPhoneClick(e: Event) {
     const t = e.target as HTMLElement;
     const btn = t.closest('button');
@@ -268,6 +334,20 @@ export class UI {
     if (d.promote) this.toast(acceptPromotion(s, d.promote).msg);
     if (d.resign) { if (btn.dataset.confirm) { resign(s, this.p.id); this.toast('You resigned.'); } else { btn.dataset.confirm = '1'; btn.textContent = 'Click again to confirm resignation'; return; } }
     if (d.rerent) this.toast(reRent(s, this.p.id, d.rerent).msg);
+    if (d.found) { const name = (document.getElementById('biz-name') as HTMLInputElement | null)?.value ?? ''; this.toast(E.startBusiness(s, name, Number(d.found)).msg); }
+    if (d.till) this.toast(E.buyTill(s).msg);
+    if (d.price) { const b = E.playerBusiness(s)!; this.toast(E.setPrice(s, d.price, b.prices[d.price] * (1 + Number(d.d))).msg); }
+    if (d.order) this.toast(E.orderStock(s, { [d.order]: ITEMS[d.order].caseSize * Number(d.q) }).msg);
+    if (d.invest) this.toast(E.invest(s, Number(d.invest)).msg);
+    if (d.withdraw) this.toast(E.withdraw(s, Number(d.withdraw)).msg);
+    if (d.closed) this.toast(E.setClosed(s, d.closed === '1').msg);
+    if (d.hours) this.toast(E.setHours(s, d.hours).msg);
+    if (d.staff) this.toast(E.setStaffing(s, d.staff, Number(d.n)).msg);
+    if (d.shift) { const b = E.playerBusiness(s)!; const pos = b.positions.find((x) => x.id === 'assistant')!; this.toast(E.setStaffing(s, 'assistant', pos.headcount, d.shift).msg); }
+    if (d.hire) this.toast(E.hireApplicant(s, d.hire).msg);
+    if (d.reject) this.toast(E.rejectApplicant(s, d.reject).msg);
+    if (d.dismiss) this.toast(E.dismissStaff(s, d.dismiss).msg);
+    this.lastBody = '';
     this.renderPhone();
   }
 
@@ -340,7 +420,7 @@ export class UI {
       <button data-m="load">Load saved game</button>
       <button data-m="loadauto">Load autosave <span class="muted">(${esc(sum(auto))})</span></button>
       <button data-m="new">New game</button>
-      <h3>Controls</h3><p class="muted">WASD or arrows: move · Shift: run · E: use · 1-6: other options · drag the mouse: turn the camera · wheel: zoom · [ ]: rotate · Tab or P: phone · Esc: pause</p>
+      <h3>Controls</h3><p class="muted">Click the game to capture the mouse, then move the mouse to look. WASD or arrows: move · Shift: run · E: use · 1-6: other options · wheel: zoom · V: overview camera · Tab or P: phone · Esc: release mouse / pause</p>
       <p class="muted">Day ${dayIndex(this.s.minute) + 1}. Time passes at ${this.game.speedMult}× (1× = 20 game minutes per real minute). Sleeping fast-forwards.</p>`;
   }
   onMenuClick(e: Event) {

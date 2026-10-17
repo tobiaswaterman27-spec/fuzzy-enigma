@@ -105,6 +105,8 @@ export interface Interactable {
   product?: string;
   /** container id this interactable exposes (shelf, pallet...) */
   container?: string;
+  /** for pallets: the shelf section whose product this pallet holds */
+  shelf?: string;
   range: number;
 }
 
@@ -220,9 +222,18 @@ const B: BuildingDef[] = [
     doors: [{ side: 'zmin', a: -84, b: -80, open: false }], interior: false,
   },
   {
-    id: 'warehouse_e', name: 'Dockside Unit 4', category: 'decorative', role: 'Industrial unit (vacant - future property listing)',
-    rect: { x0: 76, z0: 12, x1: 94, z1: 34 }, height: 7, floors: 1, color: '#7f8c8d', trim: '#2c3e50', roof: '#5d6d7e',
-    doors: [{ side: 'zmin', a: 80, b: 86, open: false }], interior: false,
+    id: 'unit4', name: 'Dockside Unit 4', category: 'functional', role: 'Vacant shop unit to let (lease it on your phone)',
+    rect: { x0: 76, z0: 12, x1: 94, z1: 34 }, height: 6, floors: 1, color: '#c9cfd4', trim: '#2c3e50', roof: '#5d6d7e',
+    sign: { text: 'UNIT 4', side: 'zmin', color: '#ffffff', bg: '#2c3e50' },
+    doors: [
+      { side: 'zmin', a: 79, b: 82, open: true },
+      { side: 'zmin', a: 89, b: 92, open: true },
+    ],
+    interior: true, floorColor: '#d6d2c8',
+    internalWalls: [
+      { x0: 87.85, z0: 12, x1: 88.15, z1: 16 },
+      { x0: 87.85, z0: 18.5, x1: 88.15, z1: 34 },
+    ],
   },
 ];
 
@@ -316,6 +327,56 @@ export const QUEUE_SLOTS: Vec2[] = [
   { x: 34.0, z: -11.7 },
 ];
 
+export interface ShopDef {
+  id: string;
+  /** shelf section interactable ids (also their container ids) */
+  shelves: string[];
+  /** shelf id -> pallet interactable in the store room */
+  pallets: Record<string, string>;
+  till: string;
+  terminal: string;
+  cupboard: string;
+  bay: string;
+  kiosk: string | null;
+  backroom: string;
+  bayContainer: string;
+  queue: Vec2[];
+  dirtSpots: Vec2[];
+  entrance: Vec2;
+  standby: Vec2[];
+  dropZone: Vec2;
+  vanOut: Vec2[];
+  vanBack: Vec2[];
+}
+
+export const U4_SECTIONS = [
+  { id: 'u4_s1', gx: 80.5, zc: 21.5 }, { id: 'u4_s2', gx: 80.5, zc: 26.5 },
+  { id: 'u4_s3', gx: 84.5, zc: 21.5 }, { id: 'u4_s4', gx: 84.5, zc: 26.5 },
+];
+export const U4_PALLET_Z = [20, 22.5, 25, 27.5];
+export const U4_QUEUE: Vec2[] = [{ x: 84.5, z: 13.1 }, { x: 86.8, z: 13.1 }, { x: 86.8, z: 15.6 }];
+
+export const SHOPS: Record<string, ShopDef> = {
+  market: {
+    id: 'market', shelves: SHELF_LAYOUT.map((x) => `shelf_${x.product}`),
+    pallets: Object.fromEntries(PRODUCTS.map((p) => [`shelf_${p}`, `pallet_${p}`])),
+    till: 'till', terminal: 'terminal', cupboard: 'cupboard', bay: 'bay', kiosk: 'kiosk', backroom: 'market_backroom', bayContainer: 'market_bay',
+    queue: QUEUE_SLOTS,
+    dirtSpots: [{ x: 14.5, z: -19.5 }, { x: 19.5, z: -20.5 }, { x: 24.5, z: -23 }, { x: 29.5, z: -19 }, { x: 34.3, z: -22 }, { x: 19.5, z: -15.6 }, { x: 27, z: -15.6 }, { x: 17.5, z: -12.6 }],
+    entrance: { x: 17.5, z: -11.4 }, standby: [{ x: 22, z: -15.1 }, { x: 27, z: -15.6 }], dropZone: { x: 24, z: -38.7 },
+    vanOut: [], vanBack: [],
+  },
+  unit4: {
+    id: 'unit4', shelves: U4_SECTIONS.map((x) => x.id), pallets: Object.fromEntries(U4_SECTIONS.map((x, i) => [x.id, `u4_p${i + 1}`])),
+    till: 'u4_till', terminal: 'u4_terminal', cupboard: 'u4_cupboard', bay: 'u4_bay', kiosk: null, backroom: 'unit4_backroom', bayContainer: 'unit4_bay',
+    queue: U4_QUEUE, dirtSpots: [{ x: 78.3, z: 22 }, { x: 82.5, z: 24 }, { x: 86.5, z: 21 }, { x: 82.5, z: 17.5 }],
+    entrance: { x: 80.5, z: 13.4 }, standby: [{ x: 84.5, z: 16.1 }, { x: 82.5, z: 17.5 }], dropZone: { x: 90.5, z: 9.6 },
+    vanOut: [], vanBack: [],
+  },
+};
+
+export const shopOfLocation = (loc: string): ShopDef | null => SHOPS[loc] ?? null;
+
 let cached: World | null = null;
 
 export function getWorld(): World {
@@ -373,6 +434,21 @@ export function getWorld(): World {
   obstacles.push({ kind: 'counter', rect: { x0: -30, z0: 19.6, x1: -18, z1: 20.6 }, height: 1.0, solid: true, color: '#7b2d26' });
   add({ id: 'cafe_counter', kind: 'cafe_counter', label: 'Cafe counter', pos: { x: -24, z: 18.8 }, facing: 0, obj: { x: -24, z: 20.1 }, locationId: 'cafe', businessId: 'cafe', range: 1.8 });
   for (const [tx, tz] of [[-31, 14], [-17, 14]]) obstacles.push({ kind: 'table', rect: box(tx, tz, 1.4, 1.4), height: 0.75, solid: true });
+
+  // ---- Dockside Unit 4 (player-leasable shop)
+  for (const gx of [80.5, 84.5]) obstacles.push({ kind: 'gondola', rect: { x0: gx - 0.6, z0: 19, x1: gx + 0.6, z1: 29 }, height: 1.8, solid: true });
+  for (const sct of U4_SECTIONS) add({ id: sct.id, kind: 'shelf', label: 'Shelf section', pos: { x: sct.gx - 1.15, z: sct.zc }, facing: Math.PI / 2, obj: { x: sct.gx, z: sct.zc }, locationId: 'unit4', businessId: 'unit4', container: sct.id });
+  obstacles.push({ kind: 'counter', rect: { x0: 83, z0: 14.1, x1: 86, z1: 15.2 }, height: 1.0, solid: true });
+  add({ id: 'u4_till', kind: 'till', label: 'Checkout', pos: { x: 84.5, z: 16.1 }, facing: Math.PI, obj: { x: 84.5, z: 14.6 }, locationId: 'unit4', businessId: 'unit4', range: 1.8 });
+  U4_SECTIONS.forEach((sct, i) => {
+    obstacles.push({ kind: 'pallet', rect: { x0: 92.9, z0: U4_PALLET_Z[i] - 0.6, x1: 93.75, z1: U4_PALLET_Z[i] + 0.6 }, height: 0.3, solid: true });
+    add({ id: `u4_p${i + 1}`, kind: 'pallet', label: 'Stock pallet', pos: { x: 91.9, z: U4_PALLET_Z[i] }, facing: Math.PI / 2, obj: { x: 93.3, z: U4_PALLET_Z[i] }, locationId: 'unit4', businessId: 'unit4', container: 'unit4_backroom', shelf: sct.id });
+  });
+  obstacles.push({ kind: 'terminal', rect: { x0: 88.15, z0: 30.5, x1: 88.6, z1: 31.5 }, height: 1.4, solid: true });
+  add({ id: 'u4_terminal', kind: 'terminal', label: 'Staff terminal', pos: { x: 89.4, z: 31 }, facing: -Math.PI / 2, obj: { x: 88.4, z: 31 }, locationId: 'unit4', businessId: 'unit4' });
+  obstacles.push({ kind: 'cupboard', rect: { x0: 93.2, z0: 31.5, x1: 93.85, z1: 33.5 }, height: 2.0, solid: true });
+  add({ id: 'u4_cupboard', kind: 'cupboard', label: 'Cleaning cupboard', pos: { x: 92.5, z: 32.5 }, facing: Math.PI / 2, obj: { x: 93.5, z: 32.5 }, locationId: 'unit4', businessId: 'unit4' });
+  add({ id: 'u4_bay', kind: 'bay', label: 'Goods-in', pos: { x: 90.5, z: 10.8 }, facing: Math.PI, obj: { x: 90.5, z: 9.6 }, locationId: 'unit4', businessId: 'unit4', range: 2.2 });
 
   // ---- outdoor props
   const trees: Vec2[] = [
@@ -443,7 +519,7 @@ export function getWorld(): World {
   const sW = [-88, -70, -53, -43, -24, -6.5];
   sW.forEach((x) => N(`sw_${x}`, x, 6.5));
   L(...sW.map((x) => `sw_${x}`));
-  const sE = [6.5, 16, 27, 40, 56, 88];
+  const sE = [6.5, 16, 27, 40, 56, 80.5, 88];
   sE.forEach((x) => N(`se_${x}`, x, 6.5));
   L(...sE.map((x) => `se_${x}`));
   // crossings around the junction
@@ -519,6 +595,26 @@ export function getWorld(): World {
   N('mk_rd_in', 24, -34.8, 'market'); N('mk_bay', 24, -37.4, 'outside');
   L('mk_b_24', 'mk_rd_in', 'mk_bay', 'hn_e_38');
 
+  // Dockside Unit 4
+  N('u4_out', 80.5, 9.8); N('u4_in', 80.5, 13.4, 'unit4');
+  L('se_80.5', 'u4_out', 'u4_in');
+  N('u4_f1', 78.3, 17.5, 'unit4'); N('u4_f2', 82.5, 17.5, 'unit4'); N('u4_f3', 86.5, 17.5, 'unit4');
+  N('u4_r1', 78.3, 30.5, 'unit4'); N('u4_r2', 82.5, 30.5, 'unit4'); N('u4_r3', 86.5, 30.5, 'unit4');
+  N('u4_m1', 78.3, 24, 'unit4'); N('u4_m2', 82.5, 24, 'unit4'); N('u4_m3', 86.5, 24, 'unit4');
+  L('u4_in', 'u4_f1'); L('u4_in', 'u4_f2'); L('u4_f1', 'u4_f2', 'u4_f3'); L('u4_r1', 'u4_r2', 'u4_r3');
+  L('u4_f1', 'u4_m1', 'u4_r1'); L('u4_f2', 'u4_m2', 'u4_r2'); L('u4_f3', 'u4_m3', 'u4_r3');
+  N('u4_till', 84.5, 16.1, 'unit4'); L('u4_f2', 'u4_till', 'u4_f3');
+  U4_QUEUE.forEach((q, i) => N(`u4_q${i}`, q.x, q.z, 'unit4'));
+  L('u4_q0', 'u4_q1', 'u4_q2'); L('u4_q0', 'u4_in'); L('u4_q2', 'u4_f3');
+  for (const sct of U4_SECTIONS) { N(`u4_sh_${sct.id}`, sct.gx - 1.15, sct.zc, 'unit4'); L(sct.gx < 82 ? 'u4_m1' : 'u4_m2', `u4_sh_${sct.id}`); }
+  N('u4_door_in', 89.5, 17.2, 'unit4'); L('u4_f3', 'u4_door_in');
+  N('u4_b1', 91, 17.2, 'unit4'); N('u4_b2', 91, 31, 'unit4'); L('u4_door_in', 'u4_b1');
+  U4_PALLET_Z.forEach((z, i) => { N(`u4_pal${i}`, 91.9, z, 'unit4'); });
+  L('u4_b1', 'u4_pal0', 'u4_pal1', 'u4_pal2', 'u4_pal3', 'u4_b2');
+  N('u4_term', 89.4, 31, 'unit4'); N('u4_cup', 92.5, 32.5, 'unit4'); L('u4_b2', 'u4_term'); L('u4_b2', 'u4_cup');
+  N('u4_goods_in', 90.5, 13.4, 'unit4'); N('u4_goods_out', 90.5, 10.8);
+  L('u4_b1', 'u4_goods_in', 'u4_goods_out', 'se_88');
+
   // Job centre
   N('jc_out', -24, -8.6); N('jc_in', -24, -11.6, 'jobcentre'); N('jc_board', -24, -26.3, 'jobcentre'); N('jc_adv', -31, -17.6, 'jobcentre');
   N('jc_desk_back', -31, -21.4, 'jobcentre');
@@ -561,6 +657,7 @@ export function getWorld(): World {
     { rect: { x0: -66, z0: 8, x1: -40, z1: 14 }, kind: 'forecourt' },
     { rect: { x0: 40, z0: 8, x1: 72, z1: 42 }, kind: 'grass' },
     { rect: { x0: 8, z0: -10, x1: 40, z1: -8 }, kind: 'plaza' },
+    { rect: { x0: 74, z0: 8, x1: 96, z1: 12 }, kind: 'forecourt' },
   ];
 
   // ---- vehicle routes (right-hand traffic)
@@ -568,6 +665,11 @@ export function getWorld(): World {
   const bayParking = { x: 24, z: -42.4 };
   const vanRouteOut: Vec2[] = [depot, { x: -53, z: 2.5 }, { x: 2.5, z: 2.5 }, { x: 2.5, z: -42.4 }, bayParking];
   const vanRouteBack: Vec2[] = [bayParking, { x: 40, z: -42.4 }, { x: 40, z: -43.8 }, { x: -2.5, z: -43.8 }, { x: -2.5, z: -2.5 }, { x: -53, z: -2.5 }, { x: -53, z: 2.5 }, depot];
+
+  SHOPS.market.vanOut = vanRouteOut;
+  SHOPS.market.vanBack = vanRouteBack;
+  SHOPS.unit4.vanOut = [depot, { x: -53, z: 2.5 }, { x: 90.5, z: 2.5 }, { x: 90.5, z: 4.4 }];
+  SHOPS.unit4.vanBack = [{ x: 90.5, z: 4.4 }, { x: 94, z: 2.5 }, { x: 94, z: -2.5 }, { x: -53, z: -2.5 }, { x: -53, z: 2.5 }, depot];
 
   cached = {
     buildings: B, obstacles, colliders, interactables: I, nodes, edges, roads,

@@ -40,8 +40,11 @@ export class Game {
   views: Views;
   keys = new Set<string>();
   camYaw = Math.PI; // camera sits behind (south of) the player looking north
-  camPitch = 0.75;
-  camDist = 9;
+  camPitch = 0.22;
+  camDist = 4.2;
+  overview = false;
+  private raycaster = new THREE.Raycaster();
+  private camCur = new THREE.Vector3();
   speedMult = 1;
   paused = false;
   uiOpen = false; // when a modal UI is open, movement keys are ignored
@@ -53,6 +56,7 @@ export class Game {
   private lastMouse = { x: 0, y: 0 };
   private autosaveAt = performance.now() + 120000;
   insideId: string | null = null;
+  private cutawayOn = false;
   frameMs = 0;
 
   constructor(public canvas: HTMLCanvasElement, public state: GameState) {
@@ -107,16 +111,27 @@ export class Game {
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
     window.addEventListener('blur', () => this.keys.clear());
-    this.canvas.addEventListener('pointerdown', (e) => { this.dragging = true; this.lastMouse = { x: e.clientX, y: e.clientY }; this.canvas.setPointerCapture(e.pointerId); });
-    this.canvas.addEventListener('pointerup', (e) => { this.dragging = false; this.canvas.releasePointerCapture(e.pointerId); });
-    this.canvas.addEventListener('pointermove', (e) => {
-      if (!this.dragging) return;
-      this.camYaw -= (e.clientX - this.lastMouse.x) * 0.006;
-      this.camPitch = Math.min(1.35, Math.max(0.25, this.camPitch + (e.clientY - this.lastMouse.y) * 0.004));
-      this.lastMouse = { x: e.clientX, y: e.clientY };
+    // GTA-style: click to capture the mouse, move the mouse to look around
+    this.canvas.addEventListener('click', () => { if (!this.uiOpen && document.pointerLockElement !== this.canvas) this.canvas.requestPointerLock?.()?.catch?.(() => {}); });
+    document.addEventListener('mousemove', (e) => {
+      if (document.pointerLockElement === this.canvas) this.look(e.movementX, e.movementY);
+      else if (this.dragging) { this.look(e.clientX - this.lastMouse.x, e.clientY - this.lastMouse.y); this.lastMouse = { x: e.clientX, y: e.clientY }; }
     });
-    this.canvas.addEventListener('wheel', (e) => { this.camDist = Math.min(22, Math.max(3.5, this.camDist + e.deltaY * 0.01)); e.preventDefault(); }, { passive: false });
+    // fallback for touch / no pointer lock: drag to look
+    this.canvas.addEventListener('pointerdown', (e) => { if (document.pointerLockElement !== this.canvas) { this.dragging = true; this.lastMouse = { x: e.clientX, y: e.clientY }; } });
+    window.addEventListener('pointerup', () => { this.dragging = false; });
+    this.canvas.addEventListener('wheel', (e) => { this.camDist = Math.min(this.overview ? 30 : 9, Math.max(1.6, this.camDist + e.deltaY * 0.004)); e.preventDefault(); }, { passive: false });
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'KeyV' && !this.uiOpen) { this.overview = !this.overview; this.camDist = this.overview ? 16 : 4.2; this.camPitch = this.overview ? 0.9 : 0.22; }
+    });
   }
+
+  private look(dx: number, dy: number) {
+    this.camYaw -= dx * 0.0032;
+    this.camPitch = Math.min(this.overview ? 1.4 : 1.05, Math.max(-0.35, this.camPitch + dy * 0.0028));
+  }
+
+  releaseMouse() { if (document.pointerLockElement) document.exitPointerLock(); }
 
   get player() { return this.state.people[this.state.playerId]; }
 
@@ -208,30 +223,37 @@ export class Game {
 
   private updateCamera(dt: number) {
     const p = this.player;
-    const target = new THREE.Vector3(p.pos.x, 1.2, p.pos.z);
-    const b = buildingAt(p.pos);
-    const inside = b?.id ?? null;
-    if (inside !== this.insideId) {
+    const inside = buildingAt(p.pos)?.id ?? null;
+    if (this.overview !== this.cutawayOn || inside !== this.insideId) {
+      // cut-away walls only in overview mode; in the normal camera rooms keep their walls and ceilings
       for (const [id, c] of this.world.cutaway) {
-        const cut = id === inside;
+        const cut = this.overview && id === inside;
         for (const r of c.roof) r.visible = !cut;
         for (const wm of c.walls) { wm.scale.y = cut ? 0.34 : 1; wm.position.y = (cut ? 0.34 : 1) * c.fullH / 2; }
       }
       this.insideId = inside;
+      this.cutawayOn = this.overview;
     }
-    const dist = inside ? Math.min(this.camDist, 10) : this.camDist;
-    const pitch = inside ? Math.max(this.camPitch, 0.7) : this.camPitch;
-    const off = new THREE.Vector3(Math.sin(this.camYaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(this.camYaw) * Math.cos(pitch)).multiplyScalar(dist);
-    const want = target.clone().add(off);
-    // keep the camera out of other buildings: pull it in along the view line
-    const blds = getWorld().buildings;
-    for (let t = 0.15; t <= 1.001; t += 0.05) {
-      const pt = target.clone().addScaledVector(off, t);
-      const hit = blds.some((bb) => bb.id !== inside && pt.y < bb.height + 0.5 && pt.x > bb.rect.x0 - 0.3 && pt.x < bb.rect.x1 + 0.3 && pt.z > bb.rect.z0 - 0.3 && pt.z < bb.rect.z1 + 0.3);
-      if (hit) { want.copy(target).addScaledVector(off, Math.max(0.12, t - 0.06)); break; }
-    }
-    this.camera.position.lerp(want, Math.min(1, dt * 8 + 0.02));
-    this.camera.lookAt(target);
+    const pivot = new THREE.Vector3(p.pos.x, p.sleeping ? 1.0 : 1.62, p.pos.z);
+    const pitch = this.camPitch;
+    const dir = new THREE.Vector3(Math.sin(this.camYaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(this.camYaw) * Math.cos(pitch));
+    // over-the-shoulder offset to the right of the view direction
+    const right = new THREE.Vector3(-Math.cos(this.camYaw), 0, Math.sin(this.camYaw));
+    const shoulder = this.overview ? 0 : 0.42;
+    const origin = pivot.clone().addScaledVector(right, -shoulder);
+    let dist = this.camDist;
+    // ray-cast against walls and buildings so the camera never ends up inside geometry
+    this.raycaster.set(origin, dir);
+    this.raycaster.far = dist + 0.3;
+    const hits = this.raycaster.intersectObjects(this.world.occluders, false);
+    if (hits.length) dist = Math.max(0.35, hits[0].distance - 0.28);
+    const want = origin.clone().addScaledVector(dir, dist);
+    if (this.camCur.lengthSq() === 0 || this.camCur.distanceTo(want) > 12) this.camCur.copy(want);
+    // pull in instantly when blocked, ease back out otherwise
+    const k = hits.length ? 1 : Math.min(1, dt * 10);
+    this.camCur.lerp(want, k);
+    this.camera.position.copy(this.camCur);
+    this.camera.lookAt(origin.x - dir.x * 2, origin.y - dir.y * 2 + (this.overview ? 0 : 0.05), origin.z - dir.z * 2);
     this.sun.target.position.set(p.pos.x, 0, p.pos.z);
   }
 

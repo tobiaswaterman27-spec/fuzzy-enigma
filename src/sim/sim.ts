@@ -15,6 +15,7 @@ import { cafeReorder, dailyEconomy, economyTick } from './economy';
 import { tickObjectives } from './objectives';
 import { compactLedger } from './ledger';
 import { news } from './events';
+import { syncReorderRules, UNIT4 } from './enterprise';
 
 export const SUBSTEP = 0.25;
 
@@ -77,8 +78,12 @@ export function minuteTick(state: GameState) {
   if (mod >= 10 * 60 && once(state, `jobsearch:${day}`)) npcJobSearch(state);
   if (mod >= 15 * 60 && once(state, `jobsearch2:${day}`)) npcJobSearch(state);
   if (mod >= 16 * 60 && once(state, `reorder:${day}`)) {
-    const msg = autoReorder(state, state.businesses.market);
-    if (msg.startsWith('Ordered')) news(state, 'info', 'Corner Market placed a stock order', msg);
+    for (const b of Object.values(state.businesses)) {
+      if (b.kind !== 'retail') continue;
+      if (b.id === UNIT4) syncReorderRules(b);
+      const msg = autoReorder(state, b);
+      if (msg.startsWith('Ordered')) news(state, 'info', `${b.name} placed a stock order`, msg, b.ownerId === state.playerId);
+    }
   }
   if (mod >= 22 * 60 && once(state, `payroll:${day}`)) runPayroll(state);
   if (mod >= 23 * 60 + 30 && once(state, `close:${day}`)) {

@@ -3,8 +3,8 @@ import * as THREE from 'three';
 import type { GameState, Person } from '../sim/types';
 import { AnimationController, buildRig, dress, type Rig } from './character';
 import { buildCar } from './world';
-import { getWorld, SHELF_LAYOUT, PALLET_X } from '../sim/world/layout';
-import { ITEMS, PRODUCTS } from '../sim/items';
+import { getWorld, SHELF_LAYOUT, PALLET_X, SHOPS, U4_SECTIONS, U4_PALLET_Z } from '../sim/world/layout';
+import { ITEMS } from '../sim/items';
 import { count, total, firstItem } from '../sim/inventory';
 import { SHELF_CAPACITY } from '../sim/retail';
 
@@ -117,39 +117,46 @@ class PersonView {
 
 export class Views {
   people = new Map<string, PersonView>();
-  shelfMeshes = new Map<string, THREE.InstancedMesh>();
-  palletMeshes = new Map<string, THREE.InstancedMesh>();
-  bayMesh: THREE.InstancedMesh;
+  shelfMeshes = new Map<string, { mesh: THREE.InstancedMesh; bid: string; product: string }>();
+  palletMeshes = new Map<string, { mesh: THREE.InstancedMesh; bid: string; shelf: string }>();
+  bayMeshes = new Map<string, THREE.InstancedMesh>();
   van: THREE.Group;
   spills = new Map<string, THREE.Mesh>();
   queueMarker: THREE.Mesh;
 
   constructor(private scene: THREE.Scene) {
-    const w = getWorld();
-    // shelf products: one instanced mesh per product section, 30 slots
-    for (const s of SHELF_LAYOUT) {
-      const m = new THREE.InstancedMesh(new THREE.BoxGeometry(0.3, 0.27, 0.3), new THREE.MeshStandardMaterial({ color: ITEMS[s.product].color, roughness: 0.55, emissive: new THREE.Color(ITEMS[s.product].color), emissiveIntensity: 0.12 }), SHELF_CAPACITY);
-      m.castShadow = true;
+    // shelf products: one instanced mesh per shelf section (count = real shelf stock)
+    const sections = [
+      ...SHELF_LAYOUT.map((x) => ({ id: `shelf_${x.product}`, bid: 'market', gx: x.gx, zc: x.zc, len: 4.5 })),
+      ...U4_SECTIONS.map((x) => ({ id: x.id, bid: 'unit4', gx: x.gx, zc: x.zc, len: 5 })),
+    ];
+    for (const sct of sections) {
+      const m = new THREE.InstancedMesh(new THREE.BoxGeometry(0.3, 0.27, 0.3), new THREE.MeshStandardMaterial({ color: '#888888', roughness: 0.55 }), SHELF_CAPACITY);
       const dummy = new THREE.Object3D();
       for (let i = 0; i < SHELF_CAPACITY; i++) {
         const level = Math.floor(i / 10);
         const col = i % 10;
         const side = col % 2 === 0 ? -1 : 1;
-        dummy.position.set(s.gx + side * 0.42, 0.31 + level * 0.45, s.zc - 1.9 + Math.floor(col / 2) * 0.95);
+        dummy.position.set(sct.gx + side * 0.42, 0.31 + level * 0.45, sct.zc - sct.len * 0.42 + Math.floor(col / 2) * (sct.len * 0.21));
         dummy.updateMatrix();
         m.setMatrixAt(i, dummy.matrix);
       }
       m.count = 0;
       m.frustumCulled = false;
+      m.castShadow = true;
       scene.add(m);
-      this.shelfMeshes.set(s.product, m);
+      this.shelfMeshes.set(sct.id, { mesh: m, bid: sct.bid, product: '' });
     }
-    // store-room stacks on pallets
-    PRODUCTS.forEach((p, i) => {
+    // store-room case stacks per pallet (count = cases of that product in the store room)
+    const pallets = [
+      ...Object.values(SHOPS.market.pallets).map((pid, i) => ({ id: pid, bid: 'market', shelf: Object.keys(SHOPS.market.pallets)[i], x: PALLET_X[i], z: -35.1 })),
+      ...U4_SECTIONS.map((x, i) => ({ id: `u4_p${i + 1}`, bid: 'unit4', shelf: x.id, x: 93.3, z: U4_PALLET_Z[i] })),
+    ];
+    for (const pl of pallets) {
       const m = new THREE.InstancedMesh(new THREE.BoxGeometry(0.5, 0.32, 0.5), new THREE.MeshStandardMaterial({ color: '#b8925d', roughness: 0.9 }), 16);
       const dummy = new THREE.Object3D();
       for (let k = 0; k < 16; k++) {
-        dummy.position.set(PALLET_X[i] + ((k % 4) % 2 ? 0.27 : -0.27), 0.3 + Math.floor(k / 4) * 0.33, -35.1 + (Math.floor((k % 4) / 2) ? 0.27 : -0.27));
+        dummy.position.set(pl.x + ((k % 4) % 2 ? 0.2 : -0.2), 0.3 + Math.floor(k / 4) * 0.33, pl.z + (Math.floor((k % 4) / 2) ? 0.27 : -0.27));
         dummy.updateMatrix();
         m.setMatrixAt(k, dummy.matrix);
       }
@@ -157,23 +164,22 @@ export class Views {
       m.count = 0;
       m.frustumCulled = false;
       scene.add(m);
-      // product colour tag on the pallet
-      const tag = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.12, 0.04), new THREE.MeshStandardMaterial({ color: ITEMS[p].color }));
-      tag.position.set(PALLET_X[i], 0.2, -34.48);
-      scene.add(tag);
-      this.palletMeshes.set(p, m);
-    });
-    this.bayMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.5, 0.32, 0.5), new THREE.MeshStandardMaterial({ color: '#c4a06b', roughness: 0.9 }), 40);
-    const dummy = new THREE.Object3D();
-    for (let k = 0; k < 40; k++) {
-      dummy.position.set(w.dropZone.x - 1.4 + (k % 6) * 0.55, 0.2 + Math.floor(k / 12) * 0.33, w.dropZone.z + (Math.floor(k / 6) % 2) * 0.55 - 0.3);
-      dummy.updateMatrix();
-      this.bayMesh.setMatrixAt(k, dummy.matrix);
+      this.palletMeshes.set(pl.id, { mesh: m, bid: pl.bid, shelf: pl.shelf });
     }
-    this.bayMesh.count = 0;
-    this.bayMesh.frustumCulled = false;
-    this.bayMesh.castShadow = true;
-    scene.add(this.bayMesh);
+    for (const [bid, S] of Object.entries(SHOPS)) {
+      const bm = new THREE.InstancedMesh(new THREE.BoxGeometry(0.5, 0.32, 0.5), new THREE.MeshStandardMaterial({ color: '#c4a06b', roughness: 0.9 }), 40);
+      const dummy = new THREE.Object3D();
+      for (let k = 0; k < 40; k++) {
+        dummy.position.set(S.dropZone.x - 1.4 + (k % 6) * 0.55, 0.2 + Math.floor(k / 12) * 0.33, S.dropZone.z + (Math.floor(k / 6) % 2) * 0.55 - 0.3);
+        dummy.updateMatrix();
+        bm.setMatrixAt(k, dummy.matrix);
+      }
+      bm.count = 0;
+      bm.frustumCulled = false;
+      bm.castShadow = true;
+      scene.add(bm);
+      this.bayMeshes.set(bid, bm);
+    }
     this.van = buildCar('#f2f2f2', 0, 0, 0, true);
     scene.add(this.van);
     this.queueMarker = new THREE.Mesh(new THREE.RingGeometry(0.35, 0.45, 24), new THREE.MeshBasicMaterial({ color: '#2e8b57', transparent: true, opacity: 0.5 }));
@@ -188,9 +194,19 @@ export class Views {
       if (!v) { v = new PersonView(p, this.scene); this.people.set(p.id, v); }
       v.update(state, p, dt);
     }
-    for (const [k, m] of this.shelfMeshes) m.count = Math.min(SHELF_CAPACITY, count(state.containers[`shelf_${k}`], k));
-    for (const [k, m] of this.palletMeshes) m.count = Math.min(16, Math.ceil(count(state.containers.market_backroom, k) / ITEMS[k].caseSize));
-    this.bayMesh.count = Math.min(40, Math.ceil(total(state.containers.market_bay) / 10));
+    for (const [id, v] of this.shelfMeshes) {
+      const b = state.businesses[v.bid];
+      const k = b?.sections[id];
+      if (!k) { v.mesh.count = 0; continue; }
+      if (k !== v.product) { (v.mesh.material as THREE.MeshStandardMaterial).color.set(ITEMS[k].color); v.product = k; }
+      v.mesh.count = Math.min(SHELF_CAPACITY, count(state.containers[id], k));
+    }
+    for (const v of this.palletMeshes.values()) {
+      const b = state.businesses[v.bid];
+      const k = b?.sections[v.shelf];
+      v.mesh.count = k ? Math.min(16, Math.ceil(count(state.containers[SHOPS[v.bid].backroom], k) / ITEMS[k].caseSize)) : 0;
+    }
+    for (const [bid, m] of this.bayMeshes) m.count = state.containers[SHOPS[bid].bayContainer] ? Math.min(40, Math.ceil(total(state.containers[SHOPS[bid].bayContainer]) / 10)) : 0;
     const van = state.vehicles.van_1;
     this.van.position.set(van.pos.x, 0, van.pos.z);
     this.van.rotation.y = van.heading;

@@ -196,10 +196,12 @@ export interface NpcState {
   list?: Record<string, number>;
   patienceUntil?: number;
   queuedAt?: number;
+  shopId?: Id; // shop being visited
   queueSlot?: number;
   log: string[];
   ambient?: boolean; // pooled ambient shopper from aggregate population
   retired?: boolean; // not looking for work
+  searchFrom?: number; // starts looking for work at this minute
 }
 
 export interface Person {
@@ -295,6 +297,14 @@ export interface Business {
   cashReserve: Cents;
   /** wage arrears owed to staff when payroll could not be met */
   wageArrears: Cents;
+  /** shelf section id -> product sold there (shops only) */
+  sections: Record<string, string>;
+  /** owner has closed the doors regardless of hours */
+  manualClosed?: boolean;
+  /** installed equipment, e.g. { till: true } */
+  equipment: Record<string, boolean>;
+  /** player-owned: the owner decides on hiring instead of automatic offers */
+  ownerDecidesHiring?: boolean;
 }
 
 export interface Policy {
@@ -443,6 +453,8 @@ export interface Vehicle {
 export interface Lease {
   id: Id;
   tenantId: Id;
+  /** set for commercial leases paid by a business account */
+  tenantBusinessId?: Id;
   landlordId: Id; // business id
   locationId: Id;
   label: string;
@@ -485,6 +497,7 @@ export interface AggregateDistrict {
   shopShare: number;
   demandAccumulator: number;
   cafeAccumulator: number;
+  shopDemand: Record<string, number>;
   /** economic condition index (1 = normal) */
   confidence: number;
 }

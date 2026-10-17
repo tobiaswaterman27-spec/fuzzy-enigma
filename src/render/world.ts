@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { getWorld, wallsFor, WALL_T, type BuildingDef, type Obstacle, type Rect } from '../sim/world/layout';
 
+let occ: THREE.Object3D[] = [];
 const M = (color: string, rough = 0.9, extra: Partial<THREE.MeshStandardMaterialParameters> = {}) => new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: 0, ...extra });
 
 function box(w: number, h: number, d: number, m: THREE.Material, x: number, y: number, z: number, shadow = true) {
@@ -51,6 +52,8 @@ export interface WorldView {
   windowsMat: THREE.MeshStandardMaterial[];
   lampBulbs: THREE.MeshStandardMaterial;
   lampLights: THREE.PointLight[];
+  /** meshes the camera must not pass through */
+  occluders: THREE.Object3D[];
 }
 
 export function buildWorld(scene: THREE.Scene): WorldView {
@@ -59,6 +62,7 @@ export function buildWorld(scene: THREE.Scene): WorldView {
   scene.add(g);
   const cutaway: WorldView['cutaway'] = new Map();
   const windowsMat: THREE.MeshStandardMaterial[] = [];
+  occ = [];
 
   // ground
   const grass = new THREE.Mesh(new THREE.PlaneGeometry(260, 200), M('#6f9a5a'));
@@ -103,7 +107,7 @@ export function buildWorld(scene: THREE.Scene): WorldView {
 
   // parked cars
   for (const p of w.parked) g.add(buildCar(p.color, p.pos.x, p.pos.z, p.rot));
-  return { group: g, cutaway, windowsMat, lampBulbs, lampLights };
+  return { group: g, cutaway, windowsMat, lampBulbs, lampLights, occluders: occ };
 }
 
 function buildBuilding(g: THREE.Group, b: BuildingDef, cutaway: WorldView['cutaway'], windowsMat: THREE.MeshStandardMaterial[]) {
@@ -119,6 +123,7 @@ function buildBuilding(g: THREE.Group, b: BuildingDef, cutaway: WorldView['cutaw
       const m = rbox(r, b.interior ? 3.2 : b.height, isInternal ? innerM : wallM);
       g.add(m);
       wallsOut.push(m);
+      occ.push(m);
     }
     // floor
     const floor = new THREE.Mesh(new THREE.BoxGeometry(W, 0.08, D), M(b.floorColor ?? '#ccc', 0.8));
@@ -128,9 +133,22 @@ function buildBuilding(g: THREE.Group, b: BuildingDef, cutaway: WorldView['cutaw
     // upper storey / parapet shell above the cutaway height
     const upper = box(W + WALL_T, b.height - 3.2, D + WALL_T, M(b.color, 0.85), cx, 3.2 + (b.height - 3.2) / 2, cz);
     roofs.push(upper);
+    occ.push(upper);
     const roof = box(W + 0.6, 0.25, D + 0.6, M(b.roof, 0.8), cx, b.height + 0.12, cz);
     roofs.push(roof);
     for (const r of roofs) g.add(r);
+    // ceiling (seen from inside) and interior lighting
+    const ceil = new THREE.Mesh(new THREE.PlaneGeometry(W, D), M('#f3f1ec', 0.95));
+    ceil.rotation.x = Math.PI / 2;
+    ceil.position.set(cx, 3.19, cz);
+    roofs.push(ceil);
+    g.add(ceil);
+    const nL = Math.max(1, Math.round((W * D) / 220));
+    for (let i = 0; i < nL; i++) {
+      const pl = new THREE.PointLight('#fff1dc', 9, Math.max(W, D) * 0.9, 1.4);
+      pl.position.set(x0 + (W * (i + 0.5)) / nL, 2.9, cz);
+      g.add(pl);
+    }
     // door frames
     for (const d of b.doors) addDoor(g, b, d.side, d.a, d.b, d.open, b.trim);
     // interior ceiling lights
@@ -147,6 +165,7 @@ function buildBuilding(g: THREE.Group, b: BuildingDef, cutaway: WorldView['cutaw
     windowsMat.push(fm);
     const shell = box(W, b.height, D, fm, cx, b.height / 2, cz);
     g.add(shell);
+    occ.push(shell);
     const isHouse = b.id.startsWith('house_');
     if (isHouse) {
       const roofG = new THREE.ConeGeometry(Math.max(W, D) * 0.75, 2.6, 4);

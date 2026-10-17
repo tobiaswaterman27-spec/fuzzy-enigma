@@ -5,11 +5,11 @@ import { dayIndex, fmtDate, minuteOfDay, MIN_PER_DAY } from './clock';
 import { clamp, fmtMoney, nextId, pick, rand } from './core';
 import { transfer } from './ledger';
 import { count, moveAll, moveItems, total } from './inventory';
-import { ITEMS, PRODUCTS, itemName } from './items';
+import { ITEMS, itemName } from './items';
 import { news } from './events';
 import { filledCount, isOnShift, openAttendance, statsFor } from './employment';
 import { placeOrder } from './logistics';
-import { QUEUE_SLOTS } from './world/layout';
+import { SHOPS, type Interactable, type ShopDef } from './world/layout';
 
 export const SHELF_CAPACITY = 30;
 export const RESTOCK_BELOW = 13;
@@ -17,14 +17,46 @@ export const RESTOCK_DONE = 24;
 
 export const shelfId = (p: string) => `shelf_${p}`;
 
+export const shopDef = (bid: Id): ShopDef => SHOPS[bid];
+
+/** the shelf section in a shop that sells a product */
+export function shelfFor(state: GameState, bid: Id, product: string): Id | null {
+  const b = state.businesses[bid];
+  if (!b) return null;
+  for (const [sh, p] of Object.entries(b.sections)) if (p === product) return sh;
+  return null;
+}
+
+/** products a shop currently sells */
+export const productsOf = (b: Business) => Object.values(b.sections);
+
+/** the product a shelf or pallet interactable refers to (assigned by the business) */
+export function productAt(state: GameState, it: Interactable): string | null {
+  if (it.product) return it.product;
+  const b = it.businessId ? state.businesses[it.businessId] : null;
+  if (!b) return null;
+  if (it.kind === 'shelf') return b.sections[it.id] ?? null;
+  if (it.kind === 'pallet' && it.shelf) return b.sections[it.shelf] ?? null;
+  return null;
+}
+
+/** staff = clocked-in employees, plus the owner while physically inside their own shop */
+export function isStaff(state: GameState, personId: Id, bid: Id): boolean {
+  if (isOnShift(state, personId, bid)) return true;
+  const b = state.businesses[bid];
+  const p = state.people[personId];
+  return !!b && !!p && b.ownerId === personId && p.where === bid;
+}
+
 export function isOpen(b: Business, minute: number): boolean {
+  if (b.manualClosed) return false;
   const dow = dayIndex(minute) % 7;
   const m = minuteOfDay(minute);
   return b.open.some((s) => s.days.includes(dow) && m >= s.start && m < s.end);
 }
 
 export function staffOnDuty(state: GameState, businessId: Id): Person[] {
-  return Object.values(state.people).filter((p) => isOnShift(state, p.id, businessId));
+  return Object.values(state.people).filter((p) => isStaff(state, p.id, businessId));
 }
 
 /** price including sales tax */
@@ -97,7 +129,10 @@ export function leaveQueue(state: GameState, tillId: Id, personId: Id) {
   if (i === 0) till.scanned = {};
 }
 
-export const queueSlot = (i: number) => QUEUE_SLOTS[Math.min(i, QUEUE_SLOTS.length - 1)];
+export const queueSlot = (shopId: Id, i: number) => {
+  const q = SHOPS[shopId].queue;
+  return q[Math.min(i, q.length - 1)];
+};
 
 /** customer gives up: their basket goes back to the store room for restocking */
 export function walkout(state: GameState, businessId: Id, tillId: Id, personId: Id) {
@@ -114,14 +149,10 @@ export function walkout(state: GameState, businessId: Id, tillId: Id, personId: 
 }
 
 // ------------------------------------------------------------------ dirt
-const DIRT_SPOTS = [
-  { x: 14.5, z: -19.5 }, { x: 19.5, z: -20.5 }, { x: 24.5, z: -23 }, { x: 29.5, z: -19 },
-  { x: 34.3, z: -22 }, { x: 19.5, z: -15.6 }, { x: 27, z: -15.6 }, { x: 17.5, z: -12.6 },
-];
 
 export function spawnDirt(state: GameState, businessId: Id): DirtSpot | null {
   const used = new Set(Object.values(state.dirt).map((d) => `${d.pos.x},${d.pos.z}`));
-  const free = DIRT_SPOTS.filter((p) => !used.has(`${p.x},${p.z}`));
+  const free = SHOPS[businessId].dirtSpots.filter((p) => !used.has(`${p.x},${p.z}`));
   if (!free.length) return null;
   const pos = pick(state, free);
   const d: DirtSpot = { id: nextId(state, 'spill'), locationId: businessId, pos: { ...pos }, dirt: 60 + Math.floor(rand(state) * 40), createdAt: state.minute };
@@ -166,21 +197,22 @@ const carriedBy = (state: GameState, product: string) =>
   Object.values(state.people).some((p) => count(state.containers[p.handsId], product) > 0);
 
 export function retailTick(state: GameState, b: Business) {
-  const backroom = state.containers[b.stockContainers[0]];
-  for (const p of PRODUCTS) {
-    const shelf = state.containers[shelfId(p)];
+  const S = SHOPS[b.id];
+  const backroom = state.containers[S.backroom];
+  for (const [sh, p] of Object.entries(b.sections)) {
+    const shelf = state.containers[sh];
     const t = findTask(state, b.id, 'restock', shelf.id);
     const n = count(shelf, p);
     const supply = count(backroom, p) > 0 || carriedBy(state, p);
-    if (!t && n < RESTOCK_BELOW && supply) createTask(state, b.id, 'restock', shelf.id, p);
-    else if (t && n >= RESTOCK_DONE) { t.status = 'done'; t.doneAt = state.minute; }
+    if (!t && n < Math.min(RESTOCK_BELOW, shelf.capacity * 0.45) && supply) createTask(state, b.id, 'restock', shelf.id, p);
+    else if (t && n >= Math.min(RESTOCK_DONE, shelf.capacity * 0.8)) { t.status = 'done'; t.doneAt = state.minute; }
     else if (t && !supply) cancelTask(t);
   }
   for (const d of Object.values(state.dirt)) if (d.locationId === b.id && !findTask(state, b.id, 'clean', d.id)) createTask(state, b.id, 'clean', d.id);
   for (const t of openTasks(state, b.id)) if (t.kind === 'clean' && !state.dirt[t.target]) cancelTask(t);
   for (const s of Object.values(state.shipments)) if (s.buyerId === b.id && s.status === 'arrived' && !findTask(state, b.id, 'receive', s.id)) createTask(state, b.id, 'receive', s.id);
-  const till = state.tills.till;
-  if (till.businessId === b.id) {
+  const till = state.tills[S.till];
+  if (till) {
     const head = till.queue[0];
     if (head && !findTask(state, b.id, 'serve', head)) createTask(state, b.id, 'serve', head);
     for (const t of openTasks(state, b.id)) if (t.kind === 'serve' && !till.queue.includes(t.target)) cancelTask(t);
@@ -192,7 +224,7 @@ export function retailTick(state: GameState, b: Business) {
     }
   }
   // claims held by people who are no longer on shift are released
-  for (const t of openTasks(state, b.id)) if (t.claimedBy && !isOnShift(state, t.claimedBy, b.id)) { t.claimedBy = null; t.status = 'open'; }
+  for (const t of openTasks(state, b.id)) if (t.claimedBy && !isStaff(state, t.claimedBy, b.id)) { t.claimedBy = null; t.status = 'open'; }
   b.cleanliness = cleanliness(state, b.id);
   // prune old finished tasks
   if (state.minute % 60 === 0) {

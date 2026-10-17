@@ -5,6 +5,7 @@ import { at, dayIndex, dayOfWeek, fmtDate, minuteOfDay } from './clock';
 import { fmtMoney, nextId } from './core';
 import { transfer } from './ledger';
 import { lifeEvent, news } from './events';
+import { statsFor } from './employment';
 
 export const LATE_FEE = 1500;
 
@@ -18,7 +19,7 @@ export function createLease(state: GameState, tenantId: Id, landlordId: Id, loca
 }
 
 export function activeLease(state: GameState, personId: Id): Lease | undefined {
-  return Object.values(state.leases).find((l) => l.tenantId === personId && l.status === 'active');
+  return Object.values(state.leases).find((l) => l.tenantId === personId && !l.tenantBusinessId && l.status === 'active');
 }
 
 export function hasHomeAccess(state: GameState, personId: Id, locationId: Id) {
@@ -37,11 +38,13 @@ export function rentTick(state: GameState) {
     state.processed[key] = now;
     const tenant = state.people[l.tenantId];
     const landlord = state.businesses[l.landlordId];
+    const payer = l.tenantBusinessId ? state.businesses[l.tenantBusinessId] : null;
+    const payAcc = payer ? payer.accountId : tenant.accountId;
     // collect arrears first, any day
     if (l.arrears > 0) {
-      const amt = Math.min(l.arrears, state.ledger.accounts[tenant.accountId].balance);
+      const amt = Math.min(l.arrears, state.ledger.accounts[payAcc].balance);
       if (amt > 0) {
-        const r = transfer(state, { from: tenant.accountId, to: landlord.accountId, amount: amt, reason: 'rent', memo: `Rent arrears ${l.label}`, ref: l.id });
+        const r = transfer(state, { from: payAcc, to: landlord.accountId, amount: amt, reason: 'rent', memo: `Rent arrears ${l.label}`, ref: l.id });
         if (r.ok) {
           l.arrears -= amt;
           if (tenant.isPlayer) news(state, 'money', `Paid ${fmtMoney(amt)} rent arrears`, l.arrears > 0 ? `${fmtMoney(l.arrears)} still owed.` : 'Your rent account is clear.', true);
@@ -50,9 +53,10 @@ export function rentTick(state: GameState) {
       }
     }
     if (dayOfWeek(now) !== l.dueDay || l.paidThroughDay > day) continue;
-    const r = transfer(state, { from: tenant.accountId, to: landlord.accountId, amount: l.weeklyRent, reason: 'rent', memo: `Weekly rent ${l.label} ${fmtDate(now)}`, ref: l.id, key: `rentdue:${l.id}:${day}` });
+    const r = transfer(state, { from: payAcc, to: landlord.accountId, amount: l.weeklyRent, reason: 'rent', memo: `Weekly rent ${l.label} ${fmtDate(now)}`, ref: l.id, key: `rentdue:${l.id}:${day}` });
     l.paidThroughDay = day + 7;
     if (r.ok) {
+      if (payer) statsFor(state, payer).otherCosts += l.weeklyRent;
       if (tenant.isPlayer) news(state, 'money', `Rent paid: ${fmtMoney(l.weeklyRent)}`, `${l.label} is paid until ${fmtDate(at(l.paidThroughDay, 0))}.`, true);
     } else {
       l.arrears += l.weeklyRent + (l.missedPayments > 0 ? LATE_FEE : 0);
@@ -68,6 +72,12 @@ export function rentTick(state: GameState) {
 
 export function evict(state: GameState, l: Lease) {
   l.status = 'ended';
+  if (l.tenantBusinessId) {
+    const b = state.businesses[l.tenantBusinessId];
+    if (b) b.manualClosed = true;
+    news(state, 'bad', `${b?.name ?? 'Your business'} lost its premises`, 'The landlord ended the lease after three missed payments. The shop is closed.', true);
+    return;
+  }
   const tenant = state.people[l.tenantId];
   if (tenant.isPlayer) news(state, 'bad', 'You have been evicted', `${l.label} is no longer yours. You can sleep on a park bench, or re-rent once you can pay the arrears plus a week in advance.`, true);
   lifeEvent(state, tenant, `Evicted from ${l.label}`);

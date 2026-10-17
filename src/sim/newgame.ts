@@ -44,10 +44,10 @@ function fund(state: GameState, accountId: Id, amount: number, memo: string) {
   if (amount > 0) transfer(state, { from: state.externalId, to: accountId, amount, reason: 'opening_balance', memo });
 }
 
-function makeBusiness(state: GameState, b: Omit<Business, 'accountId' | 'stats' | 'unitCost' | 'wageArrears' | 'cleanliness' | 'inventoryValue'> & { cash: number }): Business {
+export function makeBusiness(state: GameState, b: Omit<Business, 'accountId' | 'stats' | 'unitCost' | 'wageArrears' | 'cleanliness' | 'sections' | 'equipment'> & { cash: number; sections?: Record<string, string> }): Business {
   const acc = b.kind === 'government' ? openAccount(state, b.id, b.name, 'government') : openAccount(state, b.id, b.name, 'business');
   const { cash, ...rest } = b;
-  const biz: Business = { ...rest, accountId: acc.id, stats: [], unitCost: {}, wageArrears: 0, cleanliness: 100 };
+  const biz: Business = { sections: {}, equipment: {}, ...rest, accountId: acc.id, stats: [], unitCost: {}, wageArrears: 0, cleanliness: 100 };
   state.businesses[b.id] = biz;
   fund(state, acc.id, cash, `Opening cash ${b.name}`);
   return biz;
@@ -126,6 +126,7 @@ export function createNewGame(seed: number, setup: PlayerSetup): GameState {
     prices: Object.fromEntries(PRODUCTS.map((k) => [k, ITEMS[k].retail])), reputation: 55, supplierId: 'wholesale',
     reorder: Object.fromEntries(PRODUCTS.map((k) => [k, { min: 80, target: 140 }])), rentDue: 0, utilitiesPerDay: 2500,
     stockContainers: ['market_backroom', ...PRODUCTS.map(shelfId), 'market_bay'], cashReserve: 400000, cash: 600000,
+    sections: Object.fromEntries(PRODUCTS.map((k) => [shelfId(k), k])),
   });
   const wholesale = makeBusiness(state, {
     id: 'wholesale', name: 'Harbour Wholesale', kind: 'wholesale', ownerId: 'p_gail', locationId: 'wholesale', open: [sh(MON_SAT, 6, 18)],
@@ -188,7 +189,7 @@ export function createNewGame(seed: number, setup: PlayerSetup): GameState {
   // ---------------------------------------------------------- district
   const dacc = openAccount(state, 'district', 'Harbourside households', 'aggregate', true);
   fund(state, dacc.id, 6000000, 'District household savings');
-  state.districts.harbourside = { id: 'harbourside', name: 'Harbourside', households: 120, accountId: dacc.id, groceryBudget: 6000, shopShare: 0.2, demandAccumulator: 0.6, cafeAccumulator: 0, confidence: 1 };
+  state.districts.harbourside = { id: 'harbourside', name: 'Harbourside', households: 120, accountId: dacc.id, groceryBudget: 6000, shopShare: 0.2, demandAccumulator: 0.6, cafeAccumulator: 0, confidence: 1, shopDemand: { market: 0.6 } };
 
   // ---------------------------------------------------------- player
   const pl = makePerson(state, 'player', setup.name || 'Alex Morgan', {
@@ -206,7 +207,7 @@ export function createNewGame(seed: number, setup: PlayerSetup): GameState {
   createLease(state, 'player', 'estates', 'flat', 'Flat 1, Marlow Court', 14000, 7);
 
   // ---------------------------------------------------------- NPCs
-  const npcs: { id: string; name: string; home: string; cash: number; job?: [string, string]; rent?: number; retired?: boolean; traits?: Partial<Traits>; skills?: Record<string, number> }[] = [
+  const npcs: { id: string; name: string; home: string; cash: number; job?: [string, string]; rent?: number; retired?: boolean; traits?: Partial<Traits>; skills?: Record<string, number>; search?: number }[] = [
     { id: 'p_harlan', name: 'Harlan Price', home: 'house_1', cash: 250000, job: ['market', 'manager'], traits: { conscientiousness: 0.85 } },
     { id: 'p_dana', name: 'Dana Okafor', home: 'flat_upper', cash: 60000, job: ['market', 'assistant_pm'], rent: 12500, skills: { retail: 300 } },
     { id: 'p_gail', name: 'Gail Fenwick', home: 'house_2', cash: 400000, retired: true },
@@ -221,11 +222,15 @@ export function createNewGame(seed: number, setup: PlayerSetup): GameState {
     { id: 'p_owen', name: 'Owen Hart', home: 'house_6', cash: 40000, job: ['port', 'dock_mid'] },
     { id: 'p_sam', name: 'Sam Ortiz', home: 'house_4', cash: 30000, rent: 11000, skills: { warehouse: 220 }, traits: { ambition: 0.7 } },
     { id: 'p_joan', name: 'Joan Pike', home: 'house_5', cash: 400000, retired: true, traits: { sociability: 0.9 } },
+    { id: 'p_tom', name: 'Tom Reyes', home: 'house_6', cash: 25000, rent: 0, skills: { retail: 160 }, search: 3 },
+    { id: 'p_nadia', name: 'Nadia Haddad', home: 'flat_upper', cash: 40000, rent: 0, skills: { retail: 60, cleaning: 80 }, search: 3 },
+    { id: 'p_ben', name: 'Ben Ashworth', home: 'house_1', cash: 15000, rent: 0, skills: {}, search: 4, traits: { conscientiousness: 0.4 } },
   ];
   for (const n of npcs) {
     const p = makePerson(state, n.id, n.name, { homeId: n.home, cash: n.cash, traits: n.traits });
     if (n.skills) p.skills = { ...n.skills };
     if (n.retired) p.npc!.retired = true;
+    if (n.search) p.npc!.searchFrom = n.search * 1440;
     const pantry = state.containers[p.pantryId!];
     for (let i = 0; i < 3 + randInt(state, 0, 6); i++) addItems(pantry, pick(state, PRODUCTS.filter((k) => ITEMS[k].satiety > 0)), 1);
     if (n.job) {

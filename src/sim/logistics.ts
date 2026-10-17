@@ -8,7 +8,7 @@ import { addItems, count, moveAll, moveItems, total } from './inventory';
 import { ITEMS, itemName } from './items';
 import { news } from './events';
 import { isOnShift, statsFor } from './employment';
-import { getWorld } from './world/layout';
+import { getWorld, SHOPS } from './world/layout';
 
 export const VAN_SPEED = 15; // metres per game minute
 export const DISPATCH_HOUR = 6.5;
@@ -98,7 +98,8 @@ export function logisticsTick(state: GameState, dt: number) {
         s.note = short ? 'Short shipment: supplier stock was insufficient.' : '';
         v.shipmentId = s.id;
         v.state = 'driving_out';
-        v.route = w.vanRouteOut.map((p) => ({ ...p }));
+        v.route = (SHOPS[s.buyerId]?.vanOut ?? w.vanRouteOut).map((p) => ({ ...p }));
+        v.pos = { ...v.route[0] };
         v.routeIdx = 1;
         const dp = state.people[driver];
         dp.where = 'vehicle';
@@ -144,7 +145,7 @@ export function logisticsTick(state: GameState, dt: number) {
       }
       v.shipmentId = null;
       v.state = 'returning';
-      v.route = w.vanRouteBack.map((p: Vec2) => ({ ...p }));
+      v.route = ((s && SHOPS[s.buyerId]?.vanBack) || w.vanRouteBack).map((p: Vec2) => ({ ...p }));
       v.routeIdx = 1;
     }
   }
@@ -152,7 +153,7 @@ export function logisticsTick(state: GameState, dt: number) {
 
 function isStaffPlayer(state: GameState, bid: Id) {
   const p = state.people[state.playerId];
-  return !!p.contractId && state.contracts[p.contractId]?.businessId === bid;
+  return state.businesses[bid]?.ownerId === p.id || (!!p.contractId && state.contracts[p.contractId]?.businessId === bid);
 }
 
 /** Verified receipt: arrived cargo is counted into the store room and the invoice is paid. */

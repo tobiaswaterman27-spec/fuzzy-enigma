@@ -11,10 +11,10 @@ import { count, removeItems } from './inventory';
 import { ITEMS, PRODUCTS } from './items';
 import { news } from './events';
 import { statsFor } from './employment';
-import { cleanliness, isOpen, shelfId, staffOnDuty } from './retail';
+import { cleanliness, isOpen, productsOf, staffOnDuty } from './retail';
 import { groceryList, startShopping } from './npc';
 import { placeOrder } from './logistics';
-import { getWorld } from './world/layout';
+import { getWorld, SHOPS } from './world/layout';
 
 /** relative customer traffic by hour of day */
 export function hourProfile(h: number): number {
@@ -35,38 +35,44 @@ export function demandFactors(state: GameState, b: Business) {
   const clean = 0.7 + 0.3 * (cleanliness(state, b.id) / 100);
   let priceAcc = 0;
   let avail = 0;
-  for (const k of PRODUCTS) {
-    priceAcc += Math.pow(ITEMS[k].retail / Math.max(1, b.prices[k]), 1.3);
-    if (count(state.containers[shelfId(k)], k) > 0) avail++;
+  const sections = Object.entries(b.sections);
+  for (const [sh, k] of sections) {
+    priceAcc += Math.pow(ITEMS[k].retail / Math.max(1, b.prices[k] ?? ITEMS[k].retail), 1.3);
+    if (count(state.containers[sh], k) > 0) avail++;
   }
-  const price = priceAcc / PRODUCTS.length;
-  const availability = 0.5 + 0.5 * (avail / PRODUCTS.length);
+  const n = Math.max(1, sections.length);
+  const price = sections.length ? priceAcc / n : 1;
+  const availability = 0.5 + 0.5 * (avail / n);
   const confidence = state.districts.harbourside.confidence;
   return { rep, clean, price, availability, confidence, total: rep * clean * price * availability * confidence };
 }
 
+/** how convenient a shop's location is for the district's households (fixed by geography) */
+export const LOCATION_FACTOR: Record<string, number> = { market: 1.0, unit4: 0.75 };
+
 export function economyTick(state: GameState) {
   const now = state.minute;
-  const market = state.businesses.market;
   const d = state.districts.harbourside;
-  if (isOpen(market, now)) {
-    const f = demandFactors(state, market).total;
-    d.demandAccumulator += (BASE_VISITS_PER_HOUR * hourProfile(hourOfDay(now)) * f) / 60;
-    if (d.demandAccumulator >= 1) {
-      const free = Object.values(state.people).filter((p) => p.npc?.ambient && p.npc.goal === 'offsite' && !p.visible);
-      if (free.length && isOpen(market, now + 20)) {
-        const p = free[randInt(state, 0, free.length - 1)];
-        const sp = getWorld().spawnPoints;
-        const spawn = getWorld().nodes[sp[randInt(state, 0, sp.length - 1)]];
-        p.pos = { x: spawn.x, z: spawn.z };
-        p.where = 'outside';
-        p.visible = true;
-        startShopping(state, p, groceryList(state, p, 3 + randInt(state, 0, 5)));
-        d.demandAccumulator -= 1;
-      } else {
-        d.demandAccumulator = Math.min(d.demandAccumulator, 3);
-      }
-    }
+  const open = Object.keys(SHOPS).map((id) => state.businesses[id]).filter((b) => b && isOpen(b, now) && productsOf(b).length > 0);
+  const locSum = open.reduce((a, b) => a + (LOCATION_FACTOR[b.id] ?? 0.5), 0);
+  const growth = 1 + 0.25 * Math.max(0, open.length - 1); // a second shop grows the market a little
+  for (const b of open) {
+    const f = demandFactors(state, b).total;
+    const share = (LOCATION_FACTOR[b.id] ?? 0.5) / locSum;
+    const acc = (d.shopDemand[b.id] ?? 0) + (BASE_VISITS_PER_HOUR * hourProfile(hourOfDay(now)) * f * share * growth) / 60;
+    d.shopDemand[b.id] = acc;
+    if (acc < 1) continue;
+    const free = Object.values(state.people).filter((p) => p.npc?.ambient && p.npc.goal === 'offsite' && !p.visible);
+    if (free.length && isOpen(b, now + 20)) {
+      const p = free[randInt(state, 0, free.length - 1)];
+      const sp = getWorld().spawnPoints;
+      const spawn = getWorld().nodes[sp[randInt(state, 0, sp.length - 1)]];
+      p.pos = { x: spawn.x, z: spawn.z };
+      p.where = 'outside';
+      p.visible = true;
+      startShopping(state, p, b.id, groceryList(state, p, b.id, 3 + randInt(state, 0, 5)));
+      d.shopDemand[b.id] = acc - 1;
+    } else d.shopDemand[b.id] = Math.min(acc, 3);
   }
   // the cafe's sit-down trade is simulated statistically
   const cafe = state.businesses.cafe;
