@@ -533,11 +533,13 @@ export function getWorld(): World {
   // Flat (player only, but graph allows player-follow tests)
   N('fl_out', 16, 8.6); N('fl_in', 16, 11.6, 'flat');
   L('se_16', 'fl_out', 'fl_in');
+  N('fl_c', 23.5, 14.5, 'flat'); N('fl_k', 15.5, 20, 'flat'); N('fl_bed', 24.2, 20, 'flat');
+  L('fl_in', 'fl_c', 'fl_bed'); L('fl_in', 'fl_k');
   N('door_upper', 27, 9.3, 'flat_upper'); L('se_27', 'door_upper');
   // Wholesale staff door
   N('door_wholesale', -43, 13.3, 'wholesale'); L('sw_-43', 'door_wholesale');
   // Park
-  N('pk_gate', 56, 10.5, 'park'); N('pk_a', 50, 24, 'park'); N('pk_b', 62, 24, 'park'); N('pk_c', 56, 32, 'park');
+  N('pk_gate', 56, 10.5, 'park'); N('pk_a', 52, 25, 'park'); N('pk_b', 62, 26, 'park'); N('pk_c', 56, 32, 'park');
   N('pk_bench_1', 50, 22.9, 'park'); N('pk_bench_2', 62, 22.9, 'park');
   L('se_56', 'pk_gate', 'pk_a', 'pk_c', 'pk_b', 'pk_gate'); L('pk_a', 'pk_bench_1'); L('pk_b', 'pk_bench_2');
   // bus stops (commute / ambient spawn)

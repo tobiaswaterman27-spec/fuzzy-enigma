@@ -160,7 +160,7 @@ export function createNewGame(seed: number, setup: PlayerSetup): GameState {
   });
 
   // ---------------------------------------------------------- containers & stock
-  createContainer(state, 'backroom', 'market', 'market', 900, undefined, 'market_backroom');
+  createContainer(state, 'backroom', 'market', 'market', 2000, undefined, 'market_backroom');
   createContainer(state, 'loading_bay', 'market', 'market', 900, undefined, 'market_bay');
   for (const k of PRODUCTS) {
     const sc = createContainer(state, 'shelf', 'market', 'market', SHELF_CAPACITY, k, shelfId(k));
