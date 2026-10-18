@@ -86,6 +86,7 @@ export function buildWorld(scene: THREE.Scene): WorldView {
   const windowsMat: THREE.MeshStandardMaterial[] = [];
   const doors: AnimDoor[] = [];
   occ = [];
+  fixtures.length = 0;
 
   // ---------------- ground
   const grassT = tex.grass();
@@ -266,17 +267,24 @@ function roomGlasses(windowsMat: THREE.MeshStandardMaterial[]): THREE.MeshStanda
   return roomGlass;
 }
 
-function windowMesh(w: number, h: number, frameCol: string, lit: THREE.MeshStandardMaterial, inner = false) {
+/** window openings per building (wallpaper is cut around them too) */
+const buildingWindows = new Map<string, { side: string; along: number; ww: number; wh: number; wy: number }[]>();
+
+/** clear glass for windows you can see through (walk-in buildings) */
+const CLEAR_GLASS = new THREE.MeshPhysicalMaterial({ color: '#dceaf0', roughness: 0.04, metalness: 0, transparent: true, opacity: 0.16, depthWrite: false, envMapIntensity: 1.2 });
+
+function windowMesh(w: number, h: number, frameCol: string, lit: THREE.MeshStandardMaterial | THREE.MeshPhysicalMaterial, inner = false, pane = true) {
   const grp = new THREE.Group();
   const fm = M(frameCol, 0.5);
-  const glass = inner ? M('#d9ecf5', 0.1, { emissive: new THREE.Color('#bfe0f0'), emissiveIntensity: 0.35 }) : lit;
-  grp.add(box(w, h, 0.03, glass, 0, 0, 0, false));
+  const glass = lit === CLEAR_GLASS ? lit : inner ? M('#d9ecf5', 0.1, { emissive: new THREE.Color('#bfe0f0'), emissiveIntensity: 0.35 }) : lit;
+  if (pane) grp.add(box(w, h, 0.012, glass, 0, 0, 0, false));
   grp.add(box(w + 0.12, 0.08, 0.1, fm, 0, h / 2, 0, false));
   grp.add(box(w + 0.12, 0.08, 0.1, fm, 0, -h / 2, 0, false));
   grp.add(box(0.08, h, 0.1, fm, -w / 2, 0, 0, false));
   grp.add(box(0.08, h, 0.1, fm, w / 2, 0, 0, false));
   grp.add(box(0.05, h, 0.06, fm, 0, 0, 0, false));
   if (!inner) grp.add(box(w + 0.25, 0.06, 0.22, M('#d8d4cc', 0.7), 0, -h / 2 - 0.05, 0.06, false));
+  grp.traverse((o) => { if ((o as THREE.Mesh).material === CLEAR_GLASS) o.userData.dynamic = true; });
   return grp;
 }
 
@@ -292,24 +300,8 @@ function buildBuilding(g: THREE.Group, b: BuildingDef, cutaway: WorldView['cutaw
   if (b.interior) {
     const innerT = tex.plaster(b.id === 'flat' ? '#e8dfcf' : b.id === 'cafe' ? '#efe2c8' : b.id === 'jobcentre' ? '#e4e8ec' : '#eceae4');
     const innerM = texMat(innerT, 0.95);
-    for (const r of wallsFor(b)) {
-      const isInternal = b.internalWalls?.includes(r);
-      const mats = [innerM, innerM, M(b.trim, 0.8), innerM, innerM, innerM];
-      if (!isInternal) mats[wallOutwardFace(r, b)] = facade.mat;
-      const m = rbox(r, 3.2, mats, 0, true, facade.tile);
-      g.add(m);
-      wallsOut.push(m);
-      occ.push(m);
-      if (!isInternal) {
-        const horiz = r.x1 - r.x0 > r.z1 - r.z0;
-        const inwardOff = horiz ? ((r.z0 + r.z1) / 2 < cz ? 0.17 : -0.17) : ((r.x0 + r.x1) / 2 < cx ? 0.17 : -0.17);
-        const sk = horiz ? box(r.x1 - r.x0, 0.12, 0.03, M('#f6f3ee', 0.6), (r.x0 + r.x1) / 2, 0.1, (r.z0 + r.z1) / 2 + inwardOff, false) : box(0.03, 0.12, r.z1 - r.z0, M('#f6f3ee', 0.6), (r.x0 + r.x1) / 2 + inwardOff, 0.1, (r.z0 + r.z1) / 2, false);
-        g.add(sk);
-      }
-    }
-    const fl = FLOOR[b.id]?.() ?? { t: tex.tiles('#cccccc', '#bbbbbb'), tile: 1.2 };
-    g.add(box(W, 0.08, D, texMat(fl.t, 0.75), cx, 0.04, cz, false, fl.tile));
-    // framed windows on both faces of the exterior walls, avoiding doors
+    // where the windows go (shared by the wall openings and the frames)
+    const wins: { side: 'zmin' | 'zmax' | 'xmin' | 'xmax'; along: number; ww: number; wh: number; wy: number }[] = [];
     for (const ws of [{ side: 'zmin', len: W }, { side: 'zmax', len: W }, { side: 'xmin', len: D }, { side: 'xmax', len: D }] as const) {
       const shopFront = (b.id === 'market' && ws.side === 'zmax') || (b.id === 'unit4' && ws.side === 'zmin') || (b.id === 'cafe' && ws.side === 'zmin');
       const spacing = shopFront ? 3.4 : 3.2;
@@ -319,18 +311,62 @@ function buildBuilding(g: THREE.Group, b: BuildingDef, cutaway: WorldView['cutaw
         if (b.doors.some((d) => d.side === ws.side && along > d.a - 1.7 && along < d.b + 1.7)) continue;
         if ((ws.side === 'zmin' || ws.side === 'zmax') && b.internalWalls?.some((r) => along > r.x0 - 1 && along < r.x1 + 1 && r.x1 - r.x0 < 1)) continue;
         if ((ws.side === 'xmin' || ws.side === 'xmax') && b.internalWalls?.some((r) => along > r.z0 - 1 && along < r.z1 + 1 && r.z1 - r.z0 < 1)) continue;
-        const ww = shopFront ? 2.6 : 1.5, wh = shopFront ? 2.0 : 1.3, wy = shopFront ? 1.35 : 1.65;
-        for (const inner of [false, true]) {
-          const win = windowMesh(ww, wh, b.trim, litGlass, inner);
-          const off = (WALL_T / 2 + 0.02) * (inner ? -1 : 1);
-          if (ws.side === 'zmin') { win.position.set(along, wy, z0 - off); win.rotation.y = Math.PI; }
-          if (ws.side === 'zmax') win.position.set(along, wy, z1 + off);
-          if (ws.side === 'xmin') { win.position.set(x0 - off, wy, along); win.rotation.y = -Math.PI / 2; }
-          if (ws.side === 'xmax') { win.position.set(x1 + off, wy, along); win.rotation.y = Math.PI / 2; }
-          if (inner) win.rotation.y += Math.PI;
-          g.add(win);
-        }
+        wins.push({ side: ws.side, along, ww: shopFront ? 2.6 : 1.5, wh: shopFront ? 2.0 : 1.3, wy: shopFront ? 1.35 : 1.65 });
       }
+    }
+    buildingWindows.set(b.id, wins);
+    const skirtM = M('#f6f3ee', 0.6);
+    for (const r of wallsFor(b)) {
+      const isInternal = b.internalWalls?.includes(r);
+      const mats = [innerM, innerM, M(b.trim, 0.8), innerM, innerM, innerM];
+      if (!isInternal) mats[wallOutwardFace(r, b)] = facade.mat;
+      const horiz = r.x1 - r.x0 > r.z1 - r.z0;
+      const side = horiz ? ((r.z0 + r.z1) / 2 < cz ? 'zmin' : 'zmax') : ((r.x0 + r.x1) / 2 < cx ? 'xmin' : 'xmax');
+      const a0 = horiz ? r.x0 : r.z0, a1 = horiz ? r.x1 : r.z1;
+      const holes = isInternal ? [] : wins.filter((w) => w.side === side && w.along - w.ww / 2 > a0 && w.along + w.ww / 2 < a1).sort((p, q) => p.along - q.along);
+      // the wall is built in pieces around real window openings, so you can see out (and in)
+      const piece = (from: number, to: number, y0: number, y1: number, full: boolean) => {
+        if (to - from < 0.01 || y1 - y0 < 0.01) return;
+        const pr: Rect = horiz ? { x0: from, x1: to, z0: r.z0, z1: r.z1 } : { x0: r.x0, x1: r.x1, z0: from, z1: to };
+        const m = rbox(pr, y1 - y0, mats, y0, true, facade.tile);
+        g.add(m);
+        occ.push(m);
+        if (full) wallsOut.push(m);
+      };
+      let at = a0;
+      for (const w of holes) {
+        const h0 = w.along - w.ww / 2, h1 = w.along + w.ww / 2;
+        piece(at, h0, 0, 3.2, true);
+        piece(h0, h1, 0, w.wy - w.wh / 2, false);
+        piece(h0, h1, w.wy + w.wh / 2, 3.2, false);
+        at = h1;
+      }
+      piece(at, a1, 0, 3.2, true);
+      if (!isInternal) {
+        const inwardOff = horiz ? ((r.z0 + r.z1) / 2 < cz ? 0.17 : -0.17) : ((r.x0 + r.x1) / 2 < cx ? 0.17 : -0.17);
+        g.add(horiz ? box(r.x1 - r.x0, 0.12, 0.03, skirtM, (r.x0 + r.x1) / 2, 0.1, (r.z0 + r.z1) / 2 + inwardOff, false) : box(0.03, 0.12, r.z1 - r.z0, skirtM, (r.x0 + r.x1) / 2 + inwardOff, 0.1, (r.z0 + r.z1) / 2, false));
+      }
+    }
+    const fl = FLOOR[b.id]?.() ?? { t: tex.tiles('#cccccc', '#bbbbbb'), tile: 1.2 };
+    g.add(box(W, 0.08, D, texMat(fl.t, 0.75), cx, 0.04, cz, false, fl.tile));
+    // frames on both faces and one clear pane in each opening
+    for (const w of wins) {
+      for (const inner of [false, true]) {
+        const win = windowMesh(w.ww, w.wh, b.trim, CLEAR_GLASS, inner, !inner);
+        const off = (WALL_T / 2 - 0.04) * (inner ? -1 : 1);
+        if (w.side === 'zmin') { win.position.set(w.along, w.wy, z0 - off); win.rotation.y = Math.PI; }
+        if (w.side === 'zmax') win.position.set(w.along, w.wy, z1 + off);
+        if (w.side === 'xmin') { win.position.set(x0 - off, w.wy, w.along); win.rotation.y = -Math.PI / 2; }
+        if (w.side === 'xmax') { win.position.set(x1 + off, w.wy, w.along); win.rotation.y = Math.PI / 2; }
+        if (inner) win.rotation.y += Math.PI;
+        g.add(win);
+      }
+      // window reveal (the wall thickness around the opening)
+      const rev = M('#f1eee8', 0.8);
+      const hz = w.side === 'zmin' || w.side === 'zmax';
+      const wz = w.side === 'zmin' ? z0 : w.side === 'zmax' ? z1 : 0, wx = w.side === 'xmin' ? x0 : w.side === 'xmax' ? x1 : 0;
+      const sill = hz ? box(w.ww, 0.03, WALL_T, rev, w.along, w.wy - w.wh / 2 + 0.015, wz, false) : box(WALL_T, 0.03, w.ww, rev, wx, w.wy - w.wh / 2 + 0.015, w.along, false);
+      g.add(sill);
     }
     if (b.height > 3.3) {
       const upH = b.height - 3.2;
@@ -691,8 +727,19 @@ function buildObstacle(o: Obstacle): THREE.Object3D {
           const a0 = Math.max(horiz ? r.x0 : r.z0, horiz ? wr.x0 : wr.z0), a1 = Math.min(horiz ? r.x1 : r.z1, horiz ? wr.x1 : wr.z1);
           if (a1 - a0 < 0.05) continue;
           const off = (side === 'x0' || side === 'z0' ? 1 : -1) * 0.006;
-          const panel = horiz ? box(a1 - a0, H - 0.12, 0.008, mat, (a0 + a1) / 2, 0.12 + (H - 0.12) / 2, face + off, false, 1.2) : box(0.008, H - 0.12, a1 - a0, mat, face + off, 0.12 + (H - 0.12) / 2, (a0 + a1) / 2, false, 1.2);
-          grp.add(panel);
+          const bside = horiz ? (Math.abs(face - b.rect.z0) < 0.4 ? 'zmin' : Math.abs(face - b.rect.z1) < 0.4 ? 'zmax' : '') : (Math.abs(face - b.rect.x0) < 0.4 ? 'xmin' : Math.abs(face - b.rect.x1) < 0.4 ? 'xmax' : '');
+          const holes = (buildingWindows.get(b.id) ?? []).filter((w) => w.side === bside && w.along - w.ww / 2 >= a0 - 0.01 && w.along + w.ww / 2 <= a1 + 0.01).sort((p, q) => p.along - q.along);
+          const panel = (f: number, t: number, y0: number, y1: number) => {
+            if (t - f < 0.01 || y1 - y0 < 0.01) return;
+            grp.add(horiz ? box(t - f, y1 - y0, 0.008, mat, (f + t) / 2, (y0 + y1) / 2, face + off, false, 1.2) : box(0.008, y1 - y0, t - f, mat, face + off, (y0 + y1) / 2, (f + t) / 2, false, 1.2));
+          };
+          let at = a0;
+          for (const w of holes) {
+            const h0 = w.along - w.ww / 2, h1 = w.along + w.ww / 2;
+            panel(at, h0, 0.12, H); panel(h0, h1, 0.12, w.wy - w.wh / 2); panel(h0, h1, w.wy + w.wh / 2, H);
+            at = h1;
+          }
+          panel(at, a1, 0.12, H);
         }
       }
       return grp;

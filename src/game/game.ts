@@ -13,7 +13,7 @@ import type { GameState } from '../sim/types';
 import { step } from '../sim/sim';
 import { cancelAction, focusInteractable, optionsFor, startAction, enforceLocationRules, type ActionOption } from '../sim/actions';
 import { resolveCircle } from '../sim/world/nav';
-import { buildingAt, getWorld } from '../sim/world/layout';
+import { buildingAt, getWorld, setHomeDesign } from '../sim/world/layout';
 import { capability } from '../sim/needs';
 import { daylight, hourOfDay } from '../sim/clock';
 import { buildWorld, type WorldView } from '../render/world';
@@ -114,11 +114,26 @@ export class Game {
     this.bindInput();
   }
 
+  /** re-furnish the player's home from the state's design: the world is rebuilt around the player */
+  applyHomeDesign() {
+    const d = this.state.homeDesigns.flat;
+    if (!d) return;
+    setHomeDesign(d);
+    this.scene.remove(this.world.group);
+    this.world = buildWorld(this.scene);
+    this.cutawayOn = !this.cutawayOn; // force the cut-away state to be re-applied
+    // if the new arrangement put furniture where you stand, step to the nearest free spot
+    const p = this.player;
+    p.pos = resolveCircle(p.pos, 0.3);
+    if (p.action) cancelAction(this.state, p, 'moved');
+  }
+
   setState(s: GameState) {
     // rebuild dynamic views for a loaded game
     for (const v of this.views.people.values()) v.dispose(this.scene);
     this.views.people.clear();
     this.state = s;
+    this.applyHomeDesign();
   }
 
   setupComposer() {

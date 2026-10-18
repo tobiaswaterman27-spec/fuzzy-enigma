@@ -501,9 +501,9 @@ function buildWorldData(homeDesign: HomeDesign): World {
     const basin: PlacedItem = { kind: 'basin', rect: { x0: 27.0, z0: 13.2, x1: 27.6, z1: 13.65 }, height: 0.85, solid: true, rot: 0, room: 'bathroom' };
     const furnished = furnish({
       rooms: [
-        { id: 'living', name: 'Living room', kind: 'living', rect: { x0: 12.15, z0: 13.75, x1: 21.85, z1: 23.6 }, doors: [{ x: 16.7, z: 13.75 }], outside: ['x0'] },
+        { id: 'living', name: 'Living room', kind: 'living', rect: { x0: 12.15, z0: 13.75, x1: 21.85, z1: 23.6 }, doors: [{ x: 16.7, z: 13.75 }], outside: ['x0'], open: [{ side: 'z1', from: 12, to: 22 }, { side: 'x1', from: 13.7, to: 17.7 }] },
         { id: 'kitchen', name: 'Kitchen', kind: 'kitchen', rect: { x0: 12.15, z0: 23.6, x1: 21.85, z1: 25.85 }, doors: [], outside: ['x0', 'z1'] },
-        { id: 'hall', name: 'Hall', kind: 'hall', rect: { x0: 21.85, z0: 13.75, x1: 25.35, z1: 17.35 }, doors: [{ x: 23.5, z: 17.5 }, { x: 25.5, z: 15.0 }], outside: [] },
+        { id: 'hall', name: 'Hall', kind: 'hall', rect: { x0: 21.85, z0: 13.75, x1: 25.35, z1: 17.35 }, doors: [{ x: 23.5, z: 17.5 }, { x: 25.5, z: 15.0 }], outside: [], open: [{ side: 'x0', from: 13.7, to: 17.7 }] },
         { id: 'bedroom', name: 'Bedroom', kind: 'bedroom', rect: { x0: 22.15, z0: 17.65, x1: 29.85, z1: 25.85 }, doors: [{ x: 23.5, z: 17.65 }], outside: ['x1', 'z1'] },
         { id: 'bathroom', name: 'Bathroom', kind: 'bathroom', rect: { x0: 25.65, z0: 13.15, x1: 29.85, z1: 17.35 }, doors: [{ x: 25.65, z: 15.0 }], outside: ['x1'] },
       ],

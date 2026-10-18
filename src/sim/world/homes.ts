@@ -17,6 +17,8 @@ export interface RoomDef {
   doors: Vec2[];
   /** room edges on the outside of the building (they have windows) */
   outside: ('x0' | 'x1' | 'z0' | 'z1')[];
+  /** stretches of an edge with no wall (open-plan): nothing can stand against them */
+  open?: { side: 'x0' | 'x1' | 'z0' | 'z1'; from: number; to: number }[];
 }
 
 /** what the occupant has chosen; everything has a sensible default */
@@ -191,6 +193,7 @@ export function furnish(ctx: DesignContext, design: HomeDesign): Furnished {
     const cands: { rect: Rect; side: Side; score: number }[] = [];
     for (const s of sides) for (let k = 0; k <= 20; k++) {
       const r = againstWall(room.rect, s, w, d, k / 20);
+      if (r && room.open?.some((o) => o.side === s && (s === 'z0' || s === 'z1' ? r.x0 < o.to && r.x1 > o.from : r.z0 < o.to && r.z1 > o.from))) continue;
       if (r && solidOK(r, room, { tall: opts.tall, side: s, front: opts.front })) cands.push({ rect: r, side: s, score: (opts.prefer?.(r, s) ?? 0) + rnd() * 0.5 });
     }
     if (!cands.length) return null;
