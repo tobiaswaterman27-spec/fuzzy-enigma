@@ -333,7 +333,9 @@ export class Game {
       this.camDist += (wantDist - this.camDist) * Math.min(1, dt * 2);
       void dYaw;
     }
-    const pivot = new THREE.Vector3(p.pos.x, p.sleeping ? 1.0 : 1.62, p.pos.z);
+    // follow the drawn body (it may be acting out a multi-step action away from its sim spot)
+    const drawn = p.action ? this.views.people.get(p.id)?.rig.root.position : null;
+    const pivot = new THREE.Vector3(drawn?.x ?? p.pos.x, p.sleeping ? 1.0 : 1.62, drawn?.z ?? p.pos.z);
     const pitch = this.camPitch;
     const dir = new THREE.Vector3(Math.sin(this.camYaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(this.camYaw) * Math.cos(pitch));
     // over-the-shoulder offset to the right of the view direction

@@ -4,6 +4,7 @@ import type { GameState, Person } from '../sim/types';
 import { AnimationController, buildRig, dress, type Rig } from './character';
 import { buildCar } from './world';
 import { modelInstance } from './models';
+import { planRoute } from '../sim/world/nav';
 import { productGeometry, productMaterial, productUnitGeometry } from './products';
 import { buildingAt, getWorld, type Interactable, SHELF_LAYOUT, PALLET_X, SHOPS, U4_SECTIONS, U4_PALLET_Z, WH_PRODUCTS } from '../sim/world/layout';
 import { ITEMS } from '../sim/items';
@@ -91,7 +92,8 @@ class PersonView {
       } else dress(this.rig, p.appearance);
       this.outfitKey = key;
     }
-    const target = new THREE.Vector3(p.pos.x + this.nudge.x, 0, p.pos.z + this.nudge.z);
+    const stage = this.staging(state, p, dt);
+    const target = stage ? new THREE.Vector3(stage.pos.x, 0, stage.pos.z) : new THREE.Vector3(p.pos.x + this.nudge.x, 0, p.pos.z + this.nudge.z);
     // smooth presentation, but snap on large jumps (teleports, loading)
     if (root.position.distanceTo(target) > 3) root.position.copy(target);
     else root.position.lerp(target, Math.min(1, dt * 20));
@@ -100,7 +102,7 @@ class PersonView {
     const inst = dt > 0 ? moved / dt : 0;
     this.speed += (inst - this.speed) * Math.min(1, dt * 10);
     // facing
-    let yaw = p.facing;
+    let yaw = stage ? stage.face : p.facing;
     const cur = root.rotation.y;
     let diff = ((yaw - cur + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
     root.rotation.y = cur + diff * Math.min(1, dt * 12);
@@ -231,8 +233,8 @@ class PersonView {
     // shopping basket (picked goods) in the left hand, carrier bag (paid goods) in the right
     this.syncHeld(state, p);
     const stepping = a?.type === 'shower' && this.showerStep;
-    const realSpeed = stepping ? 0.9 : a || this.bedIt ? 0 : this.speed;
-    const clipAction = this.bedIt ? this.bedPose : stepping ? null : a?.type ?? null;
+    const realSpeed = stage ? (stage.walking ? Math.max(0.6, this.speed) : 0) : stepping ? 0.9 : a || this.bedIt ? 0 : this.speed;
+    const clipAction = stage ? (stage.walking ? null : stage.clip) : this.bedIt ? this.bedPose : stepping ? null : a?.type ?? null;
     this.anim.update(dt, realSpeed, !!item, clipAction);
     // keep the feet on the floor: whatever the animation does, the lower foot rests on the ground
     if (!this.bedIt && this.rig.joints) {
@@ -247,6 +249,40 @@ class PersonView {
     this.placeProps(a?.type ?? null, p.facing);
   }
   private ground = 0;
+  private stagePos: THREE.Vector3 | null = null;
+  private stageIdx = -1;
+  private stageRoute: { x: number; z: number }[] = [];
+
+  /** Multi-step actions acted out around the room: the simulation runs one timed action at one spot,
+   * the view walks the person through its real steps (fridge, worktop, hob...) and ends back at that spot. */
+  private staging(state: GameState, p: Person, dt: number): { pos: THREE.Vector3; face: number; clip: string; walking: boolean } | null {
+    void state;
+    const a = p.action;
+    const it = a ? getWorld().interactables[a.target] : null;
+    const steps = a && it && a.duration > 0 ? stagePlan(a.type, it, p) : null;
+    if (!steps) { this.stagePos = null; this.stageIdx = -1; return null; }
+    const f = Math.min(1, a!.progress / a!.duration);
+    const idx = Math.max(0, steps.findIndex((s) => f <= s.until));
+    const cur = steps[idx] ?? steps[steps.length - 1];
+    if (!this.stagePos) this.stagePos = this.rig.root.position.clone();
+    if (idx !== this.stageIdx) {
+      // walk there around the furniture, not through it
+      this.stageIdx = idx;
+      this.stageRoute = planRoute({ x: this.stagePos.x, z: this.stagePos.z }, cur.at) ?? [cur.at];
+      if (!this.stageRoute.length || Math.hypot(this.stageRoute[this.stageRoute.length - 1].x - cur.at.x, this.stageRoute[this.stageRoute.length - 1].z - cur.at.z) > 0.05) this.stageRoute.push(cur.at);
+    }
+    while (this.stageRoute.length && Math.hypot(this.stageRoute[0].x - this.stagePos.x, this.stageRoute[0].z - this.stagePos.z) < 0.04) this.stageRoute.shift();
+    const next = this.stageRoute[0];
+    const walking = !!next;
+    let face = cur.face;
+    if (next) {
+      const goal = new THREE.Vector3(next.x, 0, next.z);
+      const d = this.stagePos.distanceTo(goal);
+      face = Math.atan2(goal.x - this.stagePos.x, goal.z - this.stagePos.z);
+      this.stagePos.add(goal.sub(this.stagePos).multiplyScalar(Math.min(1, (1.25 * dt) / d)));
+    }
+    return { pos: this.stagePos, face, clip: cur.clip, walking };
+  }
   private showerStep = false;
   private bubble: THREE.Sprite | null = null;
   private bubbleText = '';
@@ -394,6 +430,47 @@ class PersonView {
   }
 
   dispose(scene: THREE.Scene) { scene.remove(this.rig.root); this.mop?.parent?.remove(this.mop); this.binbag?.parent?.remove(this.binbag); this.handItem?.parent?.remove(this.handItem); }
+}
+
+interface StageStep { until: number; at: { x: number; z: number }; face: number; clip: string }
+/** spots where clutter lies about in the player's home (set by Views.updateHome) */
+let clutterStops: { x: number; z: number }[] = [];
+
+/** the steps an action is acted out in, as fractions of its duration; null = done on the spot */
+function stagePlan(type: string, it: Interactable, p: Person): StageStep[] | null {
+  void p;
+  const face = it.facing;
+  if (type === 'cook') {
+    // fridge at the left end of the kitchen run, a clear stretch of worktop, then the hob, then plate up
+    const k = getWorld().obstacles.find((o) => o.kind === 'kitchen' && Math.abs((o.rect.z0 + o.rect.z1) / 2 - it.obj.z) < 1 && o.rect.x1 >= it.obj.x - 1.5);
+    const fridge = k ? { x: k.rect.x0 + 0.35, z: it.pos.z } : { x: it.pos.x - 2.5, z: it.pos.z };
+    const board = { x: it.pos.x - 1.1, z: it.pos.z };
+    return [
+      { until: 0.12, at: fridge, face, clip: 'take_case' },   // ingredients out of the fridge
+      { until: 0.32, at: board, face, clip: 'cook' },         // chop on the worktop
+      { until: 0.88, at: it.pos, face, clip: 'cook' },        // pan on the hob, stir
+      { until: 1, at: board, face, clip: 'stock_shelf' },     // dish up
+    ];
+  }
+  if (type === 'tidy' && clutterStops.length) {
+    // walk round the flat picking things up, then back to where you started
+    const stops = clutterStops.slice(0, 5);
+    const steps: StageStep[] = stops.map((s, i) => ({ until: (i + 1) / (stops.length + 1), at: s, face: Math.atan2(s.x - it.pos.x, s.z - it.pos.z), clip: 'take_case' }));
+    steps.push({ until: 1, at: it.pos, face, clip: 'take_case' });
+    return steps;
+  }
+  if (type === 'laundry') return [{ until: 1, at: it.pos, face, clip: 'take_case' }];
+  if (type === 'eat' && it.kind === 'kitchen') {
+    // take it out, sit down at the table to eat, clear the plate back to the kitchen
+    const chair = getWorld().interactables.chair;
+    if (!chair || Math.hypot(chair.pos.x - it.pos.x, chair.pos.z - it.pos.z) > 9) return null;
+    return [
+      { until: 0.1, at: it.pos, face, clip: 'take_case' },
+      { until: 0.9, at: chair.pos, face: chair.facing, clip: 'sit' },
+      { until: 1, at: it.pos, face, clip: 'stock_shelf' },
+    ];
+  }
+  return null;
 }
 
 export class Views {
@@ -587,6 +664,7 @@ export class Views {
       }
     }
     this.updateHome(state, dt);
+    this.updateCooking(state, dt);
     // empty cases piled beside the baler
     for (const [bid, c] of this.cartons) {
       const n = Math.min(12, state.businesses[bid]?.cardboard ?? 0);
@@ -634,6 +712,63 @@ export class Views {
   }
 
   playerView(state: GameState) { return this.people.get(state.playerId); }
+
+  private cook: THREE.Group | null = null;
+  /** someone cooking: board and veg on the worktop, then the pan on the hob with steam, then a plate */
+  private updateCooking(state: GameState, dt: number) {
+    const p = state.people[state.playerId];
+    const a = p?.action;
+    const it = a?.type === 'cook' ? getWorld().interactables[a.target] : null;
+    if (!it || !a) { if (this.cook) { this.scene.remove(this.cook); this.cook = null; } return; }
+    if (!this.cook) {
+      const g = new THREE.Group();
+      const top = 0.935;
+      const board = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.02, 0.28), new THREE.MeshStandardMaterial({ color: '#c49a63', roughness: 0.7 }));
+      board.name = 'board';
+      board.position.set(it.obj.x - 1.1, top + 0.01, it.obj.z - 0.1);
+      for (let k = 0; k < 5; k++) {
+        const v = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 6), new THREE.MeshStandardMaterial({ color: ['#d9452b', '#f0c419', '#4c9a2a', '#e8e0c8', '#d9452b'][k], roughness: 0.6 }));
+        v.position.set(-0.12 + k * 0.06, 0.03, (k % 2) * 0.05);
+        board.add(v);
+      }
+      const pan = new THREE.Group();
+      pan.name = 'pan';
+      const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.11, 0.07, 20, 1, true), new THREE.MeshStandardMaterial({ color: '#2a2a2c', roughness: 0.35, metalness: 0.6, side: THREE.DoubleSide }));
+      const base = new THREE.Mesh(new THREE.CircleGeometry(0.11, 20), new THREE.MeshStandardMaterial({ color: '#c88a3a', roughness: 0.8 }));
+      base.rotation.x = -Math.PI / 2; base.position.y = -0.02;
+      const handle = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.02, 0.03), new THREE.MeshStandardMaterial({ color: '#111', roughness: 0.5 }));
+      handle.position.set(-0.22, 0.02, 0);
+      pan.add(bowl, base, handle);
+      pan.position.set(it.obj.x + 0.12, top + 0.04, it.obj.z - 0.05);
+      for (let k = 0; k < 6; k++) {
+        const puff = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.25, depthWrite: false }));
+        puff.name = 'steam';
+        puff.userData.phase = k / 6;
+        pan.add(puff);
+      }
+      const plate = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.1, 0.018, 20), new THREE.MeshStandardMaterial({ color: '#f4f2ec', roughness: 0.25 }));
+      plate.name = 'plate';
+      const food = new THREE.Mesh(new THREE.SphereGeometry(0.07, 12, 8), new THREE.MeshStandardMaterial({ color: '#d98b3a', roughness: 0.7 }));
+      food.scale.y = 0.4; food.position.y = 0.02;
+      plate.add(food);
+      plate.position.set(it.obj.x - 1.0, top + 0.01, it.obj.z - 0.1);
+      g.add(board, pan, plate);
+      this.scene.add(g);
+      this.cook = g;
+    }
+    const f = a.duration > 0 ? a.progress / a.duration : 0;
+    const board = this.cook.getObjectByName('board')!, pan = this.cook.getObjectByName('pan')!, plate = this.cook.getObjectByName('plate')!;
+    board.visible = f > 0.1 && f < 0.9;
+    pan.visible = f > 0.3;
+    plate.visible = f > 0.9;
+    for (const ch of pan.children) if (ch.name === 'steam') {
+      const ph = (ch.userData.phase + performance.now() / 2400) % 1;
+      ch.position.set(Math.sin(ph * 9 + ch.userData.phase * 20) * 0.04, 0.05 + ph * 0.45, Math.cos(ph * 7) * 0.03);
+      ch.scale.setScalar(0.6 + ph * 1.6);
+      ((ch as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = f > 0.35 && f < 0.9 ? 0.28 * (1 - ph) : 0;
+    }
+    void dt;
+  }
 
   /** dirty dishes stacked by the sink, clutter on the furniture, washing tumbling in the machine */
   private updateHome(state: GameState, dt: number) {
@@ -685,6 +820,13 @@ export class Views {
     for (const o of find('dining_table')) { const m = center(o.rect); spots.push({ kind: 'mug', at: m.clone().setY(0.77), rot: 0 }, { kind: 'box', at: m.clone().add(new THREE.Vector3(-0.2, 0.8, 0.1)), rot: 0.3 }); }
     for (const o of find('desk')) { const m = center(o.rect); spots.push({ kind: 'magazine', at: m.clone().setY(0.77), rot: -0.3 }); }
     const n = Math.min(spots.length, Math.floor(c.mess / 12));
+    // where to stand to pick each thing up: the nearest free spot on the flat's walking grid
+    const grid = Object.values(w.nodes).filter((nd) => nd.id.startsWith('flg_'));
+    clutterStops = spots.slice(0, Math.max(n, 3)).map((s) => {
+      let best = grid[0], bd = Infinity;
+      for (const nd of grid) { const d = Math.hypot(nd.x - s.at.x, nd.z - s.at.z); if (d < bd) { bd = d; best = nd; } }
+      return best ? { x: best.x, z: best.z } : { x: s.at.x, z: s.at.z };
+    }).filter((x, i, arr) => arr.findIndex((y) => Math.hypot(y.x - x.x, y.z - x.z) < 0.3) === i);
     const cloth = ['#7a2f2f', '#2f4f7a', '#3d3d3d', '#c9b27a'];
     for (let k = 0; k < n; k++) {
       const s = spots[k];

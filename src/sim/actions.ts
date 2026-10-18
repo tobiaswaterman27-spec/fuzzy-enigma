@@ -370,7 +370,8 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
       break;
     }
     case 'eat':
-      begin(p, type, itId, { duration: 3, arg }, now); break;
+      // a proper sit-down meal at home; a quick bite anywhere else
+      begin(p, type, itId, { duration: it.kind === 'kitchen' && p.isPlayer ? 8 : 3, arg }, now); break;
     case 'change_outfit':
       begin(p, type, itId, { duration: 1, arg }, now); break;
     case 'buy_meal': {
