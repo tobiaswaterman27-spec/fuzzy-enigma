@@ -15,7 +15,8 @@ import { clearLine } from './world/nav';
 import { transfer } from './ledger';
 import { news } from './events';
 import { fmtClock, minuteOfDay } from './clock';
-import { storeStaffed } from './homestore';
+import { completeHomeOrder, storeStaffed } from './homestore';
+import { homeQueueSlot } from './npc';
 import { choresOf, DISHES_BLOCK, homeMess, inWash, messLabel, wearOf, WASH_MINUTES } from './home';
 
 export interface ActionOption {
@@ -295,6 +296,13 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
     }
     case 'home_counter': {
       const staffed = storeStaffed(state);
+      if (onShift) {
+        const b2 = state.businesses[bid!];
+        const head = b2.queue?.[0] ? state.people[b2.queue[0]] : null;
+        const ready = !!head && dist(head.pos, homeQueueSlot(0)) < 1.3;
+        out.push(opt('take_order', head ? `Help ${head.name} and take their order` : 'Take orders at the counter', !head ? 'No customer waiting' : !ready ? `${head.name.split(' ')[0]} is still walking up` : undefined));
+        break;
+      }
       out.push({ type: 'ui', label: 'Browse furniture, wallpaper, flooring and rugs for your home', enabled: true, ui: 'homestore', reason: staffed ? undefined : 'Counter closed - you can still order online' });
       break;
     }
@@ -366,6 +374,8 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
       begin(p, type, itId, { duration: 0.6 / speed(p, 'warehouse') }, now); break;
     case 'drive_van':
       begin(p, type, itId, { duration: 0.3 }, now); break;
+    case 'take_order':
+      begin(p, type, itId, { duration: 3 / sp }, now); break;
     case 'stage_case':
       begin(p, type, itId, { duration: 0.4 / speed(p, 'warehouse') }, now); break;
     case 'bale_cardboard':
@@ -506,6 +516,13 @@ export function tickAction(state: GameState, p: Person, dt: number): string | nu
       break;
     }
     case 'take_mop': p.equipment = 'mop'; msg = 'Mop & bucket ready.'; break;
+    case 'take_order': {
+      const b = state.businesses[it!.businessId!];
+      const head = b?.queue?.[0];
+      msg = head ? completeHomeOrder(state, head, p.id).msg : 'The customer has gone.';
+      if (head) addXp(p, 'retail', 3);
+      break;
+    }
     case 'drive_van': {
       const v = state.vehicles[a.target.slice(4)];
       if (v && v.state === 'loaded' && v.driverId === p.id) {

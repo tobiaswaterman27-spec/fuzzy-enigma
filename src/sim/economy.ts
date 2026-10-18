@@ -12,7 +12,7 @@ import { ITEMS, PRODUCTS } from './items';
 import { news } from './events';
 import { statsFor } from './employment';
 import { cleanliness, isOpen, productsOf, staffOnDuty } from './retail';
-import { groceryList, startShopping } from './npc';
+import { groceryList, startHomeShopping, startShopping } from './npc';
 import { placeOrder } from './logistics';
 import { getWorld, SHOPS } from './world/layout';
 
@@ -73,6 +73,24 @@ export function economyTick(state: GameState) {
       startShopping(state, p, b.id, groceryList(state, p, b.id, 3 + randInt(state, 0, 5)));
       d.shopDemand[b.id] = acc - 1;
     } else d.shopDemand[b.id] = Math.min(acc, 3);
+  }
+  // Harbour Home: a customer every couple of hours comes in to browse and order at the counter
+  const hs = state.businesses.homestore;
+  if (hs && isOpen(hs, now) && isOpen(hs, now + 40)) {
+    d.shopDemand.homestore = (d.shopDemand.homestore ?? 0) + (0.55 * d.confidence) / 60;
+    if (d.shopDemand.homestore >= 1) {
+      const free = Object.values(state.people).filter((p) => p.npc?.ambient && p.npc.goal === 'offsite' && !p.visible);
+      if (free.length) {
+        const p = free[randInt(state, 0, free.length - 1)];
+        const sp = getWorld().spawnPoints;
+        const spawn = getWorld().nodes[sp[randInt(state, 0, sp.length - 1)]];
+        p.pos = { x: spawn.x, z: spawn.z };
+        p.where = 'outside';
+        p.visible = true;
+        startHomeShopping(state, p);
+      }
+      d.shopDemand.homestore -= 1;
+    }
   }
   // the cafe's sit-down trade is simulated statistically
   const cafe = state.businesses.cafe;

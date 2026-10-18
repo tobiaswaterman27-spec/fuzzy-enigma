@@ -147,6 +147,7 @@ export type ActionType =
   | 'talk'
   | 'sit'
   | 'drive_van'
+  | 'take_order'
   | 'pick_case'
   | 'stage_case'
   | 'face_shelf'
@@ -341,6 +342,8 @@ export interface Business {
   binFill?: number;
   /** small per-business daily flags (e.g. the counter was staffed today) */
   flags?: Record<string, boolean>;
+  /** customers waiting at a sales counter (furniture store), first is being served */
+  queue?: Id[];
 }
 
 export interface Policy {

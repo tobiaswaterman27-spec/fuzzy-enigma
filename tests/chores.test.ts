@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createNewGame, step, startAction, optionsFor, getWorld, choresOf, isDirty, retailTick, openTasks, addItems, auditLedger, type GameState } from '../src/sim/index';
+import { createNewGame, step, startAction, optionsFor, getWorld, choresOf, isDirty, retailTick, openTasks, addItems, auditLedger, hire, at, homeQueueSlot, type GameState } from '../src/sim/index';
 import { buyHome, ONLINE_DELIVERY, quoteHome } from '../src/sim/homestore';
 
 const setup = { name: 'Tester', appearance: { skin: '#e3b48f', hair: 'short' as const, hairColor: '#3b2416', build: 'average' as const } };
@@ -93,6 +93,26 @@ describe('Harbour Home', () => {
     expect(s.homeDesigns.flat.wallpaper.living).not.toBe('navy');
     while (s.pendingHome) step(s, 10);
     expect(s.homeDesigns.flat.wallpaper.living).toBe('navy');
+    expect(auditLedger(s)).toEqual([]);
+  });
+});
+
+describe('Sales Assistant', () => {
+  it('the player on the Harbour Home counter takes a waiting customer\'s order', () => {
+    const s = createNewGame(7, setup);
+    while (s.minute < at(0, 9, 30)) step(s, 5);
+    hire(s, 'player', 'homestore', 'sales', true);
+    expect(act(s, 'hh_terminal', 'clock_in').ok).toBe(true);
+    // a customer has browsed and is waiting at the counter
+    const c = Object.values(s.people).find((p) => p.npc?.ambient && !p.visible)!;
+    c.visible = true; c.where = 'homestore'; c.pos = homeQueueSlot(0);
+    c.npc!.shopId = 'homestore'; c.npc!.step = 'home_wait'; c.npc!.queuedAt = s.minute; c.npc!.patienceUntil = s.minute + 60; c.npc!.queueSlot = 0; c.npc!.plan = []; c.npc!.goal = 'shop';
+    s.businesses.homestore.queue = [c.id];
+    const rev = s.ledger.accounts[s.businesses.homestore.accountId].balance;
+    const r = act(s, 'home_counter', 'take_order');
+    expect(r.ok).toBe(true);
+    expect(s.businesses.homestore.queue).toEqual([]);
+    expect(s.ledger.accounts[s.businesses.homestore.accountId].balance).toBeGreaterThan(rev);
     expect(auditLedger(s)).toEqual([]);
   });
 });

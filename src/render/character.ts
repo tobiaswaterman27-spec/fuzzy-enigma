@@ -261,7 +261,7 @@ export const ACTION_CLIP: Record<string, string> = {
   serve_customer: 'scan', self_checkout: 'scan', take_mop: 'pickup', return_mop: 'pickup', clean: 'mop',
   check_in_delivery: 'clipboard', pick_item: 'place', sleep: 'lie', eat: 'eat', store_food: 'place',
   change_outfit: 'dress', buy_meal: 'eat', sit: 'sit', watch_tv: 'sit', talk: 'talk', shower: 'wash', cook: 'type', phone: 'phone',
-  pick_case: 'pickup', stage_case: 'place', face_shelf: 'place', bale_cardboard: 'place', empty_bin: 'pickup', dump_rubbish: 'place', wash_up: 'type', laundry: 'pickup', tidy: 'pickup',
+  take_order: 'talk', drive_van: 'pickup', pick_case: 'pickup', stage_case: 'place', face_shelf: 'place', bale_cardboard: 'place', empty_bin: 'pickup', dump_rubbish: 'place', wash_up: 'type', laundry: 'pickup', tidy: 'pickup',
 };
 
 /** seated clips: getting into and out of them plays a real sit-down / stand-up move */

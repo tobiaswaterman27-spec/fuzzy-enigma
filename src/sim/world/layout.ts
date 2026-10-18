@@ -645,6 +645,8 @@ function buildWorldData(homeDesign: HomeDesign): World {
     const O = (kind: ObstacleKind, x0: number, z0: number, x1: number, z1: number, height: number, rot?: number, solid = true, color?: string) => obstacles.push({ kind, rect: { x0, z0, x1, z1 }, height, solid, rot, color });
     // counter at the back with the assistant behind it
     O('desk', -53.5, -33.0, -48.5, -31.8, 0.9, 0);
+    O('terminal', -56.0, -33.95, -55.0, -33.5, 1.4);
+    add({ id: 'hh_terminal', kind: 'terminal', label: 'Staff terminal', pos: { x: -55.5, z: -33.0 }, facing: Math.PI, obj: { x: -55.5, z: -33.7 }, locationId: 'homestore', businessId: 'homestore' });
     add({ id: 'home_counter', kind: 'home_counter', label: 'Harbour Home sales counter', pos: { x: -51, z: -30.6 }, facing: Math.PI, obj: { x: -51, z: -32.4 }, locationId: 'homestore', businessId: 'homestore', range: 2.0 });
     // living room set (west side)
     O('rug', -60.6, -25.2, -56.2, -20.4, 0.01, 0, false, '#8a3e3a');
@@ -947,6 +949,7 @@ function buildWorldData(homeDesign: HomeDesign): World {
   // staff go round the end of the counter to stand behind it
   N('hh_side', -47.6, -30.6, 'homestore'); N('hh_side_back', -47.6, -33.45, 'homestore'); N('hh_staff', -51, -33.45, 'homestore');
   L('hh_counter', 'hh_side', 'hh_side_back', 'hh_staff');
+  N('hh_term_a', -55.5, -30.6, 'homestore'); N('hh_term', -55.5, -33.0, 'homestore'); L('hh_counter', 'hh_term_a', 'hh_term');
   // Wholesale staff door, and the warehouse floor: front aisle, middle aisle, staging lanes
   N('door_wholesale', -43, 13.3); L('sw_-43', 'door_wholesale');
   N('wh_in', -43, 15.4, 'wholesale'); L('door_wholesale', 'wh_in');

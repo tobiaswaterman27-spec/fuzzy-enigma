@@ -180,7 +180,7 @@ export function createNewGame(seed: number, setup: PlayerSetup): GameState {
   void port;
   makeBusiness(state, {
     id: 'homestore', name: 'Harbour Home', kind: 'store', ownerId: 'external', locationId: 'homestore', open: [sh(MON_SAT, 9, 18)],
-    positions: [pos({ id: 'sales', title: 'Sales Assistant', wage: 1300, shifts: [sh(MON_SAT, 9, 18)], headcount: 1, description: 'Helps customers choose furniture and decor and takes their orders at the counter.' })],
+    positions: [pos({ id: 'sales', title: 'Sales Assistant', wage: 1300, shifts: [sh(MON_SAT, 9, 18)], headcount: 2, playable: true, duties: ['Help customers choose furniture and decor', 'Take their orders at the counter'], description: 'Helps customers choose furniture and decor and takes their orders at the counter.' })],
     prices: {}, reputation: 60, supplierId: null, reorder: {}, rentDue: 0, utilitiesPerDay: 1200, stockContainers: [], cashReserve: 400000, cash: 500000,
   });
   makeBusiness(state, {

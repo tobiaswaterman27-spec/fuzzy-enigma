@@ -295,6 +295,21 @@ export function startShopping(state: GameState, p: Person, shopId: string, list:
   if (missing) statsFor(state, state.businesses[shopId]).lostSales += missing;
 }
 
+/** a Harbour Home customer: browses the room sets, then queues at the counter to order */
+const HOME_BROWSE = [{ x: -55.6, z: -22.5 }, { x: -47.6, z: -24.5 }, { x: -48.6, z: -15.4 }, { x: -59.3, z: -27.4 }];
+export const homeQueueSlot = (i: number) => ({ x: -51, z: -30.0 + i * 0.9 });
+export function startHomeShopping(state: GameState, p: Person) {
+  const a = HOME_BROWSE[randInt(state, 0, HOME_BROWSE.length - 1)];
+  const b = HOME_BROWSE[randInt(state, 0, HOME_BROWSE.length - 1)];
+  setGoal(state, p, 'shop', [
+    { kind: 'move', to: { x: -51, z: -13.6 }, label: 'Harbour Home' },
+    { kind: 'move', to: a, label: 'browse' }, { kind: 'wait', until: state.minute + 6 + randInt(state, 0, 6) },
+    { kind: 'move', to: b, label: 'browse' }, { kind: 'wait', until: state.minute + 14 + randInt(state, 0, 8) },
+    { kind: 'call', fn: 'homeQueue' },
+  ]);
+  p.npc!.shopId = 'homestore';
+}
+
 function startWork(state: GameState, p: Person) {
   const c = state.contracts[p.contractId!];
   const pos = positionOf(state, c);
@@ -366,6 +381,18 @@ function runCall(state: GameState, p: Person, fn: string) {
     case 'leaveShop':
       leaveShop(state, p);
       break;
+    case 'homeQueue': {
+      const b = state.businesses.homestore;
+      if (!b || !isOpen(b, state.minute)) { leaveShop(state, p); break; }
+      const q = (b.queue ??= []);
+      if (!q.includes(p.id)) q.push(p.id);
+      n.step = 'home_wait';
+      n.queuedAt = state.minute;
+      n.patienceUntil = state.minute + 12 + Math.round(p.traits.patience * 16);
+      n.queueSlot = q.indexOf(p.id);
+      goTo(state, p, homeQueueSlot(n.queueSlot), 'counter');
+      break;
+    }
     case 'despawn':
       // ambient shoppers take their goods home to the wider district (consumption)
       for (const [k, v] of Object.entries({ ...state.containers[p.bagId].items })) removeItems(state.containers[p.bagId], k, v);
@@ -614,6 +641,23 @@ function warehouseWork(state: GameState, p: Person, ending: boolean) {
   else n.plan = [{ kind: 'wait', until: state.minute + 2 }];
 }
 
+/** waiting at the Harbour Home counter: shuffle up the queue, give up when patience runs out */
+function homeWaitTick(state: GameState, p: Person) {
+  const n = p.npc!;
+  const b = state.businesses.homestore;
+  if (n.step === 'paid' || !b) { leaveShop(state, p); return; }
+  const i = (b.queue ?? []).indexOf(p.id);
+  if (i < 0 || state.minute > (n.patienceUntil ?? Infinity)) {
+    b.queue = (b.queue ?? []).filter((id) => id !== p.id);
+    if (i >= 0) statsFor(state, b).walkouts++;
+    n.step = 'run';
+    leaveShop(state, p);
+    return;
+  }
+  if (i !== n.queueSlot && !p.move) { n.queueSlot = i; goTo(state, p, homeQueueSlot(i), 'counter'); }
+  if (!p.move) p.facing = Math.PI;
+}
+
 // ------------------------------------------------------------ shopper queue
 function queueTick(state: GameState, p: Person) {
   const n = p.npc!;
@@ -676,6 +720,7 @@ export function npcTick(state: GameState) {
     if (p.isPlayer || !p.npc) continue;
     const n = p.npc;
     if (state.minute >= n.nextDecision && !p.action) decide(state, p);
+    if (n.step === 'home_wait' || (n.step === 'paid' && n.shopId === 'homestore')) { homeWaitTick(state, p); continue; }
     if (n.step === 'queue' || n.step === 'paid') { queueTick(state, p); continue; }
     if (shouldPreemptForTill(state, p)) { releaseClaim(state, p); n.plan = []; p.move = null; npcLog(state, p, 'customer waiting - going to till'); }
     runPlan(state, p);

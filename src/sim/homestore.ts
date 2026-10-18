@@ -8,7 +8,7 @@ import { fmtMoney } from './core';
 import { transfer } from './ledger';
 import { news } from './events';
 import { isOpen, staffOnDuty } from './retail';
-import { statsFor } from './employment';
+import { openAttendance, statsFor } from './employment';
 import { setHomeDesign } from './world/layout';
 
 export const HOME_STORE = 'homestore';
@@ -92,14 +92,54 @@ export function homeStoreDaily(state: GameState) {
   const d = state.districts.harbourside;
   if (!b || !d || !b.flags?.staffedToday) { if (b?.flags) b.flags.staffedToday = false; return; }
   b.flags.staffedToday = false;
-  const amount = Math.round(d.households * 140 * Math.max(0.3, Math.min(1.5, d.confidence)));
+  // online orders from the rest of the district (the in-store customers are served one by one)
+  const amount = Math.round(d.households * 50 * Math.max(0.3, Math.min(1.5, d.confidence)));
   const key = `homewalkin:${dayIndex(state.minute)}`;
   const r = transfer(state, { from: d.accountId, to: b.accountId, amount, reason: 'sale', memo: 'Furniture & decor (walk-in trade)', key });
   if (r.ok) settleSale(state, amount, `${key}:`);
 }
 
-/** remember whether anyone served at the counter today */
+/** remember whether anyone served at the counter today; NPC assistants serve the queue */
 export function homeStoreMinute(state: GameState) {
   const b = state.businesses[HOME_STORE];
-  if (b && storeStaffed(state)) (b.flags ??= {}).staffedToday = true;
+  if (!b) return;
+  if (storeStaffed(state)) (b.flags ??= {}).staffedToday = true;
+  const q = (b.queue ??= []);
+  // customers who left or gave up drop out of the queue
+  b.queue = q.filter((id) => { const p = state.people[id]; return p && p.visible && p.npc?.step === 'home_wait'; });
+  const head = b.queue[0] ? state.people[b.queue[0]] : null;
+  if (!head?.npc) return;
+  const staff = staffOnDuty(state, HOME_STORE);
+  if (staff.some((s) => s.isPlayer)) return; // you are on the counter: you take the orders
+  if (!staff.length) return;
+  // an NPC assistant takes the order after a few minutes of talking it through
+  if (state.minute - (head.npc.queuedAt ?? state.minute) >= 4) {
+    const att = staff.map((s) => s.id);
+    completeHomeOrder(state, head.id, att[0]);
+  }
+}
+
+/** what a customer's order comes to (sofas are dear, a lamp is not) */
+export function orderValue(customerId: Id, minute: number): number {
+  let h = Math.floor(minute);
+  for (const ch of customerId) h = (h * 31 + ch.charCodeAt(0)) | 0;
+  const bands = [3900, 6900, 8900, 12900, 19900, 24900, 39900, 54900];
+  return bands[Math.abs(h) % bands.length];
+}
+
+/** the customer pays for their order (household money from the district) and goes home */
+export function completeHomeOrder(state: GameState, customerId: Id, staffId: Id | null): { ok: boolean; msg: string } {
+  const b = state.businesses[HOME_STORE];
+  const d = state.districts.harbourside;
+  const c = state.people[customerId];
+  if (!b || !c) return { ok: false, msg: 'No customer.' };
+  const amount = orderValue(customerId, state.minute);
+  const key = `homeorder:${customerId}:${Math.floor(state.minute)}`;
+  const r = transfer(state, { from: d.accountId, to: b.accountId, amount, reason: 'sale', memo: 'Furniture & decor order (in store)', key });
+  b.queue = (b.queue ?? []).filter((id) => id !== customerId);
+  if (c.npc) c.npc.step = 'paid';
+  if (!r.ok) return { ok: false, msg: 'The customer could not pay.' };
+  settleSale(state, amount, `${key}:`);
+  if (staffId) { const a = openAttendance(state, staffId); if (a) { a.served++; a.tasks++; } }
+  return { ok: true, msg: `${c.name} ordered ${fmtMoney(amount)} of furniture.` };
 }
