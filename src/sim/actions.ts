@@ -31,6 +31,13 @@ export function interactable(state: GameState, id: Id): Interactable | null {
   if (w.interactables[id]) return w.interactables[id];
   const d = state.dirt[id];
   if (d) return { id, kind: 'spill', label: 'Spill', pos: d.pos, facing: 0, obj: d.pos, locationId: d.locationId, businessId: d.locationId, range: 1.4 };
+  if (id.startsWith('van:')) {
+    const v = state.vehicles[id.slice(4)];
+    if (v && (v.state === 'loaded' || v.state === 'parked')) {
+      const front = { x: v.pos.x + Math.sin(v.heading + Math.PI / 2) * 1.6, z: v.pos.z + Math.cos(v.heading + Math.PI / 2) * 1.6 };
+      return { id, kind: 'vehicle', label: v.name, pos: front, facing: v.heading - Math.PI / 2, obj: v.pos, locationId: 'outside', businessId: v.ownerId, range: 2.6 };
+    }
+  }
   if (id.startsWith('person:')) {
     const o = state.people[id.slice(7)];
     if (o && o.visible) return { id, kind: 'person', label: o.name, pos: o.pos, facing: 0, obj: o.pos, locationId: locationOf(o.pos), range: 1.9 };
@@ -42,6 +49,7 @@ export function allInteractables(state: GameState): Interactable[] {
   const out = Object.values(getWorld().interactables);
   for (const d of Object.values(state.dirt)) out.push(interactable(state, d.id)!);
   for (const o of Object.values(state.people)) if (!o.isPlayer && o.visible && !o.sleeping) out.push(interactable(state, `person:${o.id}`)!);
+  for (const v of Object.values(state.vehicles)) if (v.state === 'loaded') out.push(interactable(state, `van:${v.id}`)!);
   return out;
 }
 
@@ -277,6 +285,13 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
       out.push(opt('talk', `Chat with ${other.name}${fam ? ` (familiarity ${fam})` : ''}`, other.action?.type === 'serve_customer' ? 'Busy serving' : undefined));
       break;
     }
+    case 'vehicle': {
+      const v = state.vehicles[it.id.slice(4)];
+      const s = v?.shipmentId ? state.shipments[v.shipmentId] : null;
+      const buyer = s ? state.businesses[s.buyerId]?.name : '';
+      out.push(opt('drive_van', `Get in and drive the delivery to ${buyer}`, v?.driverId !== actorId ? 'Only the driver on shift can take the van' : undefined));
+      break;
+    }
     case 'bench':
       out.push(opt('sit', 'Sit on bench'));
       out.push(opt('sleep', 'Sleep rough until 07:00 (poor rest)', undefined, 'morning'));
@@ -343,6 +358,8 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
       begin(p, type, itId, { unitTime: 0.1 / sp }, now); break;
     case 'pick_case':
       begin(p, type, itId, { duration: 0.6 / speed(p, 'warehouse') }, now); break;
+    case 'drive_van':
+      begin(p, type, itId, { duration: 0.3 }, now); break;
     case 'stage_case':
       begin(p, type, itId, { duration: 0.4 / speed(p, 'warehouse') }, now); break;
     case 'bale_cardboard':
@@ -483,6 +500,18 @@ export function tickAction(state: GameState, p: Person, dt: number): string | nu
       break;
     }
     case 'take_mop': p.equipment = 'mop'; msg = 'Mop & bucket ready.'; break;
+    case 'drive_van': {
+      const v = state.vehicles[a.target.slice(4)];
+      if (v && v.state === 'loaded' && v.driverId === p.id) {
+        v.state = 'manual_out';
+        p.where = 'vehicle';
+        p.visible = false;
+        p.pos = { ...v.pos };
+        const s = v.shipmentId ? state.shipments[v.shipmentId] : null;
+        msg = `Drive to ${s ? state.businesses[s.buyerId].name : 'the shop'}'s loading bay (W/S to drive, A/D to steer).`;
+      }
+      break;
+    }
     case 'pick_case': {
       const prod = it!.product!;
       const want = Math.min(ITEMS[prod].caseSize, pickDemand(state, it!.businessId!, prod));

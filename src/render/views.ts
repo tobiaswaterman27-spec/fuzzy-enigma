@@ -490,6 +490,7 @@ export class Views {
   van: THREE.Group;
   spills = new Map<string, THREE.Mesh>();
   queueMarker: THREE.Mesh;
+  destMarker: THREE.Mesh | null = null;
 
   constructor(private scene: THREE.Scene) {
     // shelf products: one instanced mesh per shelf section (count = real shelf stock)
@@ -693,6 +694,19 @@ export class Views {
     for (const [p, m] of this.rackMeshes) m.count = Math.min(48, Math.ceil(count(state.containers.wholesale_stock, p) / (ITEMS[p]?.caseSize ?? 12)));
     if (this.stageMesh) this.stageMesh.count = Math.min(120, Math.ceil(total(state.containers.wholesale_staging) / 12));
     for (const [bid, m] of this.bayMeshes) m.count = state.containers[SHOPS[bid].bayContainer] ? Math.min(40, Math.ceil(total(state.containers[SHOPS[bid].bayContainer]) / 10)) : 0;
+    // destination marker while the player drives a delivery
+    const mine = Object.values(state.vehicles).find((v) => v.driverId === state.playerId && (v.state === 'manual_out' || v.state === 'manual_back'));
+    const dest = mine ? (mine.state === 'manual_back' ? getWorld().depot : mine.route[mine.route.length - 1]) : null;
+    if (dest) {
+      if (!this.destMarker) {
+        this.destMarker = new THREE.Mesh(new THREE.RingGeometry(3.2, 3.8, 40), new THREE.MeshBasicMaterial({ color: '#f2c200', transparent: true, opacity: 0.7, depthWrite: false }));
+        this.destMarker.rotation.x = -Math.PI / 2;
+        this.scene.add(this.destMarker);
+      }
+      this.destMarker.visible = true;
+      this.destMarker.position.set(dest.x, 0.12, dest.z);
+      (this.destMarker.material as THREE.MeshBasicMaterial).opacity = 0.45 + 0.3 * Math.sin(performance.now() / 300);
+    } else if (this.destMarker) this.destMarker.visible = false;
     const van = state.vehicles.van_1;
     this.van.position.set(van.pos.x, 0, van.pos.z);
     this.van.rotation.y = van.heading;

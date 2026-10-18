@@ -258,8 +258,42 @@ export class Game {
     this.onFrame();
   }
 
+  /** the van the player is driving, if any */
+  drivingVan() {
+    const p = this.player;
+    if (p.where !== 'vehicle') return null;
+    return Object.values(this.state.vehicles).find((v) => v.driverId === p.id) ?? null;
+  }
+  private vanSpeed = 0;
+
+  /** driving: W/S throttle and brake/reverse, A/D steer; buildings and walls stop the van */
+  private updateDriving(dt: number) {
+    const v = this.drivingVan()!;
+    const p = this.player;
+    const k = this.keys;
+    const canDrive = !this.uiOpen && (v.state === 'manual_out' || v.state === 'manual_back');
+    const thr = canDrive ? (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0) : 0;
+    const steer = canDrive ? (k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0) - (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) : 0;
+    const MAX = 11, REV = 3;
+    if (thr > 0) this.vanSpeed += (this.vanSpeed < 0 ? 9 : 3.5) * dt;
+    else if (thr < 0) this.vanSpeed -= (this.vanSpeed > 0 ? 9 : 2.5) * dt;
+    else this.vanSpeed -= Math.sign(this.vanSpeed) * Math.min(Math.abs(this.vanSpeed), 2.2 * dt);
+    this.vanSpeed = Math.max(-REV, Math.min(MAX, this.vanSpeed));
+    // steering: tighter at low speed, the turn rate scales with how fast the wheels roll
+    v.heading += steer * Math.sign(this.vanSpeed) * Math.min(Math.abs(this.vanSpeed), 3.5) * dt * 0.22;
+    const nx = v.pos.x + Math.sin(v.heading) * this.vanSpeed * dt, nz = v.pos.z + Math.cos(v.heading) * this.vanSpeed * dt;
+    const res = resolveCircle({ x: nx, z: nz }, 1.15);
+    if (Math.hypot(res.x - nx, res.z - nz) > 0.01) this.vanSpeed *= 0.4; // bumped into something
+    v.odometer += Math.hypot(res.x - v.pos.x, res.z - v.pos.z);
+    v.pos = res;
+    p.pos = { ...v.pos };
+    p.facing = v.heading;
+  }
+
   private updatePlayer(dt: number) {
     const p = this.player;
+    if (this.drivingVan()) { this.updateDriving(dt); return; }
+    this.vanSpeed = 0;
     if (this.uiOpen || p.sleeping) return;
     // movement is relative to the camera: W away from the camera, S towards it, A/D to the sides.
     // The body accelerates, decelerates and turns smoothly towards where it is going.
@@ -315,7 +349,16 @@ export class Game {
       this.insideId = inside;
       this.cutawayOn = this.overview;
     }
-    if (!this.camLocked) {
+    const van = this.drivingVan();
+    if (van && !this.camLocked) {
+      // chase camera behind the van
+      const behind = van.heading + Math.PI;
+      const dYaw = ((behind - this.camYaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+      this.camYaw += dYaw * Math.min(1, dt * 2.5);
+      this.camPitch += (0.3 - this.camPitch) * Math.min(1, dt * 2);
+      this.camDist = Math.max(this.camDist, 7.5);
+      this.camDist += (9 - this.camDist) * Math.min(1, dt * 2);
+    } else if (!this.camLocked) {
       // automatic camera: settles behind the player; closer and higher indoors so rooms read clearly
       const behind = p.facing + Math.PI;
       let dYaw = ((behind - this.camYaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
@@ -335,12 +378,12 @@ export class Game {
     }
     // follow the drawn body (it may be acting out a multi-step action away from its sim spot)
     const drawn = p.action ? this.views.people.get(p.id)?.rig.root.position : null;
-    const pivot = new THREE.Vector3(drawn?.x ?? p.pos.x, p.sleeping ? 1.0 : 1.62, drawn?.z ?? p.pos.z);
+    const pivot = new THREE.Vector3(drawn?.x ?? p.pos.x, van ? 2.7 : p.sleeping ? 1.0 : 1.62, drawn?.z ?? p.pos.z);
     const pitch = this.camPitch;
     const dir = new THREE.Vector3(Math.sin(this.camYaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(this.camYaw) * Math.cos(pitch));
     // over-the-shoulder offset to the right of the view direction
     const right = new THREE.Vector3(-Math.cos(this.camYaw), 0, Math.sin(this.camYaw));
-    const shoulder = this.overview ? 0 : 0.42;
+    const shoulder = this.overview || van ? 0 : 0.42;
     const origin = pivot.clone().addScaledVector(right, -shoulder);
     let dist = this.camDist;
     // ray-cast against walls and buildings so the camera never ends up inside geometry

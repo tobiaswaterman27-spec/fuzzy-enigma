@@ -137,6 +137,9 @@ export function wholesaleImports(state: GameState, w: Business) {
 }
 
 function driverOnDuty(state: GameState, supplierId: Id): Id | null {
+  // a player on shift as a driver takes the van out themselves
+  const pl = state.people[state.playerId];
+  if (pl?.contractId && state.contracts[pl.contractId]?.businessId === supplierId && state.contracts[pl.contractId].positionId === 'driver' && isOnShift(state, pl.id, supplierId)) return pl.id;
   for (const p of Object.values(state.people)) {
     if (!p.contractId) continue;
     const c = state.contracts[p.contractId];
@@ -194,8 +197,15 @@ export function logisticsTick(state: GameState, dt: number) {
           s.note = `${s.note} Split: the van was full.`.trim();
         }
         v.shipmentId = s.id;
+        v.route = (SHOPS[s.buyerId]?.vanOut?.length ? SHOPS[s.buyerId].vanOut : w.vanRouteOut).map((p) => ({ ...p }));
+        if (driver === state.playerId) {
+          // loaded and waiting at the depot for you to drive it
+          v.state = 'loaded';
+          v.driverId = driver;
+          news(state, 'info', `Van loaded for ${buyer.name}`, 'Get in the van at the Harbour Wholesale depot and drive it to their loading bay.', true);
+          break;
+        }
         v.state = 'driving_out';
-        v.route = (SHOPS[s.buyerId]?.vanOut ?? w.vanRouteOut).map((p) => ({ ...p }));
         v.pos = { ...v.route[0] };
         v.routeIdx = 1;
         const dp = state.people[driver];
@@ -222,17 +232,14 @@ export function logisticsTick(state: GameState, dt: number) {
         if (v.state === 'driving_out') {
           v.state = 'unloading';
           v.waitUntil = state.minute + 6;
-        } else {
-          v.state = 'parked';
-          v.route = [];
-          v.pos = { ...w.depot };
-          // undelivered cargo is returned to the warehouse
-          const back = state.businesses[v.ownerId]?.stockContainers[0];
-          if (back) moveAll(state, v.cargoId, back);
-          // driver goes back to work at the depot
-          for (const p of Object.values(state.people)) if (p.where === 'vehicle') { p.where = 'wholesale'; }
-        }
+        } else parkAtDepot(state, v);
       }
+    } else if (v.state === 'manual_out') {
+      // the player drives; it unloads once parked at the buyer's bay
+      const dest = v.route[v.route.length - 1];
+      if (dest && dist(v.pos, dest) < 7) { v.state = 'unloading'; v.waitUntil = state.minute + 6; }
+    } else if (v.state === 'manual_back') {
+      if (dist(v.pos, w.depot) < 7) parkAtDepot(state, v);
     } else if (v.state === 'unloading' && state.minute >= v.waitUntil) {
       const s = v.shipmentId ? state.shipments[v.shipmentId] : null;
       if (s) {
@@ -251,11 +258,34 @@ export function logisticsTick(state: GameState, dt: number) {
         news(state, 'info', `Delivery arrived at ${buyer.name}`, `${total(state.containers[bay])} items waiting at the loading bay to be checked in.`, isStaffPlayer(state, buyer.id));
       }
       v.shipmentId = null;
-      v.state = 'returning';
-      v.route = ((s && SHOPS[s.buyerId]?.vanBack) || w.vanRouteBack).map((p: Vec2) => ({ ...p }));
-      v.routeIdx = 1;
+      if (v.driverId) {
+        v.state = 'manual_back';
+        if (v.driverId === state.playerId) news(state, 'good', 'Unloaded', 'Drive the van back to the depot and park it.', true);
+      } else {
+        v.state = 'returning';
+        v.route = ((s && SHOPS[s.buyerId]?.vanBack?.length ? SHOPS[s.buyerId].vanBack : null) || w.vanRouteBack).map((p: Vec2) => ({ ...p }));
+        v.routeIdx = 1;
+      }
     }
   }
+}
+
+/** back at the depot: undelivered cargo returns to the warehouse, the driver gets out */
+function parkAtDepot(state: GameState, v: GameState['vehicles'][string]) {
+  const w = getWorld();
+  v.state = 'parked';
+  v.route = [];
+  v.pos = { ...w.depot };
+  v.heading = Math.PI;
+  const back = state.businesses[v.ownerId]?.stockContainers[0];
+  if (back) moveAll(state, v.cargoId, back);
+  if (v.driverId) {
+    const p = state.people[v.driverId];
+    if (p) { p.where = 'outside'; p.visible = true; p.pos = { x: w.depot.x + 2.2, z: w.depot.z }; if (p.isPlayer) news(state, 'good', 'Delivery run complete', 'Van parked at the depot.', true); }
+    v.driverId = null;
+  }
+  // NPC drivers go back to work at the depot
+  for (const p of Object.values(state.people)) if (p.where === 'vehicle') { p.where = 'wholesale'; }
 }
 
 function isStaffPlayer(state: GameState, bid: Id) {

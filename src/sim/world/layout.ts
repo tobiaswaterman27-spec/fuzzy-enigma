@@ -150,6 +150,7 @@ export type InteractKind =
   | 'stove'
   | 'rack'
   | 'staging'
+  | 'vehicle'
   | 'baler'
   | 'shopbin'
   | 'dumpster'

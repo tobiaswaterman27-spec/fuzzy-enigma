@@ -146,6 +146,7 @@ export type ActionType =
   | 'cook'
   | 'talk'
   | 'sit'
+  | 'drive_van'
   | 'pick_case'
   | 'stage_case'
   | 'face_shelf'
@@ -483,7 +484,10 @@ export interface Vehicle {
   route: Vec2[];
   routeIdx: number;
   speed: number; // m per game minute
-  state: 'parked' | 'driving_out' | 'unloading' | 'returning';
+  /** 'loaded': waiting at the depot for the player driver; 'manual_out' / 'manual_back': the player is driving */
+  state: 'parked' | 'driving_out' | 'unloading' | 'returning' | 'loaded' | 'manual_out' | 'manual_back';
+  /** the player at the wheel (manual states) */
+  driverId?: Id | null;
   cargoId: Id; // container
   shipmentId: Id | null;
   waitUntil: number;

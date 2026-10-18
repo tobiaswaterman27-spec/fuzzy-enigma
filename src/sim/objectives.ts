@@ -55,6 +55,18 @@ function walkMinutes(from: Vec2, to: Vec2): number {
 export function agenda(state: GameState): Reminder | null {
   const p = state.people[state.playerId];
   const now = state.minute;
+  // driving a delivery: where to, and how far
+  const van = Object.values(state.vehicles).find((v) => v.driverId === p.id);
+  if (van) {
+    const sh = van.shipmentId ? state.shipments[van.shipmentId] : null;
+    const shop = sh ? state.businesses[sh.buyerId]?.name : 'the shop';
+    if (van.state === 'loaded') return { text: `The van is loaded for ${shop}: get in at the depot by Harbour Wholesale.`, urgent: true, leaveAt: now, startsAt: now };
+    const dest = van.state === 'manual_back' ? getWorld().depot : van.route[van.route.length - 1];
+    const m = dest ? Math.round(Math.hypot(dest.x - van.pos.x, dest.z - van.pos.z)) : 0;
+    if (van.state === 'manual_out') return { text: `Drive to ${shop}'s loading bay - ${m} m (W/S drive, A/D steer).`, urgent: false, leaveAt: now, startsAt: now };
+    if (van.state === 'unloading') return { text: `Unloading at ${shop}...`, urgent: false, leaveAt: now, startsAt: now };
+    if (van.state === 'manual_back') return { text: `Drive the van back to the depot - ${m} m.`, urgent: false, leaveAt: now, startsAt: now };
+  }
   const items: { what: string; at: number; where: Vec2; place: string; outfit?: string; strict: boolean }[] = [];
   for (const a of Object.values(state.applications)) {
     if (a.personId !== p.id || a.status !== 'interview' || a.interviewAt == null || a.interviewAt < now - 10) continue;

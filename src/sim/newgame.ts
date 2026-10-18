@@ -154,7 +154,7 @@ export function createNewGame(seed: number, setup: PlayerSetup): GameState {
   const wholesale = makeBusiness(state, {
     id: 'wholesale', name: 'Harbour Wholesale', kind: 'wholesale', ownerId: 'p_gail', locationId: 'wholesale', open: [sh(MON_SAT, 6, 18)],
     positions: [
-      pos({ id: 'driver', title: 'Delivery Driver', wage: 1450, shifts: [sh(MON_SAT, 6, 14)], uniform: 'uniform_wholesale', description: 'Drives the delivery van.' }),
+      pos({ id: 'driver', title: 'Delivery Driver', wage: 1450, shifts: [sh(MON_SAT, 6, 14)], uniform: 'uniform_wholesale', headcount: 2, playable: true, duties: ['Collect the loaded van at the depot', 'Drive it to the shop\'s loading bay', 'Bring the van back and park it'], description: 'Drives the loaded delivery van from the depot to the shops and back.' }),
       pos({ id: 'operative', title: 'Warehouse Operative', wage: 1350, shifts: [sh(MON_SAT, 14, 22)], uniform: 'uniform_wholesale', headcount: 2, requires: {}, playable: true, duties: ['Pick order lines from the racking', 'Stage cases for the morning van', 'Put back stock not on the pick list'], description: 'Evening shift: picks the day\'s shop orders from the racking into the staging lanes for the morning van.' }),
     ],
     prices: Object.fromEntries([...PRODUCTS, 'cafe_supplies'].map((k) => [k, ITEMS[k].wholesale])), reputation: 60, supplierId: null,
