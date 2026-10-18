@@ -57,7 +57,11 @@ console.log('before E', JSON.stringify(await ev(() => ({ ui: window.__bigshot.ga
 await page.keyboard.press('KeyE');
 for (let i = 0; i < 80 && (await ev(() => document.getElementById('dialog').hidden)); i++) await page.waitForTimeout(250);
 console.log('dialog open', await ev(() => document.getElementById('dialog').innerHTML.slice(0, 600)));
-for (let i = 0; i < 3; i++) { await page.click('#dialog .answer[data-a="1"]', { timeout: 60000 }).catch(() => console.log('no answer button')); await page.waitForTimeout(200); }
+for (let i = 0; i < 6 && (await ev(() => !!document.querySelector('#dialog .answer'))); i++) {
+  const best = await ev(() => { const a = Object.values(window.__bigshot.game.state.applications).find((x) => x.personId === 'player' && x.status === 'interview'); const qs = window.__bigshot.sim.questionsFor(a); const qi = Number((document.querySelector('#dialog .muted')?.textContent ?? '').match(/question (\d+)/)?.[1] ?? 1) - 1; return qs[qi] ? qs[qi].pts.indexOf(Math.max(...qs[qi].pts)) : 1; });
+  await page.click(`#dialog .answer[data-a="${best}"]`, { timeout: 60000 }).catch(() => console.log('no answer button'));
+  await page.waitForTimeout(300);
+}
 await shot('06-interview-result');
 const offered = await page.click('[data-acc]', { timeout: 20000 }).then(() => true).catch(() => false);
 console.log('offered', offered);

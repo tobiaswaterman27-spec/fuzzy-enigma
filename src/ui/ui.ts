@@ -5,6 +5,7 @@ import type { GameState, Person } from '../sim/types';
 import { fmtClock, fmtDate, fmtDuration, dayIndex } from '../sim/clock';
 import { fmtMoney } from '../sim/core';
 import { accountTxns } from '../sim/ledger';
+import { questionsFor } from '../sim/employment';
 import { acceptOffer, acceptPromotion, applyForJob, attendInterview, canApply, currentShift, declineOffer, hoursPerWeek, INTERVIEW, nextShift, openAttendance, positionOf, promotionEligible, resign, shiftLabel, scoreShift } from '../sim/employment';
 import { conditionLabel, skillLevel } from '../sim/needs';
 import { agenda, currentObjective } from '../sim/objectives';
@@ -164,7 +165,7 @@ export class UI {
       const v = s.vacancies[a.vacancyId];
       const b = s.businesses[v.businessId];
       const iv = s.people[a.interviewerId!];
-      h += `<div class="card good"><b>Interview booked</b><br>${esc(b.name)} with <b>${esc(iv.name)}</b><br>${fmtDate(a.interviewAt!)} at <b>${fmtClock(a.interviewAt!)}</b> (arrive within 45 min before to 1h after)<br><span class="muted">Go there, find ${esc(iv.name.split(' ')[0])} and talk to them (E). Smart clothes and a shower help. Being late costs points.</span></div>`;
+      h += `<div class="card good"><b>Interview booked</b><br>${esc(b.name)} with <b>${esc(iv.name)}</b><br>${fmtDate(a.interviewAt!)} at <b>${fmtClock(a.interviewAt!)}</b> at the window table in Tidewater Cafe<br><span class="muted">${esc(iv.name.split(' ')[0])} will be waiting at the table: sit down opposite (E). ${a.questions?.length ?? 3} questions. Smart clothes and a shower help; being late costs points.</span></div>`;
     }
     h += '<h3>Open vacancies</h3>';
     const vacs = Object.values(s.vacancies).filter((v) => v.status === 'open');
@@ -176,6 +177,7 @@ export class UI {
       const mine = Object.values(s.applications).find((a) => a.vacancyId === v.id && a.personId === p.id);
       h += `<div class="card"><b>${esc(pos.title)}</b> <span class="tag">${pos.playable ? 'Playable' : 'Not yet playable'}</span><br>${esc(b.name)} · <b>${fmtMoney(pos.wage)}/h</b> · paid ${pos.payEvery}<br>
         <span class="muted">${pos.shifts.map(shiftLabel).join('; ')} · ${hoursPerWeek(pos.shifts)}h/week${pos.uniform ? ` · uniform: ${itemName(pos.uniform)}` : ''}</span>
+        ${Object.keys(pos.requires).length ? `<br><span class="${err?.startsWith('Needs') ? 'warn' : 'muted'}">Experience: ${Object.entries(pos.requires).map(([k, xp]) => `${k} level ${skillLevel(xp)}`).join(', ')}</span>` : ''}
         ${pos.description ? `<p>${esc(pos.description)}</p>` : ''}${pos.duties.length ? `<ul>${pos.duties.map((d) => `<li>${esc(d)}</li>`).join('')}</ul>` : ''}
         <span class="muted">${v.applicants.length} applicant(s) · closes ${fmtDate(v.closesAt)}</span>
         <div class="row">${mine ? `<span class="tag">Application ${mine.status}</span>` : err ? `<span class="muted">${esc(err)}</span>` : `<button data-apply="${v.id}" class="primary">Apply</button>`}</div></div>`;
@@ -392,10 +394,12 @@ export class UI {
     startAction(s, 'player', 'iv_chair', 'sit');
     this.liveDialog = true;
     const stand = () => { const p = s.people.player; if (p.action?.type === 'sit' && p.action.target === 'iv_chair') cancelAction(s, p, 'interview over'); };
+    const qs = questionsFor(a);
     const ask = () => {
       const qi = answers.length;
-      if (qi >= INTERVIEW.length) {
+      if (qi >= qs.length) {
         const r = attendInterview(s, appId, answers);
+        this.game.say(iv.id, r.offered ? 'We would like you to join us.' : 'Thanks for coming in.', 6);
         this.dialog(`<div class="dlg"><h2>${r.offered ? 'Job offered' : 'Not this time'}</h2><p>${esc(iv.name)}: ${r.offered ? '"We would like you to join us."' : '"Thanks for coming in. We have decided not to go ahead."'}</p>
           <p class="muted">Interview score ${r.score}</p><ul>${r.feedback.map((f) => `<li>${esc(f)}</li>`).join('')}</ul>
           <div class="row">${r.offered ? `<button class="primary" data-acc="1">Accept the job</button><button data-later="1">Think about it (24h)</button>` : '<button data-later="1">Leave</button>'}</div></div>`, (btn) => {
@@ -405,9 +409,10 @@ export class UI {
         });
         return;
       }
-      const Q = INTERVIEW[qi];
+      const Q = qs[qi];
+      this.game.say(iv.id, Q.q, 30);
       this.liveDialog = true;
-      this.dialog(`<div class="dlg"><h2>Interview: ${esc(pos.title)}</h2><p class="muted">${esc(b.name)} · with ${esc(iv.name)} · question ${qi + 1} of ${INTERVIEW.length}</p><p><b>${esc(iv.name.split(' ')[0])}:</b> "${esc(Q.q)}"</p>${Q.a.map((x, i) => `<button class="answer" data-a="${i}">${esc(x)}</button>`).join('')}</div>`, (btn) => {
+      this.dialog(`<div class="dlg"><h2>Interview: ${esc(pos.title)}</h2><p class="muted">${esc(b.name)} · with ${esc(iv.name)} · question ${qi + 1} of ${qs.length}</p><p><b>${esc(iv.name.split(' ')[0])}:</b> "${esc(Q.q)}"</p>${Q.a.map((x, i) => `<button class="answer" data-a="${i}">${esc(x)}</button>`).join('')}</div>`, (btn) => {
         if (btn.dataset.a === undefined) return;
         answers.push(Number(btn.dataset.a));
         ask();

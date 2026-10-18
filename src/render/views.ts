@@ -211,6 +211,40 @@ class PersonView {
   }
   private ground = 0;
   private showerStep = false;
+  private bubble: THREE.Sprite | null = null;
+  private bubbleText = '';
+
+  /** a speech bubble above the head (null hides it) */
+  setSpeech(text: string | null) {
+    if (text === this.bubbleText) return;
+    this.bubbleText = text ?? '';
+    if (this.bubble) { this.bubble.parent?.remove(this.bubble); (this.bubble.material as THREE.SpriteMaterial).map?.dispose(); this.bubble = null; }
+    if (!text) return;
+    const cv = document.createElement('canvas');
+    const c = cv.getContext('2d')!;
+    const W = 512, pad = 22, lh = 34;
+    c.font = '500 26px IBM Plex Sans, Arial, sans-serif';
+    const words = text.split(' '), lines: string[] = [];
+    let line = '';
+    for (const w of words) { const t = line ? `${line} ${w}` : w; if (c.measureText(t).width > W - pad * 2) { lines.push(line); line = w; } else line = t; }
+    if (line) lines.push(line);
+    cv.width = W; cv.height = lines.length * lh + pad * 2 + 22;
+    c.font = '500 26px IBM Plex Sans, Arial, sans-serif';
+    c.fillStyle = 'rgba(255,255,255,0.96)';
+    c.beginPath(); c.roundRect(4, 4, W - 8, cv.height - 30, 18); c.fill();
+    c.beginPath(); c.moveTo(W / 2 - 16, cv.height - 27); c.lineTo(W / 2, cv.height - 4); c.lineTo(W / 2 + 16, cv.height - 27); c.fill();
+    c.fillStyle = '#1d2226';
+    lines.forEach((l, k) => c.fillText(l, pad, pad + 26 + k * lh));
+    const tex = new THREE.CanvasTexture(cv);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+    const w = 1.5;
+    sp.scale.set(w, (w * cv.height) / W, 1);
+    sp.position.set(0, 2.05 + sp.scale.y / 2, 0);
+    sp.renderOrder = 10;
+    this.rig.root.add(sp);
+    this.bubble = sp;
+  }
   private bedIt: Interactable | null = null;
   private bedT = 0;
   private bedPose = 'sit';
@@ -382,7 +416,7 @@ export class Views {
     scene.add(this.queueMarker);
   }
 
-  update(state: GameState, dt: number, viewer?: { x: number; z: number }, viewerInside?: string | null) {
+  update(state: GameState, dt: number, viewer?: { x: number; z: number }, viewerInside?: string | null, speech?: Map<string, { text: string; until: number }>) {
     buildBudget = 1;
     for (const p of Object.values(state.people)) {
       let v = this.people.get(p.id);
@@ -398,6 +432,8 @@ export class Views {
       }
       v.culled = !near;
       v.update(state, p, dt);
+      const sp = speech?.get(p.id);
+      v.setSpeech(sp && sp.until > performance.now() ? sp.text : null);
     }
     for (const [id, v] of this.shelfMeshes) {
       const b = state.businesses[v.bid];

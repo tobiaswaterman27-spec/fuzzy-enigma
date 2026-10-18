@@ -396,6 +396,8 @@ export interface Application {
   interviewAt?: number;
   interviewerId?: Id;
   interviewFeedback?: string[];
+  /** ids of the questions this interviewer will ask */
+  questions?: string[];
 }
 
 // --------------------------------------------------------------- tasks

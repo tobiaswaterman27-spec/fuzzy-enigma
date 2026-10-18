@@ -1,6 +1,6 @@
 // EmploymentSystem: vacancies -> applications -> offers -> contracts ->
 // attendance -> performance -> payroll -> promotion / resignation / dismissal.
-import type { Application, Attendance, Business, Contract, GameState, Id, Person, Position, ShiftTemplate, Vacancy } from './types';
+import type { Application, Attendance, Business, Contract, GameState, Id, Person, Position, ShiftTemplate, Traits, Vacancy } from './types';
 import { at, dayIndex, dayOfWeek, fmtClock, fmtDate, MIN_PER_DAY } from './clock';
 import { clamp, nextId, rand } from './core';
 import { transfer } from './ledger';
@@ -16,27 +16,89 @@ export interface ShiftSlot {
   end: number;
 }
 
-export const INTERVIEW = [
-  {
-    q: 'A customer is waiting at the till while you are restocking. What do you do?',
-    a: ['Finish the shelf first - stock matters', 'Put the case down and serve them straight away', 'Wave and tell them someone will be along'],
-    pts: [2, 8, 3],
-    // how much each kind of interviewer likes each answer (added to pts, scaled by their trait 0..1)
-    likes: [{ conscientiousness: 4, sociability: -3 }, { sociability: 3, patience: -1 }, { patience: 3, conscientiousness: -2 }],
-  },
-  {
-    q: 'You notice a spill in an aisle near the end of your shift.',
-    a: ['Leave it for the next shift', 'Clean it up and make sure the area is safe', 'Put a sign up and tell the manager'],
-    pts: [0, 8, 6],
-    likes: [{ thrift: 1 }, { conscientiousness: 3 }, { sociability: 2, ambition: 2 }],
-  },
-  {
-    q: 'Why do you want this job?',
-    a: ['I need the money, honestly', 'I want to learn how a business runs from the shop floor up', 'It is close to where I live'],
-    pts: [4, 8, 5],
-    likes: [{ thrift: 4, ambition: -2 }, { ambition: 4, thrift: -1 }, { patience: 3, conscientiousness: 1 }],
-  },
+export interface InterviewQuestion {
+  id: string;
+  /** which jobs it is asked for: 'general' or a staff role / job family */
+  tags: string[];
+  q: string;
+  a: string[];
+  pts: number[];
+  /** how much each kind of interviewer likes each answer (added to pts, scaled by their trait 0..1) */
+  likes: Partial<Record<keyof Traits, number>>[];
+}
+
+/** the question bank: each interview draws a mix of general and job-specific questions */
+export const QUESTIONS: InterviewQuestion[] = [
+  { id: 'till_restock', tags: ['cashier', 'general_retail'], q: 'A customer is waiting at the till while you are restocking. What do you do?',
+    a: ['Finish the shelf first - stock matters', 'Put the case down and serve them straight away', 'Wave and tell them someone will be along'], pts: [2, 8, 3],
+    likes: [{ conscientiousness: 4, sociability: -3 }, { sociability: 3, patience: -1 }, { patience: 3, conscientiousness: -2 }] },
+  { id: 'spill', tags: ['general_retail', 'cleaner'], q: 'You notice a spill in an aisle near the end of your shift.',
+    a: ['Leave it for the next shift', 'Clean it up and make sure the area is safe', 'Put a sign up and tell the manager'], pts: [0, 8, 6],
+    likes: [{ thrift: 1 }, { conscientiousness: 3 }, { sociability: 2, ambition: 2 }] },
+  { id: 'why', tags: ['general'], q: 'Why do you want this job?',
+    a: ['I need the money, honestly', 'I want to learn how a business runs from the shop floor up', 'It is close to where I live'], pts: [4, 8, 5],
+    likes: [{ thrift: 4, ambition: -2 }, { ambition: 4, thrift: -1 }, { patience: 3, conscientiousness: 1 }] },
+  { id: 'late', tags: ['general'], q: 'Your bus is cancelled and you are going to be twenty minutes late. What do you do?',
+    a: ['Turn up when I can and explain', 'Call ahead straight away and give a time I will be in', 'Take the day off - it is not my fault'], pts: [3, 8, 0],
+    likes: [{ patience: 3 }, { conscientiousness: 4 }, { thrift: -2 }] },
+  { id: 'strength', tags: ['general'], q: 'What would your last manager say is your biggest strength?',
+    a: ['I always turn up and get on with it', 'I get on with everyone and keep people happy', 'I always look for a better way of doing things'], pts: [7, 6, 6],
+    likes: [{ conscientiousness: 4 }, { sociability: 5 }, { ambition: 5, patience: -1 }] },
+  { id: 'weekends', tags: ['general'], q: 'Some weeks we need cover on a Saturday at short notice. How do you feel about that?',
+    a: ['Happy to help when I can', 'Only if it is paid extra', 'I keep my weekends free'], pts: [8, 5, 1],
+    likes: [{ sociability: 2, conscientiousness: 2 }, { thrift: 4 }, { patience: 2 }] },
+  { id: 'complaint', tags: ['cashier', 'general_retail', 'cafe'], q: 'A customer is angry that an item rang up at the wrong price.',
+    a: ['Tell them the till is always right', 'Apologise, check the shelf label and honour the lower price', 'Call the manager over straight away'], pts: [0, 8, 5],
+    likes: [{ thrift: 2 }, { sociability: 3, patience: 2 }, { conscientiousness: 2 }] },
+  { id: 'cash', tags: ['cashier'], q: 'At the end of your shift your till is ten credits short.',
+    a: ['Put ten of my own in so nobody notices', 'Report it honestly and help recount', 'Say nothing - it will even out'], pts: [2, 9, 0],
+    likes: [{ patience: 2 }, { conscientiousness: 4 }, {}] },
+  { id: 'rotation', tags: ['stocker', 'general_retail'], q: 'You are filling the milk shelf. Where do the new cartons go?',
+    a: ['At the front, so they sell first', 'At the back, older dates to the front', 'Wherever there is space'], pts: [2, 9, 0],
+    likes: [{ sociability: 1 }, { conscientiousness: 4 }, {}] },
+  { id: 'delivery', tags: ['stocker', 'warehouse'], q: 'A delivery arrives and two cases on the invoice are missing.',
+    a: ['Sign for it anyway - the driver is in a hurry', 'Note the shortage on the delivery note before signing', 'Refuse the whole delivery'], pts: [0, 9, 3],
+    likes: [{ sociability: 2 }, { conscientiousness: 4 }, { ambition: 1 }] },
+  { id: 'lifting', tags: ['stocker', 'warehouse', 'driver'], q: 'How would you move a heavy case from a high shelf?',
+    a: ['Pull it down quickly', 'Use the step ladder, keep it close and lift with my legs', 'Ask someone else to do it'], pts: [0, 9, 3],
+    likes: [{ ambition: 1 }, { conscientiousness: 4 }, { sociability: 2 }] },
+  { id: 'clean_route', tags: ['cleaner'], q: 'The shop is busy and the floor near the door is wet from rain.',
+    a: ['Wait until it is quiet', 'Put out a wet-floor sign and mop it now, working around people', 'Close the door'], pts: [2, 9, 3],
+    likes: [{ patience: 3 }, { conscientiousness: 4 }, { thrift: 2 }] },
+  { id: 'cafe_rush', tags: ['cafe'], q: 'There is a queue out of the door at lunchtime.',
+    a: ['Work faster and skip the small talk', 'Keep calm, take orders in turn and keep the counter clear', 'Tell people the wait will be long'], pts: [5, 9, 3],
+    likes: [{ ambition: 2 }, { patience: 4 }, { sociability: 1 }] },
+  { id: 'route', tags: ['driver'], q: 'The road to a delivery is closed.',
+    a: ['Drive round the barrier', 'Find another route and call ahead with a new time', 'Bring the goods back to the depot'], pts: [0, 9, 3],
+    likes: [{}, { conscientiousness: 3, sociability: 1 }, { patience: 1 }] },
+  { id: 'lead_conflict', tags: ['manager'], q: 'Two of your staff keep arguing in front of customers.',
+    a: ['Tell them both off on the shop floor', 'Talk to each privately, then agree how they will work together', 'Put them on different shifts and say nothing'], pts: [2, 9, 5],
+    likes: [{ ambition: 2 }, { sociability: 3, patience: 2 }, { thrift: 1 }] },
+  { id: 'lead_stock', tags: ['manager'], q: 'Sales of crisps have doubled this month. What do you do with the order?',
+    a: ['Order double next time', 'Check whether it is a one-off, then raise the order a little and watch it', 'Keep the order the same'], pts: [4, 9, 2],
+    likes: [{ ambition: 3 }, { conscientiousness: 3, thrift: 2 }, { thrift: 2 }] },
 ];
+
+/** older saves and helpers: the first three questions in their original order */
+export const INTERVIEW = QUESTIONS.slice(0, 3);
+
+const FAMILY: Record<string, string[]> = {
+  cashier: ['cashier', 'general_retail'], stocker: ['stocker', 'general_retail'], cleaner: ['cleaner', 'general_retail'], manager: ['manager', 'general_retail'],
+  general: ['general_retail', 'cashier'],
+};
+
+/** choose an interview's questions: two general ones and three or four about the job itself */
+export function pickQuestions(state: GameState, pos: Position, businessId: Id): string[] {
+  const fam = pos.role ? FAMILY[pos.role] : businessId === 'cafe' ? ['cafe'] : businessId === 'wholesale' ? (pos.id === 'driver' ? ['driver', 'warehouse'] : ['warehouse']) : ['general_retail'];
+  const shuffled = <T,>(xs: T[]) => xs.map((x) => [rand(state), x] as const).sort((a, b) => a[0] - b[0]).map((x) => x[1]);
+  const general = shuffled(QUESTIONS.filter((q) => q.tags.includes('general'))).slice(0, 2);
+  const job = shuffled(QUESTIONS.filter((q) => !q.tags.includes('general') && q.tags.some((t) => fam.includes(t)))).slice(0, pos.role === 'manager' ? 4 : 3);
+  return [...general, ...job].map((q) => q.id);
+}
+
+export const questionById = (id: string) => QUESTIONS.find((q) => q.id === id);
+export const questionsFor = (a: { questions?: string[] }) => (a.questions?.length ? a.questions.map(questionById).filter((q): q is InterviewQuestion => !!q) : INTERVIEW);
+
 
 export const business = (state: GameState, id: Id): Business => state.businesses[id];
 export function positionOf(state: GameState, c: { businessId: Id; positionId: Id }): Position | undefined {
@@ -286,7 +348,10 @@ export function canApply(state: GameState, personId: Id, vacancyId: Id): string 
   if (p.isPlayer && !pos.playable) return 'This role is not playable yet.';
   if (v.applicants.some((aid) => state.applications[aid].personId === personId)) return 'You have already applied.';
   if (p.contractId && state.contracts[p.contractId]?.businessId === b.id && state.contracts[p.contractId].positionId === pos.id) return 'You already hold this position.';
-  for (const [k, xp] of Object.entries(pos.requires)) if ((p.skills[k] ?? 0) < xp) return `Requires more ${k} experience.`;
+  for (const [k, xp] of Object.entries(pos.requires)) {
+    const have = p.skills[k] ?? 0;
+    if (have < xp) return `Needs ${k} experience level ${skillLevel(xp)} (you are level ${skillLevel(have)}: about ${Math.ceil((xp - have) / 12)} more shifts of ${k} work).`;
+  }
   return null;
 }
 
@@ -352,6 +417,7 @@ export function processApplications(state: GameState) {
         a.status = 'interview';
         a.interviewAt = slot;
         a.interviewerId = iv.id;
+        a.questions = pickQuestions(state, b.positions.find((x) => x.id === v.positionId)!, b.id);
         news(state, 'job', `Interview invitation: ${b.name}`, `Meet ${iv.name} at ${b.name} on ${fmtDate(slot)} at ${fmtClock(slot)}. Find them in person and talk to them. Dress smartly and be on time.`, true);
       }
       if (a.status === 'interview' && a.interviewAt !== undefined && now > a.interviewAt + 60) {
@@ -428,14 +494,17 @@ export function attendInterview(state: GameState, appId: Id, answers: number[]):
   const fb: string[] = [];
   let score = a.score;
   let ans = 0;
+  const qs = questionsFor(a);
   answers.forEach((ai, qi) => {
-    const q = INTERVIEW[qi];
+    const q = qs[qi];
     if (!q) return;
     let v = q.pts[ai] ?? 0;
-    for (const [trait, w] of Object.entries(q.likes?.[ai] ?? {})) v += w * (T as unknown as Record<string, number>)[trait];
+    for (const [trait, w] of Object.entries(q.likes?.[ai] ?? {})) v += (w ?? 0) * (T as unknown as Record<string, number>)[trait];
     ans += v;
   });
   score += ans;
+  // answers are judged against the number of questions asked
+  ans = (ans * 3) / Math.max(1, qs.length);
   fb.push(ans >= 22 ? `${who} liked your answers.` : ans >= 15 ? `${who} thought your answers were reasonable.` : `Your answers did not convince ${iv ? who : 'them'}.`);
   // dress matters more to conscientious interviewers
   const formality = CLOTHING[p.appearance.outfit]?.formality ?? 0;

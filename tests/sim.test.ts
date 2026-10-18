@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createNewGame, step, transfer, auditLedger, moneySupply, getWorld, segIntersectsRect, planRoute, astar,
   applyForJob, acceptOffer, attendInterview, startAction, runPayroll, serialize, deserialize, safeWrite, loadSlot, worldCount,
-  PRODUCTS, ITEMS, at, openAttendance, total, count, hire, completeSale, moveItems, minuteOfDay,
+  PRODUCTS, ITEMS, questionsFor, at, openAttendance, total, count, hire, completeSale, moveItems, minuteOfDay,
   type GameState, type KV,
 } from '../src/sim/index';
 
@@ -77,7 +77,10 @@ describe('Journey A - start a life', () => {
     advanceTo(s, app.interviewAt! - 10);
     p.appearance.outfit = 'outfit_smart';
     p.needs.hygiene = 90;
-    const res = attendInterview(s, app.id, [1, 1, 1]);
+    // answer each question this interviewer asks with its strongest answer
+    const qs = questionsFor(app);
+    expect(qs.length).toBeGreaterThanOrEqual(5);
+    const res = attendInterview(s, app.id, qs.map((q) => q.pts.indexOf(Math.max(...q.pts))));
     expect(res.ok).toBe(true);
     expect(res.offered).toBe(true);
     expect(res.feedback.some((f) => f.includes('smartly'))).toBe(true);

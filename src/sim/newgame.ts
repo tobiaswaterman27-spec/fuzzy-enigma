@@ -125,6 +125,12 @@ export function createNewGame(seed: number, setup: PlayerSetup): GameState {
         description: 'Evening cashier at Corner Market: till first, then restocking and tidying.', duties: ['Serve customers', 'Restock shelves', 'Clean'],
       }),
       pos({
+        id: 'supervisor', title: 'Shift Supervisor', wage: 1650, shifts: [sh(MON_SAT, 12, 20)], uniform: 'uniform_market', playable: true, role: 'manager',
+        requires: { retail: 420 }, headcount: 1,
+        description: 'Runs the afternoon shift: covers the till when it is busy, checks in deliveries and keeps the team on top of restocking and cleaning.',
+        duties: ['Cover the till when a queue builds', 'Check in deliveries', 'Keep shelves full when short-staffed'],
+      }),
+      pos({
         id: 'stocker_am', title: 'Shelf Stacker (Mornings)', wage: 1180, shifts: [sh(MON_SAT, 6, 12)], uniform: 'uniform_market', playable: true, role: 'stocker',
         description: 'Stock room and shelves: check in deliveries, bring stock out, keep every section full.',
         duties: ['Check in deliveries at the loading bay', 'Restock shelves from the store room', 'Cover the till only when the queue is long'],

@@ -53,6 +53,9 @@ export class Game {
   overview = false;
   /** debug/screenshot scripts can pin the camera; players cannot move it */
   camLocked = false;
+  /** speech bubbles over people's heads: what they are saying and until when (real seconds) */
+  speech = new Map<string, { text: string; until: number }>();
+  say(personId: string, text: string, seconds = 5) { this.speech.set(personId, { text, until: performance.now() + seconds * 1000 }); }
   private vel = { x: 0, z: 0 };
   private stillFor = 0;
   /** debug/photo mode: the camera is positioned externally */
@@ -231,7 +234,7 @@ export class Game {
       this.updateFocus();
       if (performance.now() > this.autosaveAt) { this.autosave(); this.autosaveAt = performance.now() + 180000; }
     }
-    this.views.update(s, this.paused ? 0 : dt, this.player.pos, this.insideId);
+    this.views.update(s, this.paused ? 0 : dt, this.player.pos, this.insideId, this.speech);
     this.watchFrameRate(dt);
     this.world.update(s, dt);
     if (!this.freeCam) this.updateCamera(dt);
