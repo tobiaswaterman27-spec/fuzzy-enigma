@@ -2,7 +2,8 @@
 import type { GameState } from './types';
 import { SAVE_VERSION } from './newgame';
 import { auditLedger } from './ledger';
-import { getWorld } from './world/layout';
+import { getWorld, setHomeDesign } from './world/layout';
+import { defaultDesign } from './world/homes';
 
 export interface SaveFile {
   format: 'bigshot-save';
@@ -40,6 +41,12 @@ const MIGRATIONS: Record<number, (s: any) => void> = {
     }
     const spawn = getWorld().playerSpawn;
     for (const p of Object.values<any>(s.people ?? {})) if (p.where === 'flat' && p.visible) p.pos = { ...spawn };
+  },
+  4: (s) => {
+    // v4 -> v5: homes are furnished from a design; the flat keeps its occupant in the hall while it is refurnished
+    s.homeDesigns ??= { flat: defaultDesign(1) };
+    const spawn = getWorld().playerSpawn;
+    for (const p of Object.values<any>(s.people ?? {})) if (p.where === 'flat' && p.visible && !p.sleeping) p.pos = { ...spawn };
   },
 };
 
@@ -99,6 +106,8 @@ export function deserialize(text: string): { ok: true; state: GameState; migrate
   if (errs.length) return { ok: false, error: `Save failed validation: ${errs.slice(0, 5).join('; ')}` };
   // derived/transient state is reconstructed rather than trusted
   for (const p of Object.values<any>(s.people)) if (p.move && !Array.isArray(p.move.path)) p.move = null;
+  // the world's furniture follows the loaded home design
+  if (s.homeDesigns?.flat) setHomeDesign(s.homeDesigns.flat);
   return { ok: true, state: s, migrated };
 }
 

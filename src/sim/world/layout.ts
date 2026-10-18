@@ -1,4 +1,5 @@
 // Static world definition for the Harbourside starting district.
+import { defaultDesign, furnish, type HomeDesign, type PlacedItem } from './homes';
 // Geometry, colliders, interaction anchors and the pedestrian/vehicle graphs
 // are built from code (not saved) and shared by simulation and renderer.
 //
@@ -47,6 +48,20 @@ export interface BuildingDef {
 export type ObstacleKind =
   | 'gondola'
   | 'toilet'
+  | 'basin'
+  | 'armchair'
+  | 'sideboard'
+  | 'bedside'
+  | 'desk'
+  | 'dining_table'
+  | 'dining_chair'
+  | 'laptop'
+  | 'art'
+  | 'floorfinish'
+  | 'wallfinish'
+  | 'lampstand'
+  | 'plant'
+  | 'rug'
   | 'stairs'
   | 'mailboxes'
   | 'flatdoor'
@@ -414,9 +429,37 @@ export const SHOPS: Record<string, ShopDef> = {
 export const shopOfLocation = (loc: string): ShopDef | null => SHOPS[loc] ?? null;
 
 let cached: World | null = null;
+let homeDesign: HomeDesign = defaultDesign();
+let homeNodes: { id: string; pos: Vec2; hub: string }[] = [];
+
+/** furnish the player's home with a design; the world (colliders, navigation, interactables) is rebuilt */
+export function setHomeDesign(d: HomeDesign) {
+  if (JSON.stringify(d) === JSON.stringify(homeDesign) && cached) return;
+  homeDesign = JSON.parse(JSON.stringify(d));
+  cached = null;
+}
+export const currentHomeDesign = () => homeDesign;
 
 export function getWorld(): World {
   if (cached) return cached;
+  // a design whose arrangement leaves something unreachable is re-arranged (next seed) until it works
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const w = buildWorldData({ ...homeDesign, seed: homeDesign.seed + attempt * 7 });
+    if (homeOK(w) || attempt === 39) { cached = w; break; }
+  }
+  return cached!;
+}
+
+/** every usable thing in the home is reachable from the flat's front door over the walking graph */
+function homeOK(w: World): boolean {
+  const seen = new Set<string>(['fl_door_i']);
+  const q = ['fl_door_i'];
+  while (q.length) { const a = q.pop()!; for (const b of w.edges[a] ?? []) if (!seen.has(b)) { seen.add(b); q.push(b); } }
+  return homeNodes.every((h) => seen.has(h.id));
+}
+
+function buildWorldData(homeDesign: HomeDesign): World {
+  let cached: World;
   const obstacles: Obstacle[] = [];
   const I: Record<string, Interactable> = {};
   const add = (it: Omit<Interactable, 'range'> & { range?: number }) => {
@@ -449,40 +492,42 @@ export function getWorld(): World {
   add({ id: 'cupboard', kind: 'cupboard', label: 'Cleaning cupboard', pos: { x: 34.5, z: -30 }, facing: Math.PI / 2, obj: { x: 35.5, z: -30 }, locationId: 'market', businessId: 'market' });
   add({ id: 'bay', kind: 'bay', label: 'Loading bay', pos: { x: 24, z: -37.4 }, facing: Math.PI, obj: { x: 24, z: -38.7 }, locationId: 'market', businessId: 'market', range: 2.2 });
 
-  // ---- Flat interior (real furniture sizes)
-  // bedroom
-  obstacles.push({ kind: 'bed', rect: { x0: 27.75, z0: 20.6, x1: 29.85, z1: 22.2 }, height: 0.6, solid: true });
-  add({ id: 'bed', kind: 'bed', label: 'Bed', pos: { x: 26.9, z: 21.4 }, facing: Math.PI / 2, obj: { x: 28.8, z: 21.4 }, locationId: 'flat', range: 1.8 });
-  obstacles.push({ kind: 'wardrobe', rect: { x0: 22.15, z0: 22.0, x1: 22.85, z1: 24.2 }, height: 2.1, solid: true });
-  add({ id: 'wardrobe', kind: 'wardrobe', label: 'Wardrobe', pos: { x: 23.7, z: 23.1 }, facing: -Math.PI / 2, obj: { x: 22.5, z: 23.1 }, locationId: 'flat' });
-  obstacles.push({ kind: 'drawers', rect: { x0: 28.0, z0: 25.35, x1: 28.9, z1: 25.83 }, height: 0.85, solid: true });
-  obstacles.push({ kind: 'rug', rect: { x0: 25.6, z0: 20.2, x1: 27.6, z1: 22.6 }, height: 0.01, solid: false, color: '#c9b79c' });
-  // bathroom
-  obstacles.push({ kind: 'shower', rect: { x0: 28.85, z0: 13.2, x1: 29.85, z1: 14.2 }, height: 2.1, solid: true });
-  add({ id: 'shower', kind: 'shower', label: 'Shower', pos: { x: 28.2, z: 14.7 }, facing: Math.PI / 2, obj: { x: 29.35, z: 13.7 }, locationId: 'flat' });
-  obstacles.push({ kind: 'tilefloor', rect: { x0: 25.65, z0: 13.15, x1: 29.85, z1: 17.35 }, height: 0.01, solid: false });
-  obstacles.push({ kind: 'toilet', rect: { x0: 29.2, z0: 16.0, x1: 29.85, z1: 16.7 }, height: 0.8, solid: true });
-  // living room
-  obstacles.push({ kind: 'sofa', rect: { x0: 12.2, z0: 15.4, x1: 13.15, z1: 17.6 }, height: 0.85, solid: true });
-  add({ id: 'sofa', kind: 'sofa', label: 'Sofa & TV', pos: { x: 13.8, z: 16.5 }, facing: Math.PI / 2, obj: { x: 12.7, z: 16.5 }, locationId: 'flat' });
-  obstacles.push({ kind: 'tv', rect: { x0: 16.9, z0: 15.7, x1: 17.35, z1: 17.3 }, height: 0.5, solid: true });
-  obstacles.push({ kind: 'rug', rect: { x0: 13.6, z0: 15.4, x1: 16.4, z1: 17.6 }, height: 0.01, solid: false });
-  obstacles.push({ kind: 'coffee_table', rect: { x0: 14.75, z0: 15.95, x1: 15.3, z1: 17.05 }, height: 0.45, solid: true });
-  obstacles.push({ kind: 'bookcase', rect: { x0: 12.2, z0: 19.8, x1: 12.52, z1: 20.7 }, height: 1.9, solid: true });
+  // ---- Flat 1 interior: fixed fittings, then the occupant's design furnishes the rooms
+  {
+    const kitchenRun: PlacedItem = { kind: 'kitchen', rect: { x0: 12.2, z0: 25.2, x1: 17.6, z1: 25.85 }, height: 0.92, solid: true, rot: Math.PI, room: 'kitchen' };
+    const stove: PlacedItem = { kind: 'stove', rect: { x0: 17.6, z0: 25.2, x1: 18.2, z1: 25.85 }, height: 0.92, solid: true, rot: Math.PI, room: 'kitchen' };
+    const shower: PlacedItem = { kind: 'shower', rect: { x0: 28.85, z0: 13.2, x1: 29.85, z1: 14.2 }, height: 2.1, solid: true, rot: -Math.PI / 2, room: 'bathroom' };
+    const toilet: PlacedItem = { kind: 'toilet', rect: { x0: 29.2, z0: 16.0, x1: 29.85, z1: 16.7 }, height: 0.8, solid: true, rot: -Math.PI / 2, room: 'bathroom' };
+    const basin: PlacedItem = { kind: 'basin', rect: { x0: 27.0, z0: 13.2, x1: 27.6, z1: 13.65 }, height: 0.85, solid: true, rot: 0, room: 'bathroom' };
+    const furnished = furnish({
+      rooms: [
+        { id: 'living', name: 'Living room', kind: 'living', rect: { x0: 12.15, z0: 13.75, x1: 21.85, z1: 23.6 }, doors: [{ x: 16.7, z: 13.75 }], outside: ['x0'] },
+        { id: 'kitchen', name: 'Kitchen', kind: 'kitchen', rect: { x0: 12.15, z0: 23.6, x1: 21.85, z1: 25.85 }, doors: [], outside: ['x0', 'z1'] },
+        { id: 'hall', name: 'Hall', kind: 'hall', rect: { x0: 21.85, z0: 13.75, x1: 25.35, z1: 17.35 }, doors: [{ x: 23.5, z: 17.5 }, { x: 25.5, z: 15.0 }], outside: [] },
+        { id: 'bedroom', name: 'Bedroom', kind: 'bedroom', rect: { x0: 22.15, z0: 17.65, x1: 29.85, z1: 25.85 }, doors: [{ x: 23.5, z: 17.65 }], outside: ['x1', 'z1'] },
+        { id: 'bathroom', name: 'Bathroom', kind: 'bathroom', rect: { x0: 25.65, z0: 13.15, x1: 29.85, z1: 17.35 }, doors: [{ x: 25.65, z: 15.0 }], outside: ['x1'] },
+      ],
+      routes: [
+        [{ x: 16.7, z: 12.9 }, { x: 16.7, z: 14.4 }], [{ x: 16.7, z: 14.4 }, { x: 23.5, z: 14.5 }], [{ x: 23.5, z: 14.5 }, { x: 23.5, z: 19.5 }],
+        [{ x: 16.7, z: 14.4 }, { x: 15.5, z: 20 }], [{ x: 23.5, z: 14.5 }, { x: 27.2, z: 15 }], [{ x: 15.5, z: 20 }, { x: 15.0, z: 24.4 }], [{ x: 15.5, z: 20 }, { x: 17.9, z: 24.4 }],
+      ],
+      fixed: [kitchenRun, stove, shower, toilet, basin],
+      fixedUses: [
+        { id: 'kitchen', kind: 'kitchen', label: 'Kitchen', pos: { x: 15.0, z: 24.4 }, facing: 0, obj: { x: 15.0, z: 25.5 } },
+        { id: 'stove', kind: 'stove', label: 'Cooker', pos: { x: 17.9, z: 24.4 }, facing: 0, obj: { x: 17.9, z: 25.5 } },
+        { id: 'shower', kind: 'shower', label: 'Shower', pos: { x: 28.2, z: 14.7 }, facing: Math.PI / 2, obj: { x: 29.35, z: 13.7 } },
+      ],
+      hubs: { living: 'fl_k', bedroom: 'fl_bed', bathroom: 'fl_bath', hall: 'fl_c', kitchen: 'fl_k' },
+    }, homeDesign);
+    for (const it of furnished.items) obstacles.push({ kind: it.kind as ObstacleKind, rect: it.rect, height: it.height, solid: it.solid, rot: it.rot, color: it.color });
+    for (const u of furnished.uses) add({ ...u, kind: u.kind as InteractKind, locationId: 'flat' });
+    homeNodes = furnished.nodes;
+  }
   // communal lobby
   obstacles.push({ kind: 'stairs', rect: { x0: 12.2, z0: 10.2, x1: 14.6, z1: 12.4 }, height: 3.2, solid: true });
   obstacles.push({ kind: 'mailboxes', rect: { x0: 17.4, z0: 11.0, x1: 17.85, z1: 12.6 }, height: 1.5, solid: true });
   obstacles.push({ kind: 'flatdoor', rect: { x0: 16.2, z0: 13.45, x1: 17.2, z1: 13.75 }, height: 2.1, solid: false });
   obstacles.push({ kind: 'plant', rect: { x0: 14.9, z0: 12.8, x1: 15.4, z1: 13.3 }, height: 1.2, solid: true });
-  obstacles.push({ kind: 'lampstand', rect: { x0: 12.3, z0: 18.8, x1: 12.8, z1: 19.3 }, height: 1.6, solid: true });
-  // dining table with the laptop
-  obstacles.push({ kind: 'table', rect: { x0: 18.6, z0: 17.3, x1: 20.0, z1: 18.2 }, height: 0.75, solid: true });
-  add({ id: 'chair', kind: 'chair', label: 'Chair', pos: { x: 19.3, z: 16.6 }, facing: 0, obj: { x: 19.3, z: 16.6 }, locationId: 'flat' });
-  // kitchen run along the back wall
-  obstacles.push({ kind: 'kitchen', rect: { x0: 12.2, z0: 25.2, x1: 17.6, z1: 25.85 }, height: 0.92, solid: true });
-  add({ id: 'kitchen', kind: 'kitchen', label: 'Kitchen', pos: { x: 15.0, z: 24.4 }, facing: 0, obj: { x: 15.0, z: 25.5 }, locationId: 'flat' });
-  obstacles.push({ kind: 'stove', rect: { x0: 17.6, z0: 25.2, x1: 18.2, z1: 25.85 }, height: 0.92, solid: true });
-  add({ id: 'stove', kind: 'stove', label: 'Cooker', pos: { x: 17.9, z: 24.4 }, facing: 0, obj: { x: 17.9, z: 25.5 }, locationId: 'flat' });
 
   // ---- Job centre interior
   obstacles.push({ kind: 'board', rect: { x0: -27, z0: -27.85, x1: -21, z1: -27.5 }, height: 2.2, solid: true });
@@ -707,6 +752,45 @@ export function getWorld(): World {
   N('fl_c', 23.5, 14.5, 'flat'); N('fl_k', 15.5, 20, 'flat'); N('fl_bed', 23.5, 19.5, 'flat'); N('fl_bath', 27.2, 15.0, 'flat');
   N('fl_door_o', 16.7, 12.9, 'flat'); N('fl_door_i', 16.7, 14.4, 'flat');
   L('fl_in', 'fl_door_o', 'fl_door_i', 'fl_c', 'fl_bed'); L('fl_door_i', 'fl_k'); L('fl_c', 'fl_bath');
+  // designed furniture: a node in front of each thing you use, linked to its room's hub
+  // the home's furniture changes with its design, so its floor gets a fine walking grid: every free
+  // spot links to its neighbours, and fixed nodes and the designed furniture's stand points join it
+  {
+    const H = { x0: 12.2, z0: 13.8, x1: 29.8, z1: 25.8 };
+    const step = 0.6;
+    const blocked = (x: number, z: number) => colliders.some((r) => x > r.x0 - 0.28 && x < r.x1 + 0.28 && z > r.z0 - 0.28 && z < r.z1 + 0.28);
+    const clear = (a: Vec2, b: Vec2) => !colliders.some((r) => segIntersectsRect(a, b, r, 0.2));
+    const grid: string[] = [];
+    for (let x = H.x0 + 0.3; x < H.x1; x += step) for (let z = H.z0 + 0.3; z < H.z1; z += step) {
+      if (blocked(x, z)) continue;
+      const id = `flg_${Math.round(x * 10)}_${Math.round(z * 10)}`;
+      N(id, x, z, 'flat');
+      grid.push(id);
+    }
+    for (let a = 0; a < grid.length; a++) for (let b = a + 1; b < grid.length; b++) {
+      const A = nodes[grid[a]], B = nodes[grid[b]];
+      const d = Math.hypot(A.x - B.x, A.z - B.z);
+      if (d < step * 1.5 && clear(A, B)) L(grid[a], grid[b]);
+    }
+    for (const hn of homeNodes) N(hn.id, hn.pos.x, hn.pos.z, 'flat');
+    const joiners = [...homeNodes.map((h) => h.id), 'fl_door_i', 'fl_c', 'fl_k', 'fl_bed', 'fl_bath'];
+    for (const id of joiners) {
+      const nd = nodes[id];
+      if (!nd) continue;
+      const near = grid.map((g) => ({ g, d: Math.hypot(nodes[g].x - nd.x, nodes[g].z - nd.z) })).filter((c) => c.d < 1.6).sort((p1, p2) => p1.d - p2.d);
+      let linked = 0;
+      for (const c of near) { if (linked >= 3) break; if (clear(nd, nodes[c.g])) { L(id, c.g); linked++; } }
+    }
+    // pockets of floor cut off behind furniture are not part of the walking graph
+    const seen = new Set<string>(['fl_door_i']);
+    const q = ['fl_door_i'];
+    while (q.length) { const a = q.pop()!; for (const b of edges[a] ?? []) if (!seen.has(b)) { seen.add(b); q.push(b); } }
+    for (const g of grid) if (!seen.has(g)) {
+      for (const b of edges[g] ?? []) edges[b] = edges[b].filter((x) => x !== g);
+      delete edges[g];
+      delete nodes[g];
+    }
+  }
   // upstairs residents use the communal entrance
   N('door_upper', 16.6, 9.3, 'flat_upper'); L('se_16', 'door_upper');
   // Wholesale staff door

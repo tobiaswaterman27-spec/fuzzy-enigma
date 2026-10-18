@@ -8,13 +8,15 @@ import { ITEMS, PRODUCTS } from './items';
 import { hire, refreshVacancies } from './employment';
 import { createLease } from './housing';
 import { initObjectives } from './objectives';
+import { defaultDesign } from './world/homes';
+import { setHomeDesign } from './world/layout';
 import { getWorld, HOUSE_IDS } from './world/layout';
 import { homeDoor } from './npc';
 import { rand, randInt, pick } from './core';
 import { news } from './events';
 import { spawnDirt, SHELF_CAPACITY, shelfId } from './retail';
 
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;
 
 export interface PlayerSetup {
   name: string;
@@ -36,7 +38,7 @@ function emptyState(seed: number): GameState {
     ledger: { accounts: {}, txns: [], keys: {}, archived: {} },
     containers: {}, people: {}, playerId: 'player', businesses: {}, contracts: {}, attendance: {}, vacancies: {}, applications: {},
     tasks: {}, dirt: {}, tills: {}, shipments: {}, vehicles: {}, leases: {}, districts: {}, news: [], objectives: initObjectives(),
-    processed: {}, governmentId: 'council', externalId: '', policy: { incomeTax: 0.1, salesTax: 0.1, reserve: 3000000 }, flags: {},
+    homeDesigns: {}, processed: {}, governmentId: 'council', externalId: '', policy: { incomeTax: 0.1, salesTax: 0.1, reserve: 3000000 }, flags: {},
   };
 }
 
@@ -100,6 +102,9 @@ const pos = (p: Partial<Position> & Pick<Position, 'id' | 'title' | 'wage' | 'sh
 
 export function createNewGame(seed: number, setup: PlayerSetup): GameState {
   const state = emptyState(seed);
+  // every new life gets a differently furnished flat
+  state.homeDesigns.flat = defaultDesign((seed * 7919 + 13) % 100000 || 1);
+  setHomeDesign(state.homeDesigns.flat);
   const ext = openAccount(state, 'external', 'Rest of the Country', 'external', true);
   state.externalId = ext.id;
 

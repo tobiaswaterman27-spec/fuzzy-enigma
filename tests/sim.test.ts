@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import {
   createNewGame, step, transfer, auditLedger, moneySupply, getWorld, segIntersectsRect, planRoute, astar,
   applyForJob, acceptOffer, attendInterview, startAction, runPayroll, serialize, deserialize, safeWrite, loadSlot, worldCount,
@@ -39,7 +39,9 @@ describe('ledger', () => {
 });
 
 describe('world layout & navigation', () => {
-  const w = getWorld();
+  // a home design for these checks (a new game furnishes the flat from its own seed)
+  let w = getWorld();
+  beforeEach(() => { newGame(7); w = getWorld(); });
   it('no navigation edge passes through a collider', () => {
     const bad: string[] = [];
     for (const [a, list] of Object.entries(w.edges)) for (const b of list) {

@@ -109,16 +109,16 @@ class PersonView {
       // edge: seated beside the bed facing the room; lying: along the bed, head on the pillow
       const ex = bed.pos.x + (bed.obj.x - bed.pos.x) * 0.45, ez = bed.pos.z + (bed.obj.z - bed.pos.z) * 0.45;
       const outYaw = Math.atan2(bed.pos.x - bed.obj.x, bed.pos.z - bed.obj.z);
-      // lie along the bed's long axis: feet at the foot end, head towards the headboard (against the wall)
-      const r = getWorld().obstacles.find((o) => (o.kind === 'bed' || o.kind === 'sofa') && bed.obj.x >= o.rect.x0 - 0.2 && bed.obj.x <= o.rect.x1 + 0.2 && bed.obj.z >= o.rect.z0 - 0.2 && bed.obj.z <= o.rect.z1 + 0.2)?.rect;
+      // lie along the bed: feet at the foot end (the way the bed faces), head on the pillows by the headboard
+      const ob = getWorld().obstacles.find((o) => (o.kind === 'bed' || o.kind === 'sofa') && bed.obj.x >= o.rect.x0 - 0.3 && bed.obj.x <= o.rect.x1 + 0.3 && bed.obj.z >= o.rect.z0 - 0.3 && bed.obj.z <= o.rect.z1 + 0.3);
       let lx = bed.obj.x, lz = bed.obj.z, lieYaw = 0;
-      if (r) {
-        const alongX = r.x1 - r.x0 >= r.z1 - r.z0;
-        // the headboard is on the side away from where you get in (the interaction point)
-        const headPlus = alongX ? Math.abs(bed.pos.x - r.x1) > Math.abs(bed.pos.x - r.x0) : Math.abs(bed.pos.z - r.z1) > Math.abs(bed.pos.z - r.z0);
-        const cxr = (r.x0 + r.x1) / 2, czr = (r.z0 + r.z1) / 2;
-        if (alongX) { lx = headPlus ? r.x0 + 0.12 : r.x1 - 0.12; lz = czr; lieYaw = headPlus ? -Math.PI / 2 : Math.PI / 2; }
-        else { lz = headPlus ? r.z0 + 0.12 : r.z1 - 0.12; lx = cxr; lieYaw = headPlus ? Math.PI : 0; }
+      if (ob) {
+        const rot = ob.rot ?? (ob.kind === 'bed' ? -Math.PI / 2 : 0);
+        const fx = Math.sin(rot), fz = Math.cos(rot);
+        const len = Math.abs(fx) > 0.5 ? ob.rect.x1 - ob.rect.x0 : ob.rect.z1 - ob.rect.z0;
+        lx = (ob.rect.x0 + ob.rect.x1) / 2 + fx * (len / 2 - 0.12);
+        lz = (ob.rect.z0 + ob.rect.z1) / 2 + fz * (len / 2 - 0.12);
+        lieYaw = rot;
       }
       const k = smooth((t - 0.35) / 0.65);
       root.position.set(ex + (lx - ex) * k, 0, ez + (lz - ez) * k);

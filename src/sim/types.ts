@@ -525,7 +525,11 @@ export interface AggregateDistrict {
   confidence: number;
 }
 
+import type { HomeDesign } from './world/homes';
+
 export interface GameState {
+  /** how each home is furnished and decorated (by home id) */
+  homeDesigns: Record<string, HomeDesign>;
   version: number;
   seed: number;
   rng: number;

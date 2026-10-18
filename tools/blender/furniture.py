@@ -278,6 +278,96 @@ def drawers():
     export('drawers')
 
 
-for f in (sofa, bed, wardrobe, dining_table, chair, tv_unit, kitchen_base, cooker, fridge, coffee_table, bookcase, drawers):
+def armchair():
+    reset()
+    fab = mat('paint', (0.25, 0.38, 0.33), 0.95)
+    wood = mat('wood', (0.25, 0.16, 0.09), 0.5)
+    W, D = 0.85, 0.85
+    block((W - 0.1, D - 0.1, 0.2), (0, 0.02, 0.22), fab, 0.04, 3)
+    for sx in (-1, 1):
+        block((0.16, D, 0.55), (sx * (W / 2 - 0.08), 0, 0.4), fab, 0.07, 4)
+    block((W - 0.3, 0.2, 0.55), (0, D / 2 - 0.12, 0.62), fab, 0.06, 3)
+    block((W - 0.34, D - 0.32, 0.15), (0, -0.07, 0.4), fab, 0.0, soft=2)
+    block((W - 0.36, 0.16, 0.42), (0, D / 2 - 0.28, 0.68), fab, 0.0, soft=2, rot=(-0.15, 0, 0))
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            cylinder(0.022, 0.12, (sx * (W / 2 - 0.08), sy * (D / 2 - 0.08), 0.06), wood)
+    export('armchair')
+
+
+def desk():
+    reset()
+    wood = mat('wood', (0.82, 0.78, 0.7), 0.45)
+    metal = mat('metal', (0.15, 0.15, 0.16), 0.4, 0.6)
+    W, D, H = 1.2, 0.6, 0.75
+    block((W, D, 0.03), (0, 0, H - 0.015), wood, 0.006)
+    for sx in (-1, 1):
+        block((0.03, D - 0.04, H - 0.03), (sx * (W / 2 - 0.03), 0, (H - 0.03) / 2), metal)
+    block((0.4, D - 0.06, 0.45), (W / 2 - 0.25, 0.01, H - 0.26), wood, 0.004)
+    for k in range(3):
+        block((0.36, 0.01, 0.13), (W / 2 - 0.25, -D / 2 - 0.0, H - 0.1 - k * 0.145), mat('front', (0.88, 0.85, 0.78), 0.4), 0.003)
+    # monitor and a lamp
+    block((0.55, 0.03, 0.32), (-0.15, D / 2 - 0.15, H + 0.3), mat('black', (0.03, 0.03, 0.035), 0.2), 0.008)
+    block((0.03, 0.03, 0.15), (-0.15, D / 2 - 0.13, H + 0.08), metal)
+    block((0.2, 0.15, 0.015), (-0.15, D / 2 - 0.13, H + 0.008), metal)
+    cylinder(0.07, 0.02, (0.4, D / 2 - 0.12, H + 0.01), metal)
+    cylinder(0.008, 0.35, (0.4, D / 2 - 0.12, H + 0.18), metal)
+    cylinder(0.07, 0.1, (0.4, D / 2 - 0.2, H + 0.36), mat('shade', (0.92, 0.88, 0.78), 0.6), rot=(0.5, 0, 0))
+    export('desk')
+
+
+def sideboard():
+    reset()
+    wood = mat('wood', (0.36, 0.24, 0.15), 0.4)
+    front = mat('front', (0.4, 0.27, 0.17), 0.35)
+    metal = mat('metal', (0.75, 0.68, 0.5), 0.25, 1.0)
+    W, D, H = 1.4, 0.45, 0.8
+    block((W, D, H - 0.12), (0, 0, 0.12 + (H - 0.12) / 2), wood, 0.01)
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            block((0.03, 0.03, 0.12), (sx * (W / 2 - 0.06), sy * (D / 2 - 0.06), 0.06), metal)
+    for k in range(3):
+        x = -W / 2 + W / 6 + k * W / 3
+        block((W / 3 - 0.02, 0.015, H - 0.18), (x, -D / 2 - 0.006, 0.12 + (H - 0.12) / 2), front, 0.003)
+        block((0.12, 0.02, 0.015), (x, -D / 2 - 0.02, H - 0.12), metal, 0.005)
+    # a vase and books on top
+    cylinder(0.06, 0.25, (-0.45, 0, H + 0.125), mat('vase', (0.2, 0.42, 0.5), 0.15), verts=20)
+    for k, c in enumerate([(0.6, 0.15, 0.12), (0.85, 0.75, 0.5), (0.12, 0.25, 0.45)]):
+        block((0.22, 0.16, 0.035), (0.3, 0, H + 0.02 + k * 0.035), mat(f'book{k}', c, 0.7), 0.003, rot=(0, 0, 0.1 * k))
+    export('sideboard')
+
+
+def bedside():
+    reset()
+    wood = mat('wood', (0.85, 0.83, 0.78), 0.45)
+    metal = mat('metal', (0.6, 0.6, 0.62), 0.3, 1.0)
+    W, D, H = 0.45, 0.4, 0.5
+    block((W, D, H - 0.06), (0, 0, 0.06 + (H - 0.06) / 2), wood, 0.008)
+    for k in range(2):
+        z = 0.12 + k * 0.19 + 0.08
+        block((W - 0.04, 0.015, 0.17), (0, -D / 2 - 0.006, z), wood, 0.003)
+        block((0.08, 0.02, 0.012), (0, -D / 2 - 0.02, z + 0.02), metal, 0.004)
+    # lamp
+    cylinder(0.06, 0.18, (0.05, 0.02, H + 0.09), mat('base', (0.3, 0.3, 0.32), 0.3), verts=16)
+    cylinder(0.11, 0.14, (0.05, 0.02, H + 0.25), mat('shade', (0.95, 0.9, 0.8), 0.6), verts=20)
+    export('bedside')
+
+
+def basin():
+    reset()
+    ceramic = mat('ceramic', (0.96, 0.96, 0.95), 0.12)
+    chrome = mat('chrome', (0.85, 0.86, 0.88), 0.12, 1.0)
+    block((0.6, 0.45, 0.16), (0, 0, 0.78), ceramic, 0.05, 4)
+    block((0.48, 0.32, 0.02), (0, -0.02, 0.86), mat('bowl', (0.85, 0.87, 0.88), 0.1))
+    block((0.14, 0.2, 0.62), (0, 0.1, 0.35), ceramic, 0.04, 3)
+    cylinder(0.015, 0.14, (0, 0.17, 0.93), chrome)
+    block((0.025, 0.12, 0.02), (0, 0.11, 0.99), chrome, 0.008)
+    # mirror cabinet above
+    block((0.6, 0.12, 0.7), (0, 0.17, 1.55), mat('cab', (0.95, 0.95, 0.94), 0.3), 0.01)
+    block((0.56, 0.01, 0.66), (0, 0.11, 1.55), mat('mirror', (0.9, 0.92, 0.94), 0.02, 1.0))
+    export('basin')
+
+
+for f in (sofa, bed, wardrobe, dining_table, chair, tv_unit, kitchen_base, cooker, fridge, coffee_table, bookcase, drawers, armchair, desk, sideboard, bedside, basin):
     f()
 print('ok')

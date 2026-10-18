@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { getWorld, wallsFor, WALL_T, type BuildingDef, type Obstacle, type Rect } from '../sim/world/layout';
 import { fitModel, hasModel, modelInstance } from './models';
+import { FLOORS, WALLPAPERS } from '../sim/world/homes';
 import { tex, TILE, worldUV, planeUV, signTexture, normalOf } from './textures';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { GameState } from '../sim/types';
@@ -558,6 +559,60 @@ function panelDoor(w: number, h: number) {
 }
 
 // ------------------------------------------------------------------ furniture & props
+/** wallpaper patterns, tiled at 1.2 m */
+const wpCache = new Map<string, THREE.Texture>();
+function wallpaperTexture(id: string): THREE.Texture {
+  const hit = wpCache.get(id);
+  if (hit) return hit;
+  const w = WALLPAPERS[id] ?? WALLPAPERS.cream;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 256;
+  const c = cv.getContext('2d')!;
+  c.fillStyle = w.base; c.fillRect(0, 0, 256, 256);
+  c.fillStyle = w.accent; c.strokeStyle = w.accent;
+  if (w.pattern === 'stripe') for (let x = 0; x < 256; x += 32) { c.fillRect(x, 0, 12, 256); c.globalAlpha = 0.5; c.fillRect(x + 16, 0, 2, 256); c.globalAlpha = 1; }
+  if (w.pattern === 'damask') for (let y = 0; y < 256; y += 64) for (let x = (y / 64) % 2 ? 32 : 0; x < 256; x += 64) {
+    c.globalAlpha = 0.55; c.beginPath(); c.ellipse(x + 16, y + 32, 9, 22, 0, 0, Math.PI * 2); c.fill();
+    c.beginPath(); c.ellipse(x + 16, y + 14, 14, 6, 0, 0, Math.PI * 2); c.fill(); c.beginPath(); c.ellipse(x + 16, y + 50, 14, 6, 0, 0, Math.PI * 2); c.fill(); c.globalAlpha = 1;
+  }
+  if (w.pattern === 'geo') { c.lineWidth = 3; for (let y = 0; y < 256; y += 32) for (let x = 0; x < 256; x += 32) { c.beginPath(); c.moveTo(x + 16, y + 2); c.lineTo(x + 30, y + 16); c.lineTo(x + 16, y + 30); c.lineTo(x + 2, y + 16); c.closePath(); c.stroke(); } }
+  if (w.pattern === 'panel') for (let x = 0; x < 256; x += 42) { c.globalAlpha = 0.6; c.fillRect(x, 0, 3, 256); c.globalAlpha = 0.15; c.fillRect(x + 3, 0, 18, 256); c.globalAlpha = 1; }
+  if (w.pattern === 'brick') { c.fillStyle = w.base; for (let r = 0; r < 16; r++) for (let k = -1; k < 5; k++) { c.fillStyle = `hsl(14, 45%, ${30 + ((r * 7 + k * 13) % 9)}%)`; c.fillRect(k * 64 + (r % 2 ? 32 : 0) + 2, r * 16 + 2, 60, 12); } }
+  if (w.pattern === 'plain') { for (let i = 0; i < 2500; i++) { c.globalAlpha = 0.05; c.fillStyle = i % 2 ? '#000' : '#fff'; c.fillRect(Math.random() * 256, Math.random() * 256, 2, 2); } c.globalAlpha = 1; }
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  wpCache.set(id, t);
+  return t;
+}
+
+/** a simple abstract print for framed pictures */
+function artTexture(color: string): THREE.Texture {
+  const key = `art${color}`;
+  const hit = wpCache.get(key);
+  if (hit) return hit;
+  const cv = document.createElement('canvas');
+  cv.width = 256; cv.height = 180;
+  const c = cv.getContext('2d')!;
+  c.fillStyle = '#f2ede2'; c.fillRect(0, 0, 256, 180);
+  let h = 0; for (const ch of color) h = (h * 31 + ch.charCodeAt(0)) | 0;
+  const rnd = () => ((h = (h * 1103515245 + 12345) | 0) >>> 0) / 4294967296;
+  if (rnd() < 0.5) {
+    // landscape: sky, hills and sun
+    const g = c.createLinearGradient(0, 0, 0, 110); g.addColorStop(0, '#9cc3dd'); g.addColorStop(1, '#f1e1c6'); c.fillStyle = g; c.fillRect(0, 0, 256, 110);
+    c.fillStyle = color; c.beginPath(); c.arc(60 + rnd() * 140, 50, 18, 0, Math.PI * 2); c.fill();
+    for (let k = 0; k < 3; k++) { c.fillStyle = `hsl(${100 + k * 15}, 25%, ${45 - k * 8}%)`; c.beginPath(); c.moveTo(0, 110 + k * 20); for (let x = 0; x <= 256; x += 32) c.lineTo(x, 95 + k * 22 + Math.sin(x * 0.03 + k + rnd()) * 14); c.lineTo(256, 180); c.lineTo(0, 180); c.fill(); }
+  } else {
+    // abstract blocks
+    for (let k = 0; k < 6; k++) { c.fillStyle = k % 2 ? color : ['#2f3f5e', '#d9b44a', '#e8e2d0', '#8a3e3a'][k % 4]; c.globalAlpha = 0.85; c.fillRect(rnd() * 200, rnd() * 130, 40 + rnd() * 90, 30 + rnd() * 70); }
+    c.globalAlpha = 1;
+  }
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  wpCache.set(key, t);
+  return t;
+}
+
 /** per-frame animators for fixtures that respond to people using them (shower door, water, ...) */
 const fixtures: ((state: GameState, dt: number) => void)[] = [];
 
@@ -568,25 +623,80 @@ function buildObstacle(o: Obstacle): THREE.Object3D {
   // Blender-modelled furniture where available (front of each model faces +z; rotate into place)
   const fit = (name: string, rr: Rect, rot: number, paint?: string, h?: number) => { const m = fitModel(name, rr, rot, paint, h); if (m) grp.add(m); return !!m; };
   switch (o.kind) {
-    case 'sofa': if (fit('sofa', r, Math.PI / 2, '#4f6d60')) return grp; break;
-    case 'bed':
-      if (fit('bed', r, -Math.PI / 2, '#4e6e9e')) {
-        grp.add(box(0.45, 0.5, 0.4, M('#6b4f3a', 0.6), r.x1 - 0.25, 0.25, r.z0 - 0.3)); // bedside table
-        grp.add(cyl(0.08, 0.1, 0.22, M('#f3e8d0', 0.8, { emissive: new THREE.Color('#ffdca0'), emissiveIntensity: 0.3 }), r.x1 - 0.25, 0.63, r.z0 - 0.3, 14));
+    case 'sofa': if (fit('sofa', r, o.rot ?? Math.PI / 2, o.color ?? '#4f6d60')) return grp; break;
+    case 'armchair': if (fit('armchair', r, o.rot ?? 0, o.color ?? '#6b6e73')) return grp; break;
+    case 'bed': if (fit('bed', r, o.rot ?? -Math.PI / 2, o.color ?? '#4e6e9e')) return grp; break;
+    case 'bedside': if (fit('bedside', r, o.rot ?? 0)) return grp; break;
+    case 'desk':
+      if (fit('desk', r, o.rot ?? 0)) {
+        // desk chair pulled up in front
+        const rot = o.rot ?? 0, fx = Math.sin(rot), fz = Math.cos(rot);
+        const c = { x: cx + fx * 0.65, z: cz + fz * 0.65 };
+        fit('chair', { x0: c.x - 0.22, z0: c.z - 0.22, x1: c.x + 0.22, z1: c.z + 0.22 }, rot + Math.PI, '#3c3f44');
         return grp;
       }
       break;
-    case 'wardrobe': {
-      // doors face away from the wall the wardrobe stands against
-      const w = getWorld().interactables.wardrobe;
-      const rot = w && Math.abs(w.pos.x - w.obj.x) > Math.abs(w.pos.z - w.obj.z) ? (w.pos.x > w.obj.x ? Math.PI / 2 : -Math.PI / 2) : (w && w.pos.z < w.obj.z ? Math.PI : 0);
-      if (fit('wardrobe', r, rot)) return grp;
-      break;
+    case 'sideboard': if (fit('sideboard', r, o.rot ?? 0)) return grp; break;
+    case 'basin': if (fit('basin', r, o.rot ?? 0)) return grp; break;
+    case 'wardrobe': if (fit('wardrobe', r, o.rot ?? Math.PI)) return grp; break;
+    case 'drawers': if (fit('drawers', r, o.rot ?? Math.PI)) return grp; break;
+    case 'coffee_table': if (fit('coffee_table', r, o.rot ?? Math.PI / 2)) return grp; break;
+    case 'bookcase': if (fit('bookcase', r, o.rot ?? Math.PI / 2)) return grp; break;
+    case 'tv': if (fit('tvunit', r, o.rot ?? -Math.PI / 2)) return grp; break;
+    case 'dining_table': if (fit('table', r, o.rot ?? 0, undefined, o.height)) return grp; break;
+    case 'dining_chair': if (fit('chair', r, o.rot ?? 0, '#5a5550')) return grp; break;
+    case 'laptop': {
+      const lap = new THREE.Group();
+      lap.add(box(0.36, 0.02, 0.25, M('#2b2f33', 0.3), 0, 0.01, 0));
+      const scr = box(0.36, 0.24, 0.012, M('#1a2a3a', 0.2, { emissive: new THREE.Color('#2b5f8f'), emissiveIntensity: 0.6 }), 0, 0.13, -0.13);
+      scr.rotation.x = 0.25;
+      lap.add(scr);
+      lap.position.set(cx, o.height, cz);
+      lap.rotation.y = (o.rot ?? 0);
+      grp.add(lap);
+      return grp;
     }
-    case 'drawers': if (fit('drawers', r, Math.PI)) return grp; break;
-    case 'coffee_table': if (fit('coffee_table', r, Math.PI / 2)) return grp; break;
-    case 'bookcase': if (fit('bookcase', r, Math.PI / 2)) return grp; break;
-    case 'tv': if (fit('tvunit', r, -Math.PI / 2)) return grp; break;
+    case 'art': {
+      // framed print on the wall, front facing into the room
+      const rot = o.rot ?? 0;
+      const art = new THREE.Group();
+      art.add(box(0.8, 0.6, 0.03, M('#2b2b2b', 0.5), 0, 0, 0));
+      art.add(new THREE.Mesh(new THREE.PlaneGeometry(0.68, 0.48), new THREE.MeshStandardMaterial({ map: artTexture(o.color ?? '#c45a3c'), roughness: 0.6 })).translateZ(0.017));
+      art.position.set(cx, o.height, cz);
+      art.rotation.y = rot;
+      grp.add(art);
+      return grp;
+    }
+    case 'floorfinish': {
+      const f = FLOORS[o.color ?? 'oak'] ?? FLOORS.oak;
+      const t = f.kind === 'wood' ? tex.wood(f.a) : f.kind === 'carpet' ? tex.carpet(f.a) : tex.tiles(f.a, f.b, 4);
+      const key = f.kind === 'wood' ? `wood${f.a}` : f.kind === 'carpet' ? `carpet${f.a}` : `tiles${f.a}${f.b}`;
+      grp.add(box(W, 0.012, D, texMat(t, f.kind === 'tiles' ? 0.3 : f.kind === 'carpet' ? 1 : 0.6), cx, 0.086, cz, false, TILE[key] ?? 1.2));
+      return grp;
+    }
+    case 'wallfinish': {
+      // line every wall face that bounds this room (doorways stay open)
+      const wp = WALLPAPERS[o.color ?? 'cream'] ?? WALLPAPERS.cream;
+      const mat = texMat(wallpaperTexture(o.color ?? 'cream'), wp.pattern === 'plain' ? 0.92 : 0.8);
+      const b = getWorld().buildings.find((bb) => bb.interior && r.x0 >= bb.rect.x0 - 0.5 && r.x1 <= bb.rect.x1 + 0.5 && r.z0 >= bb.rect.z0 - 0.5 && r.z1 <= bb.rect.z1 + 0.5);
+      if (!b) return grp;
+      const H = 3.18;
+      for (const wr of wallsFor(b)) {
+        for (const side of ['x0', 'x1', 'z0', 'z1'] as const) {
+          // the room side that this wall forms
+          const e = side === 'x0' ? r.x0 : side === 'x1' ? r.x1 : side === 'z0' ? r.z0 : r.z1;
+          const horiz = side === 'z0' || side === 'z1';
+          const face = horiz ? (side === 'z0' ? wr.z1 : wr.z0) : (side === 'x0' ? wr.x1 : wr.x0);
+          if (Math.abs(face - e) > 0.2) continue;
+          const a0 = Math.max(horiz ? r.x0 : r.z0, horiz ? wr.x0 : wr.z0), a1 = Math.min(horiz ? r.x1 : r.z1, horiz ? wr.x1 : wr.z1);
+          if (a1 - a0 < 0.05) continue;
+          const off = (side === 'x0' || side === 'z0' ? 1 : -1) * 0.006;
+          const panel = horiz ? box(a1 - a0, H - 0.12, 0.008, mat, (a0 + a1) / 2, 0.12 + (H - 0.12) / 2, face + off, false, 1.2) : box(0.008, H - 0.12, a1 - a0, mat, face + off, 0.12 + (H - 0.12) / 2, (a0 + a1) / 2, false, 1.2);
+          grp.add(panel);
+        }
+      }
+      return grp;
+    }
     case 'stove': if (fit('cooker', r, Math.PI)) return grp; break;
     case 'table':
       if (hasModel('table') && hasModel('chair')) {
