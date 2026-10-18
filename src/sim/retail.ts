@@ -11,7 +11,7 @@ import { filledCount, isOnShift, openAttendance, statsFor } from './employment';
 import { placeOrder } from './logistics';
 import { SHOPS, type Interactable, type ShopDef } from './world/layout';
 
-export const SHELF_CAPACITY = 30;
+export const SHELF_CAPACITY = 64;
 export const RESTOCK_BELOW = 13;
 export const RESTOCK_DONE = 24;
 
@@ -285,6 +285,33 @@ export function autoReorder(state: GameState, b: Business): string {
 }
 
 // ------------------------------------------------------------ daily close
+/** what an overnight shelf-fill crew charges per unit put out (cents) */
+export const NIGHT_FILL_PER_UNIT = 4;
+
+/** Before opening, an overnight crew fills each section to 60% from the store room and bills the shop.
+ * NPC-run shops always use it; a player's shop only when hired (b.nightFill). Returns units moved. */
+export function nightFill(state: GameState, b: Business): number {
+  if (b.kind !== 'retail' || (b.ownerId === state.playerId && !b.nightFill)) return 0;
+  const S = SHOPS[b.id];
+  if (!S) return 0;
+  const back = state.containers[S.backroom];
+  let moved = 0;
+  for (const [sh, k] of Object.entries(b.sections)) {
+    const c = state.containers[sh];
+    if (!c || !k) continue;
+    // fill to 60% and always leave two cases in the store room for the day staff to bring out
+    const want = Math.floor(c.capacity * 0.6) - count(c, k);
+    const spare = count(back, k) - 2 * ITEMS[k].caseSize;
+    if (want > 0 && spare > 0) moved += moveItems(state, S.backroom, sh, k, Math.min(want, spare));
+  }
+  if (moved > 0) {
+    const fee = moved * NIGHT_FILL_PER_UNIT;
+    const r = transfer(state, { from: b.accountId, to: state.externalId, amount: fee, reason: 'services', memo: `Overnight shelf fill (${moved} units)`, key: `nightfill:${b.id}:${dayIndex(state.minute)}` });
+    if (r.ok) statsFor(state, b).otherCosts += fee;
+  }
+  return moved;
+}
+
 export function dailyClose(state: GameState, b: Business) {
   const s = statsFor(state, b);
   const ext = state.externalId;

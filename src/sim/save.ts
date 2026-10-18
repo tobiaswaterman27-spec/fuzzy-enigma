@@ -32,6 +32,15 @@ const MIGRATIONS: Record<number, (s: any) => void> = {
     if (s.businesses?.market && !Object.keys(s.businesses.market.sections).length) for (const k of ['bread', 'milk', 'apples', 'soup', 'pasta', 'coffee', 'snacks', 'soap']) s.businesses.market.sections[`shelf_${k}`] = k;
     for (const d of Object.values<any>(s.districts ?? {})) d.shopDemand ??= { market: d.demandAccumulator ?? 0 };
   },
+  3: (s) => {
+    // v3 -> v4: shelves hold 64 units; the flat was divided into rooms, so whoever was inside goes back to the hall
+    for (const c of Object.values<any>(s.containers ?? {})) {
+      if (c.kind === 'shelf' && c.capacity === 30) c.capacity = 64;
+      if (c.kind === 'loading_bay' && c.capacity < 1500) c.capacity = 1500; // a bay takes a full van
+    }
+    const spawn = getWorld().playerSpawn;
+    for (const p of Object.values<any>(s.people ?? {})) if (p.where === 'flat' && p.visible) p.pos = { ...spawn };
+  },
 };
 
 export function serialize(state: GameState, summary = ''): string {

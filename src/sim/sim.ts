@@ -7,7 +7,7 @@ import { MIN_PER_DAY, minuteOfDay, dayIndex } from './clock';
 import { tickNeeds } from './needs';
 import { enforceLocationRules, tickAction } from './actions';
 import { employmentTick, processApplications, refreshVacancies, runPayroll } from './employment';
-import { autoReorder, dailyClose, retailTick } from './retail';
+import { autoReorder, dailyClose, nightFill, retailTick } from './retail';
 import { logisticsTick, retryInvoices, wholesaleImports } from './logistics';
 import { rentTick } from './housing';
 import { npcJobSearch, npcPostAction, npcTick, tickMovement } from './npc';
@@ -72,6 +72,7 @@ export function minuteTick(state: GameState) {
   rentTick(state);
   if (now % 10 === 0) processApplications(state);
   if (mod >= 5 * 60 && once(state, `imports:${day}`)) wholesaleImports(state, state.businesses.wholesale);
+  if (mod >= 5 * 60 + 30 && once(state, `nightfill:${day}`)) for (const b of Object.values(state.businesses)) nightFill(state, b);
   if (mod >= 6 * 60 && once(state, `vacancies:${day}`)) refreshVacancies(state);
   if (mod >= 8 * 60 && once(state, `invoices:${day}`)) retryInvoices(state);
   if (mod >= 10 * 60 && once(state, `cafe_order:${day}`)) cafeReorder(state);

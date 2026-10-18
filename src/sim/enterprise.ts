@@ -12,6 +12,7 @@ import { createLease } from './housing';
 import { makeBusiness } from './newgame';
 import { acceptOffer, endContract, filledCount, refreshVacancies, statsFor } from './employment';
 import { placeOrder } from './logistics';
+import { NIGHT_FILL_PER_UNIT, SHELF_CAPACITY } from './retail';
 import { SHOPS, U4_SECTIONS } from './world/layout';
 
 export const UNIT4 = 'unit4';
@@ -62,8 +63,8 @@ export function startBusiness(state: GameState, name: string, capital: number): 
   b.ownerDecidesHiring = true;
   b.equipment = { till: false };
   createContainer(state, 'backroom', UNIT4, UNIT4, 800, undefined, 'unit4_backroom');
-  createContainer(state, 'loading_bay', UNIT4, UNIT4, 800, undefined, 'unit4_bay');
-  for (const sct of U4_SECTIONS) createContainer(state, 'shelf', UNIT4, UNIT4, 30, undefined, sct.id);
+  createContainer(state, 'loading_bay', UNIT4, UNIT4, 1500, undefined, 'unit4_bay');
+  for (const sct of U4_SECTIONS) createContainer(state, 'shelf', UNIT4, UNIT4, SHELF_CAPACITY, undefined, sct.id);
   state.tills[SHOPS.unit4.till] = { id: SHOPS.unit4.till, businessId: UNIT4, queue: [], scanned: {}, staffId: null };
   state.districts.harbourside.shopDemand[UNIT4] = 0;
   // money: owner investment, then the business pays its own set-up costs
@@ -127,6 +128,14 @@ export function setClosed(state: GameState, closed: boolean): R {
   if (!b) return no('You do not own a business.');
   b.manualClosed = closed;
   return ok(closed ? 'Doors closed.' : 'Open for business (within opening hours).');
+}
+
+/** Hire (or stop) the overnight shelf-fill crew: before opening they fill shelves to 60% for a per-unit fee. */
+export function setNightFill(state: GameState, on: boolean): R {
+  const b = own(state);
+  if (!b) return no('You do not own a business.');
+  b.nightFill = on;
+  return ok(on ? `Overnight shelf-fill crew hired (Cr ${(NIGHT_FILL_PER_UNIT / 100).toFixed(2)} per unit put out).` : 'Overnight shelf-fill crew cancelled.');
 }
 
 export function orderCost(state: GameState, items: Record<string, number>) {

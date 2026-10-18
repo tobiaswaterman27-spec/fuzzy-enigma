@@ -156,10 +156,11 @@ export class Views {
       const m = new THREE.InstancedMesh(productGeometry('bread'), productMaterial, SHELF_CAPACITY);
       const dummy = new THREE.Object3D();
       for (let i = 0; i < SHELF_CAPACITY; i++) {
-        const level = Math.floor(i / 10);
-        const col = i % 10;
+        // 16 facings per shelf level: 8 along the run on each face of the gondola, filling from the bottom
+        const level = Math.floor(i / 16);
+        const col = i % 16;
         const side = col % 2 === 0 ? -1 : 1;
-        dummy.position.set(sct.gx + side * 0.42, 0.19 + level * 0.45, sct.zc - sct.len * 0.4 + Math.floor(col / 2) * (sct.len * 0.2));
+        dummy.position.set(sct.gx + side * 0.42, 0.19 + level * 0.45, sct.zc - sct.len / 2 + (Math.floor(col / 2) + 0.5) * (sct.len / 8));
         dummy.updateMatrix();
         m.setMatrixAt(i, dummy.matrix);
       }

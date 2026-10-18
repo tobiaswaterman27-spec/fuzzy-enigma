@@ -305,7 +305,7 @@ export class UI {
     };
     return `<div class="card"><b>${esc(b.name)}</b> · Dockside Unit 4 · <span class="${open ? 'pos' : 'warn'}">${open ? 'OPEN' : 'CLOSED'}</span><br>
       Business cash <b>${fmtMoney(acc.balance)}</b> · reputation ${b.reputation.toFixed(0)}
-      <div class="row"><button data-invest="10000">Invest Cr 100</button><button data-invest="50000">Invest Cr 500</button><button data-withdraw="10000">Withdraw Cr 100</button><button data-closed="${b.manualClosed ? '0' : '1'}">${b.manualClosed ? 'Open doors' : 'Close doors'}</button></div>
+      <div class="row"><button data-invest="10000">Invest Cr 100</button><button data-invest="50000">Invest Cr 500</button><button data-withdraw="10000">Withdraw Cr 100</button><button data-closed="${b.manualClosed ? '0' : '1'}">${b.manualClosed ? 'Open doors' : 'Close doors'}</button><button data-nightfill="${b.nightFill ? '0' : '1'}">${b.nightFill ? 'Cancel night-fill crew' : 'Hire night-fill crew'}</button></div>
       <div class="row">${Object.entries(E.HOURS_PRESETS).map(([k, h]) => `<button data-hours="${k}" class="${JSON.stringify(b.open) === JSON.stringify(h.open) ? 'primary' : ''}">${h.label}</button>`).join('')}</div></div>
       <h3>Getting ready</h3>${checklist.map(([t, d]) => `<div class="line"><span>${d ? '✔' : '○'} ${t}</span></div>`).join('')}
       ${!b.equipment.till ? `<div class="row"><button class="primary" data-till="1">Buy till system (${fmtMoney(E.TILL_COST)})</button></div>` : ''}
@@ -348,6 +348,7 @@ export class UI {
     if (d.invest) this.toast(E.invest(s, Number(d.invest)).msg);
     if (d.withdraw) this.toast(E.withdraw(s, Number(d.withdraw)).msg);
     if (d.closed) this.toast(E.setClosed(s, d.closed === '1').msg);
+    if (d.nightfill) this.toast(E.setNightFill(s, d.nightfill === '1').msg);
     if (d.hours) this.toast(E.setHours(s, d.hours).msg);
     if (d.staff) this.toast(E.setStaffing(s, d.staff, Number(d.n)).msg);
     if (d.shift) { const b = E.playerBusiness(s)!; const pos = b.positions.find((x) => x.id === 'assistant')!; this.toast(E.setStaffing(s, 'assistant', pos.headcount, d.shift).msg); }

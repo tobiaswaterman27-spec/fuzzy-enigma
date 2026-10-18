@@ -88,14 +88,27 @@ export function logisticsTick(state: GameState, dt: number) {
         const supplier = state.businesses[v.ownerId];
         const wh = supplier.stockContainers[0];
         let short = false;
+        const rest: Record<string, number> = {};
+        const cargo = state.containers[v.cargoId];
         for (const [item, qty] of Object.entries(s.items)) {
-          const n = moveItems(state, wh, v.cargoId, item, qty);
+          // the van only holds so much: what does not fit goes out on the next run
+          const room = Math.max(0, cargo.capacity - total(cargo));
+          const want = Math.min(qty, room);
+          const n = want > 0 ? moveItems(state, wh, v.cargoId, item, want) : 0;
           s.loaded[item] = n;
-          if (n < qty) short = true;
+          if (n < want) short = true;
+          if (want < qty) rest[item] = qty - want;
         }
         s.status = 'in_transit';
         s.vehicleId = v.id;
         s.note = short ? 'Short shipment: supplier stock was insufficient.' : '';
+        if (Object.keys(rest).length) {
+          // split delivery: the remainder is a new order dispatched as soon as the van is back
+          const r: Shipment = { ...s, id: nextId(state, 'ship'), items: rest, loaded: {}, status: 'ordered', dispatchAt: state.minute, vehicleId: null, invoiced: 0, paid: false, note: `Second part of ${s.id} (van was full).` };
+          state.shipments[r.id] = r;
+          s.items = Object.fromEntries(Object.entries(s.items).map(([k, q]) => [k, q - (rest[k] ?? 0)]).filter(([, q]) => (q as number) > 0));
+          s.note = `${s.note} Split: the van was full.`.trim();
+        }
         v.shipmentId = s.id;
         v.state = 'driving_out';
         v.route = (SHOPS[s.buyerId]?.vanOut ?? w.vanRouteOut).map((p) => ({ ...p }));
@@ -129,6 +142,9 @@ export function logisticsTick(state: GameState, dt: number) {
           v.state = 'parked';
           v.route = [];
           v.pos = { ...w.depot };
+          // undelivered cargo is returned to the warehouse
+          const back = state.businesses[v.ownerId]?.stockContainers[0];
+          if (back) moveAll(state, v.cargoId, back);
           // driver goes back to work at the depot
           for (const p of Object.values(state.people)) if (p.where === 'vehicle') { p.where = 'wholesale'; }
         }
@@ -138,7 +154,14 @@ export function logisticsTick(state: GameState, dt: number) {
       if (s) {
         const buyer = state.businesses[s.buyerId];
         const bay = buyer.stockContainers.find((c) => state.containers[c].kind === 'loading_bay')!;
+        const cargo = state.containers[v.cargoId];
         moveAll(state, v.cargoId, bay);
+        // anything the bay had no room for goes back to the depot and is not invoiced
+        for (const [item, left] of Object.entries(cargo.items)) {
+          if (!left) continue;
+          s.loaded[item] = Math.max(0, (s.loaded[item] ?? 0) - left);
+          s.note = `${s.note} ${left} ${itemName(item)} taken back (loading bay full).`.trim();
+        }
         s.status = 'arrived';
         s.arrivedAt = state.minute;
         news(state, 'info', `Delivery arrived at ${buyer.name}`, `${total(state.containers[bay])} items waiting at the loading bay to be checked in.`, isStaffPlayer(state, buyer.id));

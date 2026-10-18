@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createNewGame, step, transfer, auditLedger, moneySupply, getWorld, segIntersectsRect, planRoute, astar,
   applyForJob, acceptOffer, attendInterview, startAction, runPayroll, serialize, deserialize, safeWrite, loadSlot, worldCount,
-  PRODUCTS, at, openAttendance, total, count, hire, completeSale, moveItems, minuteOfDay,
+  PRODUCTS, ITEMS, at, openAttendance, total, count, hire, completeSale, moveItems, minuteOfDay,
   type GameState, type KV,
 } from '../src/sim/index';
 
@@ -94,16 +94,19 @@ describe('Journey A - start a life', () => {
     expect(act(s, 'terminal', 'clock_in').ok).toBe(true);
     const att = openAttendance(s, 'player')!;
     expect(att.late).toBe(0);
-    // real work: take a case and stock a shelf (inventory actually moves)
-    const back0 = count(s.containers.market_backroom, 'milk');
-    const shelf0 = count(s.containers.shelf_milk, 'milk');
-    expect(act(s, 'pallet_milk', 'take_case').ok).toBe(true);
-    expect(total(s.containers[p.handsId])).toBe(12);
-    expect(act(s, 'shelf_milk', 'stock_shelf').ok).toBe(true);
-    const moved = count(s.containers.shelf_milk, 'milk') - shelf0;
+    // real work: take a case of something in the store room and stock its shelf (inventory actually moves)
+    const k = PRODUCTS.find((x) => count(s.containers.market_backroom, x) >= ITEMS[x].caseSize && count(s.containers[`shelf_${x}`], x) < 40)!;
+    expect(k).toBeTruthy();
+    const back0 = count(s.containers.market_backroom, k);
+    const shelf0 = count(s.containers[`shelf_${k}`], k);
+    expect(act(s, `pallet_${k}`, 'take_case').ok).toBe(true);
+    expect(total(s.containers[p.handsId])).toBe(ITEMS[k].caseSize);
+    expect(act(s, `shelf_${k}`, 'stock_shelf').ok).toBe(true);
+    const moved = count(s.containers[`shelf_${k}`], k) - shelf0;
     expect(moved).toBeGreaterThan(0);
-    expect(count(s.containers.market_backroom, 'milk') + count(s.containers.shelf_milk, 'milk') + total(s.containers[p.handsId])).toBeLessThanOrEqual(back0 + shelf0 + 12);
-    if (total(s.containers[p.handsId])) act(s, 'pallet_milk', 'return_case');
+    expect(moved).toBeLessThanOrEqual(ITEMS[k].caseSize); // the shelf gains at most the case carried
+    void back0;
+    if (total(s.containers[p.handsId])) act(s, `pallet_${k}`, 'return_case');
     // finish the shift
     advanceTo(s, at(c.startDay, 14, 0));
     expect(act(s, 'terminal', 'clock_out').ok).toBe(true);

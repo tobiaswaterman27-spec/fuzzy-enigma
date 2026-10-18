@@ -14,7 +14,7 @@ import { rand, randInt, pick } from './core';
 import { news } from './events';
 import { spawnDirt, SHELF_CAPACITY, shelfId } from './retail';
 
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 
 export interface PlayerSetup {
   name: string;
@@ -126,7 +126,7 @@ export function createNewGame(seed: number, setup: PlayerSetup): GameState {
       }),
     ],
     prices: Object.fromEntries(PRODUCTS.map((k) => [k, ITEMS[k].retail])), reputation: 55, supplierId: 'wholesale',
-    reorder: Object.fromEntries(PRODUCTS.map((k) => [k, { min: 80, target: 140 }])), rentDue: 0, utilitiesPerDay: 2500,
+    reorder: Object.fromEntries(PRODUCTS.map((k) => [k, { min: 130, target: 230 }])), rentDue: 0, utilitiesPerDay: 2500,
     stockContainers: ['market_backroom', ...PRODUCTS.map(shelfId), 'market_bay'], cashReserve: 400000, cash: 600000,
     sections: Object.fromEntries(PRODUCTS.map((k) => [shelfId(k), k])),
   });
@@ -164,10 +164,10 @@ export function createNewGame(seed: number, setup: PlayerSetup): GameState {
 
   // ---------------------------------------------------------- containers & stock
   createContainer(state, 'backroom', 'market', 'market', 2000, undefined, 'market_backroom');
-  createContainer(state, 'loading_bay', 'market', 'market', 900, undefined, 'market_bay');
+  createContainer(state, 'loading_bay', 'market', 'market', 1500, undefined, 'market_bay');
   for (const k of PRODUCTS) {
     const sc = createContainer(state, 'shelf', 'market', 'market', SHELF_CAPACITY, k, shelfId(k));
-    addItems(sc, k, 16 + randInt(state, 0, 12));
+    addItems(sc, k, 34 + randInt(state, 0, 14)); // a normal morning: shelves around two-thirds full
     addItems(state.containers.market_backroom, k, ITEMS[k].caseSize * 5);
     market.unitCost[k] = ITEMS[k].wholesale;
   }

@@ -40,6 +40,7 @@ export type TxnReason =
   | 'aggregate_income'
   | 'public_service'
   | 'owner_draw'
+  | 'services'
   | 'transfer';
 
 export interface Txn {
@@ -310,6 +311,8 @@ export interface Business {
   sections: Record<string, string>;
   /** owner has closed the doors regardless of hours */
   manualClosed?: boolean;
+  /** overnight shelf-fill crew (always on for NPC-run shops; the player can hire it) */
+  nightFill?: boolean;
   /** installed equipment, e.g. { till: true } */
   equipment: Record<string, boolean>;
   /** player-owned: the owner decides on hiring instead of automatic offers */
