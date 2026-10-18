@@ -447,7 +447,7 @@ function stagePlan(type: string, it: Interactable, p: Person): StageStep[] | nul
     const board = { x: it.pos.x - 1.1, z: it.pos.z };
     return [
       { until: 0.12, at: fridge, face, clip: 'take_case' },   // ingredients out of the fridge
-      { until: 0.32, at: board, face, clip: 'cook' },         // chop on the worktop
+      { until: 0.32, at: board, face, clip: 'cook' },         // chop on the worktop (hands-at-the-counter motion)
       { until: 0.88, at: it.pos, face, clip: 'cook' },        // pan on the hob, stir
       { until: 1, at: board, face, clip: 'stock_shelf' },     // dish up
     ];
