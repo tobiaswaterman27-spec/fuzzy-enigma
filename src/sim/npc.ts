@@ -7,7 +7,7 @@ import { dayIndex, minuteOfDay } from './clock';
 import { clamp, dist, pick, rand, randInt } from './core';
 import { count, moveAll, removeItems, total } from './inventory';
 import { ITEMS, PRODUCTS, isFood } from './items';
-import { acceptOffer as acceptOfferNpc, applyForJob as applyForJobNpc, canApply as canApplyNpc, clockIn, clockOut, currentShift, isOnShift, nextShift, openAttendance, positionOf, statsFor } from './employment';
+import { hostingInterview, acceptOffer as acceptOfferNpc, applyForJob as applyForJobNpc, canApply as canApplyNpc, clockIn, clockOut, currentShift, isOnShift, nextShift, openAttendance, positionOf, statsFor } from './employment';
 import { cancelAction, interactable, startAction } from './actions';
 import { isOpen, joinQueue, leaveQueue, openTasks, queueSlot, shelfFor, staffOnDuty, walkout, productsOf } from './retail';
 import { getWorld, SHOPS } from './world/layout';
@@ -135,12 +135,30 @@ const pantryFood = (state: GameState, p: Person) => {
   return Object.entries(c.items).filter(([k]) => isFood(k)).reduce((s, [, n]) => s + n, 0);
 };
 
+/** An interviewer heads to the cafe table before the booked time and waits there, seated. */
+function hostInterview(state: GameState, p: Person): boolean {
+  const seat = getWorld().interactables.iv_host;
+  const due = Object.values(state.applications).find((a) => a.interviewerId === p.id && a.status === 'interview' && a.interviewAt != null
+    && state.minute >= a.interviewAt - travelMinutes(p, seat.pos) - 8 && state.minute <= a.interviewAt + 45);
+  if (!due && !hostingInterview(state, p.id)) return false;
+  const n = p.npc!;
+  if (p.action?.type === 'sit' && p.action.target === 'iv_host') return true;
+  if (n.plan?.some((st) => st.kind === 'act' && st.it === 'iv_host')) return true;
+  if (p.action) cancelAction(state, p, 'interview');
+  releaseClaim(state, p);
+  if (total(state.containers[p.handsId]) > 0) return false; // put the case down first (work plan does that)
+  n.plan = [{ kind: 'move', to: seat.pos, label: 'interview at the cafe' }, { kind: 'act', it: 'iv_host', type: 'sit' }];
+  n.step = 'interview';
+  return true;
+}
+
 function decide(state: GameState, p: Person) {
   const n = p.npc!;
   const now = state.minute;
   const mod = minuteOfDay(now);
   n.nextDecision = now + 10;
   if (n.ambient) return; // ambient shoppers are driven by the demand model
+  if (hostInterview(state, p)) { n.nextDecision = now + 1; return; }
   const c = p.contractId ? state.contracts[p.contractId] : null;
   // 1. work
   if (c) {
@@ -415,6 +433,7 @@ function workChoose(state: GameState, p: Person) {
     else p.facing = wp.facing;
     return;
   }
+  if (hostInterview(state, p)) return;
   const tasks = openTasks(state, bid);
   const till = state.tills[S.till];
   const cupboardPlan = (type: 'take_mop' | 'return_mop'): PlanStep[] => [{ kind: 'move', to: I[S.cupboard].pos, label: 'cupboard' }, { kind: 'act', it: S.cupboard, type }];
@@ -564,7 +583,7 @@ function queueTick(state: GameState, p: Person) {
 
 function shouldPreemptForTill(state: GameState, p: Person): boolean {
   const n = p.npc!;
-  if (n.goal !== 'work' || p.action || !p.contractId) return false;
+  if (n.goal !== 'work' || p.action || !p.contractId || hostingInterview(state, p.id)) return false;
   const c = state.contracts[p.contractId];
   const S = SHOPS[c.businessId];
   if (!S || !openAttendance(state, p.id)) return false;
@@ -648,7 +667,7 @@ export function runPlan(state: GameState, p: Person) {
 export function npcPostAction(state: GameState, p: Person) {
   const n = p.npc;
   if (!n || !p.action) return;
-  if (p.action.type === 'sit') {
+  if (p.action.type === 'sit' && p.action.target !== 'iv_host') {
     const next = n.plan[0];
     if (next?.kind === 'wait' && state.minute >= next.until) cancelAction(state, p);
     if (!next) cancelAction(state, p);

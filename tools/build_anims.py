@@ -49,10 +49,20 @@ CLIPS = {
     'idle': ('40_10', (6.0, 20.0), True, 'free', (5.0, 9.0)),
     'carry_walk': ('69_69', None, True, 'cycle', (0.9, 1.5)),
     'pickup': ('69_70', None, True, 'pick', None),
-    'sit': ('13_05', None, True, 'seated', (3.0, 6.0)),
+    'place': ('80_08', None, True, 'free', (2.0, 4.0)),
+    'sit': ('114_05', None, True, 'seated', (3.0, 6.0)),
+    'sit_down': ('143_18', None, False, 'down', None),
+    'stand_up': ('143_18', None, False, 'up', None),
+    'type': ('79_85', None, True, 'free', (2.0, 4.0)),
     'mop': ('14_13', (3.0, 25.0), True, 'free', (1.2, 2.6)),
     'talk': ('18_08', (2.0, 30.0), True, 'free', (3.0, 6.0)),
-    'eat': ('13_09', None, True, 'free', (2.0, 4.0)),
+    'eat': ('79_15', None, True, 'free', (2.5, 5.0)),
+    'cook': ('79_13', None, True, 'free', (1.5, 3.5)),
+    'wash': ('02_10', None, True, 'free', (2.5, 5.0)),
+    'dress': ('79_21', None, True, 'free', (3.0, 6.0)),
+    'phone': ('79_36', None, True, 'free', (2.5, 5.0)),
+    'brush_teeth': ('79_81', None, True, 'free', (1.5, 3.0)),
+    'handshake': ('79_06', None, False, 'whole', None),
 }
 
 
@@ -217,6 +227,11 @@ def retarget(path, body):
         A[b] = align(ours[b], dcap)
     world = {b: np.einsum('fij,jk->fik', np.einsum('fij,kj->fik', W[j], W[j][0]), A[b]) for b, (j, c) in MAP.items()}
     hips = P['Hips'].copy()
+    # heights above the floor: the floor is where the lower foot rests (robust to takes whose origin is elsewhere)
+    feet = np.minimum(P['LeftFoot'][:, 1], P['RightFoot'][:, 1])
+    floor = float(np.percentile(feet[1:], 3)) if nf > 2 else float(feet[0])
+    hips[:, 1] -= floor
+    hips[0, 1] = P['Hips'][0, 1] - feet[0]  # T-pose: standing hip height over the feet
     return world, hips, 1.0 / ft, nf
 
 
@@ -259,7 +274,7 @@ def build_clip(name, spec, body):
     take, window, loop, kind, cyc = spec
     path = os.path.join(CACHE, f'{take}.bvh')
     if not os.path.exists(path):
-        urllib.request.urlretrieve(f'{SRC}/{take[:2].zfill(3)}/{take}.bvh', path)
+        urllib.request.urlretrieve(f'{SRC}/{take.split("_")[0].zfill(3)}/{take}.bvh', path)
     world, hips, fps, nf = retarget(path, body)
     # skip the T-pose frame and settle-in frames
     first = int(0.25 * fps)
@@ -270,13 +285,26 @@ def build_clip(name, spec, body):
     hips = face_forward(world, hips, travel)
     L = locals_from_world(world)
     stand_y = hips[0, 1]  # T-pose hip height = standing
-    if kind == 'pick':
+    if kind in ('down', 'up'):
+        # the strongest 1.6 s drop (sitting down) or rise (standing up) of the hips
+        win = int(1.6 * fps)
+        best, a = None, lo
+        for f in range(lo, hi - win):
+            dy = hips[f + win, 1] - hips[f, 1]
+            score = -dy if kind == 'down' else dy
+            if best is None or score > best:
+                best, a = score, f
+        b = a + win
+    elif kind == 'whole':
+        a, b = lo, hi
+    elif kind == 'pick':
         # centre a 2.4 s window on the deepest crouch
         k = lo + int(np.argmin(hips[lo:hi, 1]))
         a, b = max(lo, k - int(1.2 * fps)), min(hi, k + int(1.2 * fps))
     elif kind == 'seated':
         # longest stretch with the hips low and still
-        low = hips[:, 1] < stand_y * 0.62
+        ys = hips[lo:hi, 1]
+        low = hips[:, 1] < float(ys.min()) + 0.25 * float(ys.max() - ys.min()) + 1e-6
         best, cur, start, bs = 0, 0, 0, 0
         for f in range(lo, hi):
             if low[f]:

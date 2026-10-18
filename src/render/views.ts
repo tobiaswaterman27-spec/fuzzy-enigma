@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import type { GameState, Person } from '../sim/types';
 import { AnimationController, buildRig, dress, type Rig } from './character';
 import { buildCar } from './world';
-import { productGeometry, productMaterial } from './products';
+import { productGeometry, productMaterial, productUnitGeometry } from './products';
 import { buildingAt, getWorld, SHELF_LAYOUT, PALLET_X, SHOPS, U4_SECTIONS, U4_PALLET_Z } from '../sim/world/layout';
 import { ITEMS } from '../sim/items';
 import { count, total, firstItem } from '../sim/inventory';
@@ -27,6 +27,16 @@ function spillGeometry(id: string): THREE.BufferGeometry {
   return new THREE.ShapeGeometry(shape);
 }
 
+const smooth = (t: number) => { const x = Math.max(0, Math.min(1, t)); return x * x * (3 - 2 * x); };
+const FOOT_A = new THREE.Vector3(), FOOT_B = new THREE.Vector3(), HAND_L = new THREE.Vector3(), HAND_R = new THREE.Vector3();
+const UP = new THREE.Vector3(0, 1, 0);
+const MOP_STICK = new THREE.MeshStandardMaterial({ color: '#c9ccd0', metalness: 0.6, roughness: 0.35 });
+const MOP_BLOCK = new THREE.MeshStandardMaterial({ color: '#2a7fd4', roughness: 0.6 });
+const MOP_STRAND = new THREE.MeshStandardMaterial({ color: '#e8e4da', roughness: 0.95 });
+const BASKET_MAT = new THREE.MeshStandardMaterial({ color: '#c0392b', roughness: 0.5, wireframe: false });
+const BASKET_GEO = (() => { const g = new THREE.CylinderGeometry(0.17, 0.14, 0.14, 4, 1, true); g.rotateY(Math.PI / 4); g.scale(1.2, 1, 0.75); return g; })();
+const BAG_MAT = new THREE.MeshStandardMaterial({ color: '#f2f2ee', roughness: 0.7, side: THREE.DoubleSide, transparent: true, opacity: 0.92 });
+
 class PersonView {
   rig: Rig;
   anim: AnimationController;
@@ -35,6 +45,7 @@ class PersonView {
   speed = 0;
   carried: THREE.Mesh | null = null;
   carriedItem = '';
+  carriedHeld = true;
   mop: THREE.Group | null = null;
   label: THREE.Sprite | null = null;
   culled = false;
@@ -96,6 +107,23 @@ class PersonView {
     } else {
       this.rig.body.rotation.set(0, 0, 0);
       this.rig.body.position.set(0, 0, 0);
+      if (a?.type === 'shower' && it) {
+        // walk in through the door, wash under the water, walk back out: driven by the action's progress
+        const f = a.progress / Math.max(1e-6, a.duration);
+        const inside = { x: it.obj.x - 0.05, z: it.obj.z };
+        const k = f < 0.12 ? smooth(f / 0.12) : f > 0.88 ? 1 - smooth((f - 0.88) / 0.12) : 1;
+        root.position.set(it.pos.x + (inside.x - it.pos.x) * k, 0, it.pos.z + (inside.z - it.pos.z) * k);
+        const inYaw = Math.atan2(inside.x - it.pos.x, inside.z - it.pos.z);
+        root.rotation.y = f > 0.88 ? inYaw + Math.PI : f < 0.12 ? inYaw : inYaw + Math.PI * 0.5;
+        yaw = root.rotation.y;
+        this.showerStep = f < 0.12 || f > 0.88;
+      } else if ((a?.type === 'sit' || a?.type === 'watch_tv') && it && (it.kind === 'sofa' || it.kind === 'chair' || it.kind === 'iv_chair' || it.kind === 'iv_host')) {
+        // sit on the seat itself, facing out from the back rest
+        const dx = it.pos.x - it.obj.x, dz = it.pos.z - it.obj.z, l = Math.hypot(dx, dz) || 1;
+        root.position.set(it.obj.x + (dx / l) * (it.kind === 'sofa' ? 0.12 : 0.02), 0, it.obj.z + (dz / l) * (it.kind === 'sofa' ? 0.12 : 0.02));
+        root.rotation.y = Math.atan2(dx, dz);
+        yaw = root.rotation.y;
+      }
     }
     void diff;
     // carried case (real hands inventory)
@@ -116,25 +144,140 @@ class PersonView {
       this.carriedItem = '';
     }
     if (this.carried) this.carried.scale.y = Math.max(0.35, total(hands) / ITEMS[item!].caseSize);
-    // mop
+    // mop: a world-space prop solved after the pose each frame (see placeProps)
     if (p.equipment === 'mop' && !this.mop) {
       this.mop = new THREE.Group();
-      const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1.4, 6), new THREE.MeshStandardMaterial({ color: '#c9c9c9' }));
-      stick.position.y = -0.5;
-      const head = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.08, 0.12), new THREE.MeshStandardMaterial({ color: '#2a7fd4' }));
-      head.position.y = -1.2;
+      const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 1, 8), MOP_STICK);
+      stick.name = 'stick';
+      const head = new THREE.Group();
+      head.name = 'head';
+      const block = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.035, 0.09), MOP_BLOCK);
+      block.position.y = 0.04;
+      head.add(block);
+      for (let k = 0; k < 14; k++) {
+        const strand = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.012, 0.16), MOP_STRAND);
+        strand.position.set(-0.14 + k * 0.0215, 0.012, (k % 2 ? 0.02 : -0.02));
+        strand.rotation.y = (k % 3 - 1) * 0.15;
+        head.add(strand);
+      }
       this.mop.add(stick, head);
-      this.mop.rotation.x = 0.3;
-      this.rig.toolR.add(this.mop);
+      this.mop.traverse((o) => { o.castShadow = true; });
+      this.rig.root.parent!.add(this.mop);
     } else if (p.equipment !== 'mop' && this.mop) {
-      this.rig.toolR.remove(this.mop);
+      this.mop.parent?.remove(this.mop);
       this.mop = null;
     }
-    const realSpeed = a ? 0 : this.speed;
-    this.anim.update(dt, realSpeed, !!item, a?.type ?? null);
+    // shopping basket (picked goods) in the left hand, carrier bag (paid goods) in the right
+    this.syncHeld(state, p);
+    const stepping = a?.type === 'shower' && this.showerStep;
+    const realSpeed = stepping ? 0.9 : a ? 0 : this.speed;
+    this.anim.update(dt, realSpeed, !!item, stepping ? null : a?.type ?? null);
+    // keep the feet on the floor: whatever the animation does, the lower foot rests on the ground
+    if (a?.type !== 'sleep' && this.rig.joints) {
+      this.rig.root.updateMatrixWorld(true);
+      this.rig.bones.footL.getWorldPosition(FOOT_A);
+      this.rig.bones.footR.getWorldPosition(FOOT_B);
+      const rest = this.rig.joints.footL.y * this.rig.body.scale.y;
+      const target = Math.max(-0.3, Math.min(0.3, rest - (Math.min(FOOT_A.y, FOOT_B.y) - root.position.y)));
+      this.ground += (target - this.ground) * Math.min(1, dt * 14);
+      this.rig.body.position.y = this.ground;
+    }
+    this.placeProps(a?.type ?? null, p.facing);
+  }
+  private ground = 0;
+  private showerStep = false;
+  private basket: THREE.Group | null = null;
+  private basketKey = '';
+  private bag: THREE.Group | null = null;
+
+  /** Props that follow the hands of the final pose: the mop runs through both hands to the floor,
+   * a carried case sits between the hands. */
+  private placeProps(action: string | null, facing: number) {
+    if (!this.mop && !this.carried) return;
+    this.rig.root.updateMatrixWorld(true);
+    const hl = this.rig.bones.handL.getWorldPosition(HAND_L), hr = this.rig.bones.handR.getWorldPosition(HAND_R);
+    if (this.mop) {
+      const stick = this.mop.getObjectByName('stick')!, head = this.mop.getObjectByName('head')!;
+      let top: THREE.Vector3, low: THREE.Vector3;
+      if (action === 'clean') {
+        // both hands on the shaft: it runs from the higher hand through the lower one to the floor
+        top = hl.y > hr.y ? hl.clone() : hr.clone();
+        low = hl.y > hr.y ? hr.clone() : hl.clone();
+        if (top.distanceTo(low) < 0.15) low.set(top.x + Math.sin(facing) * 0.4, top.y - 0.6, top.z + Math.cos(facing) * 0.4);
+      } else {
+        // carried in the right hand, head resting on the floor beside the feet
+        top = hr.clone();
+        low = new THREE.Vector3(hr.x + Math.sin(facing) * 0.25, 0.2, hr.z + Math.cos(facing) * 0.25);
+      }
+      const dir = low.clone().sub(top).normalize();
+      if (dir.y > -0.3) { dir.y = -0.3; dir.normalize(); }
+      const lenToFloor = (top.y - 0.04) / -dir.y;
+      const startUp = top.clone().addScaledVector(dir, -0.12);
+      const bottom = top.clone().addScaledVector(dir, lenToFloor);
+      bottom.y = 0.04;
+      const len = startUp.distanceTo(bottom);
+      stick.position.copy(startUp).add(bottom).multiplyScalar(0.5);
+      stick.scale.set(1, len, 1);
+      stick.quaternion.setFromUnitVectors(UP, bottom.clone().sub(startUp).normalize());
+      head.position.set(bottom.x, 0, bottom.z);
+      head.rotation.set(0, facing, 0);
+    }
+    if (this.carried && this.carriedHeld) {
+      // a case is held between the two hands when they are close enough, else hugged to the chest
+      if (hl.distanceTo(hr) < 0.75) {
+        const mid = hl.clone().add(hr).multiplyScalar(0.5);
+        this.carried.parent?.worldToLocal(mid);
+        this.carried.position.lerp(mid.add(new THREE.Vector3(0, -0.05, 0)), 0.5);
+      } else this.carried.position.set(0, 0, 0);
+    }
   }
 
-  dispose(scene: THREE.Scene) { scene.remove(this.rig.root); }
+  private syncHeld(state: GameState, p: Person) {
+    const basket = state.containers[p.basketId];
+    const items = basket ? Object.entries(basket.items).filter(([, n]) => n > 0) : [];
+    const key = items.map(([k, n]) => `${k}${n}`).join();
+    if (key !== this.basketKey) {
+      if (this.basket) { this.basket.parent?.remove(this.basket); this.basket = null; }
+      if (items.length) {
+        const b = new THREE.Group();
+        b.add(new THREE.Mesh(BASKET_GEO, BASKET_MAT));
+        const handle = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.008, 6, 16, Math.PI), BASKET_MAT);
+        handle.position.y = 0.11;
+        b.add(handle);
+        let k = 0;
+        for (const [prod, n] of items) for (let i = 0; i < Math.min(n, 6) && k < 8; i++, k++) {
+          const m = new THREE.Mesh(productUnitGeometry(prod), productMaterial);
+          m.position.set(-0.1 + (k % 4) * 0.065, -0.07, (Math.floor(k / 4) - 0.5) * 0.09);
+          m.scale.setScalar(0.8);
+          b.add(m);
+        }
+        b.position.set(0, -0.2, 0);
+        this.rig.bones.handL.add(b);
+        this.basket = b;
+      }
+      this.basketKey = key;
+    }
+    const bagC = state.containers[p.bagId];
+    const hasBag = !!bagC && total(bagC) > 0 && p.where !== (p.homeId ?? '-');
+    if (hasBag && !this.bag) {
+      const g = new THREE.Group();
+      const sack = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.15, 0.32, 10), BAG_MAT);
+      sack.scale.z = 0.55;
+      sack.position.y = -0.24;
+      g.add(sack);
+      const loop = new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.008, 6, 12), BAG_MAT);
+      loop.position.y = -0.05;
+      g.add(loop);
+      g.traverse((o) => { o.castShadow = true; });
+      this.rig.bones.handR.add(g);
+      this.bag = g;
+    } else if (!hasBag && this.bag) {
+      this.bag.parent?.remove(this.bag);
+      this.bag = null;
+    }
+  }
+
+  dispose(scene: THREE.Scene) { scene.remove(this.rig.root); this.mop?.parent?.remove(this.mop); }
 }
 
 export class Views {

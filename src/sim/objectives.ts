@@ -10,7 +10,7 @@ import { planRoute, routeLength } from './world/nav';
 export const OBJECTIVES: { id: string; text: string; done: (s: GameState) => boolean }[] = [
   { id: 'find_job', text: 'Find work: check the vacancy board at the Job Centre (or Phone > Jobs)', done: (s) => !!s.flags.viewedJobs },
   { id: 'apply', text: 'Apply for the Retail Assistant job at Corner Market', done: (s) => Object.values(s.applications).some((a) => a.personId === s.playerId) },
-  { id: 'interview', text: 'Wait for an interview invitation (Phone > Jobs). You will be reminded when it is time to set off - smart clothes help.', done: (s) => Object.values(s.applications).some((a) => a.personId === s.playerId && (a.status === 'offered' || a.status === 'accepted')) || Object.values(s.contracts).some((c) => c.personId === s.playerId) },
+  { id: 'interview', text: 'Wait for an interview invitation (Phone > Jobs). Interviews are held over a coffee at Tidewater Cafe; you will be reminded when to set off - smart clothes help.', done: (s) => Object.values(s.applications).some((a) => a.personId === s.playerId && (a.status === 'offered' || a.status === 'accepted')) || Object.values(s.contracts).some((c) => c.personId === s.playerId) },
   { id: 'accept', text: 'Accept the job offer (Phone > Jobs)', done: (s) => Object.values(s.contracts).some((c) => c.personId === s.playerId) },
   { id: 'uniform', text: 'Put on your uniform at the wardrobe in your flat', done: (s) => s.people[s.playerId].appearance.outfit === 'uniform_market' || !!s.flags.clockedInOnce },
   { id: 'clock_in', text: 'Your first shift is booked - you will be reminded when it is time to set off. Clock in at the staff terminal in the store room.', done: (s) => !!s.flags.clockedInOnce },
@@ -58,7 +58,8 @@ export function agenda(state: GameState): Reminder | null {
     if (a.personId !== p.id || a.status !== 'interview' || a.interviewAt == null || a.interviewAt < now - 10) continue;
     const v = state.vacancies[a.vacancyId];
     const iv = a.interviewerId ? state.people[a.interviewerId] : null;
-    items.push({ what: `interview${iv ? ` with ${iv.name}` : ''}`, at: a.interviewAt, where: workplaceOf(v.businessId).pos, place: state.businesses[v.businessId].name, outfit: 'outfit_smart', strict: false });
+    void v;
+    items.push({ what: `interview${iv ? ` with ${iv.name}` : ''}`, at: a.interviewAt, where: getWorld().interactables.iv_chair.pos, place: 'Tidewater Cafe (window table)', outfit: 'outfit_smart', strict: false });
   }
   if (p.contractId && !openAttendance(state, p.id)) {
     const c = state.contracts[p.contractId];

@@ -46,13 +46,11 @@ const smartIdx = await ev(() => window.__bigshot.game.focus?.options.findIndex((
 await page.keyboard.press(`Digit${smartIdx + 1}`); await page.waitForTimeout(300); await waitIdle();
 // go to the shop at the interview time and talk to the manager in person
 await ev((at) => { const g = window.__bigshot.game; const S = window.__bigshot.sim; while (g.state.minute < at - 15) S.step(g.state, 5); }, inv.at);
-// Harlan may be walking, so stand in front of him until the interview option is in focus
-for (let i = 0; i < 40; i++) {
-  await ev((id) => { const g = window.__bigshot.game; const h = g.state.people[id]; g.player.pos = { x: h.pos.x + Math.sin(h.facing) * 1.0, z: h.pos.z + Math.cos(h.facing) * 1.0 }; g.player.facing = Math.atan2(h.pos.x - g.player.pos.x, h.pos.z - g.player.pos.z); g.camYaw = g.player.facing + Math.PI; }, 'p_harlan');
-  await page.waitForTimeout(250);
-  if (await ev(() => !!window.__bigshot.game.focus?.options.some((o) => o.label.startsWith('Attend')))) break;
-}
-console.log('focus', JSON.stringify(await ev(() => window.__bigshot.game.focus?.options.map((o) => o.label))));
+// the interview is held at the cafe window table: wait for Harlan to sit down, then take the seat opposite
+await ev((at) => { const g = window.__bigshot.game; const S = window.__bigshot.sim; while (g.state.minute < at - 4) S.step(g.state, 1); }, inv.at);
+await tp(-17, 12.6, 0);
+await waitFocus('Sit down for your interview');
+console.log('focus', JSON.stringify(await ev(() => window.__bigshot.game.focus?.options.map((o) => o.label + (o.enabled ? '' : ' [' + o.reason + ']')))));
 await ev(() => window.__bigshot.ui.closePhone());
 await shot('05-interview-approach');
 console.log('before E', JSON.stringify(await ev(() => ({ ui: window.__bigshot.game.uiOpen, phone: window.__bigshot.ui.phoneOpen, menu: window.__bigshot.ui.menuOpen, dlg: document.getElementById('dialog').hidden, act: window.__bigshot.game.player.action?.type }))));
@@ -61,7 +59,12 @@ for (let i = 0; i < 80 && (await ev(() => document.getElementById('dialog').hidd
 console.log('dialog open', await ev(() => document.getElementById('dialog').innerHTML.slice(0, 600)));
 for (let i = 0; i < 3; i++) { await page.click('#dialog .answer[data-a="1"]', { timeout: 60000 }).catch(() => console.log('no answer button')); await page.waitForTimeout(200); }
 await shot('06-interview-result');
-await page.click('[data-acc]', { timeout: 60000 }).catch(() => console.log('no accept button'));
+const offered = await page.click('[data-acc]', { timeout: 20000 }).then(() => true).catch(() => false);
+console.log('offered', offered);
+if (!offered) {
+  // interviews depend on the interviewer; for the rest of the playtest hire directly
+  await ev(() => { const g = window.__bigshot.game; window.__bigshot.ui.closeDialog?.(); const c = window.__bigshot.sim.hire(g.state, 'player', 'market', 'assistant_am'); g.player.contractId = c.id; window.__bigshot.sim.addItems?.(g.state.containers[g.player.wardrobeId], 'uniform_market', 1); });
+}
 await page.waitForTimeout(300);
 // put on uniform at the wardrobe
 await tp(23.7, 23.1, -Math.PI / 2);

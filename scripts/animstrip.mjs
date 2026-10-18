@@ -21,7 +21,7 @@ for (let i = 0; i < 6; i++) {
   await page.evaluate(([i]) => {
     const g = window.__bigshot.game; const { v, mode } = window.__strip;
     const speed = mode === 'walk' ? 1.7 : mode === 'run' ? 3.4 : mode === 'carry' ? 0.9 : 0;
-    const action = mode === 'sit' ? 'sit' : mode === 'pickup' ? 'take_case' : null;
+    const action = { sit: 'sit', pickup: 'take_case', mop: 'clean', cook: 'cook', wash: 'shower', dress: 'change_outfit', place: 'stock_shelf', type: 'clock_in', eat: 'eat' }[mode] ?? null;
     const dt = mode === 'walk' || mode === 'carry' ? 1.0 / 6 : mode === 'run' ? 0.72 / 6 : 0.45;
     for (let k = 0; k < 6; k++) v.anim.update(dt / 6, speed, mode === 'carry', action);
     v.rig.root.position.set(16, 0, 4); v.rig.root.rotation.y = Math.PI / 2;

@@ -93,6 +93,8 @@ export interface Obstacle {
 
 export type InteractKind =
   | 'shelf'
+  | 'iv_chair'
+  | 'iv_host'
   | 'pallet'
   | 'terminal'
   | 'till'
@@ -492,6 +494,9 @@ export function getWorld(): World {
   obstacles.push({ kind: 'counter', rect: { x0: -30, z0: 19.6, x1: -18, z1: 20.6 }, height: 1.0, solid: true, color: '#7b2d26' });
   add({ id: 'cafe_counter', kind: 'cafe_counter', label: 'Cafe counter', pos: { x: -24, z: 18.8 }, facing: 0, obj: { x: -24, z: 20.1 }, locationId: 'cafe', businessId: 'cafe', range: 1.8 });
   for (const [tx, tz] of [[-31, 14], [-17, 14]]) obstacles.push({ kind: 'table', rect: box(tx, tz, 1.4, 1.4), height: 0.75, solid: true });
+  // job interviews happen over a coffee at the window table: candidate faces the counter, interviewer opposite
+  add({ id: 'iv_chair', kind: 'iv_chair', label: 'Interview table', pos: { x: -17, z: 12.6 }, facing: 0, obj: { x: -17, z: 13.05 }, locationId: 'cafe', range: 1.6 });
+  add({ id: 'iv_host', kind: 'iv_host', label: 'Interview table', pos: { x: -17, z: 15.75 }, facing: Math.PI, obj: { x: -17, z: 14.95 }, locationId: 'cafe', range: 1.6 });
 
   // ---- Dockside Unit 4 (player-leasable shop)
   for (const gx of [80.5, 84.5]) obstacles.push({ kind: 'gondola', rect: { x0: gx - 0.6, z0: 19, x1: gx + 0.6, z1: 29 }, height: 1.8, solid: true });
@@ -692,6 +697,7 @@ export function getWorld(): World {
   // Cafe
   N('cf_out', -24, 8.6); N('cf_in', -24, 11.6, 'cafe'); N('cf_counter', -24, 18.8, 'cafe'); N('cf_back', -24, 23, 'cafe');
   N('cf_seat_1', -31, 12.6, 'cafe'); N('cf_seat_2', -17, 12.6, 'cafe');
+  N('cf_t2_a', -15.4, 12.6, 'cafe'); N('cf_t2_b', -15.4, 15.75, 'cafe'); N('cf_t2_far', -17, 15.75, 'cafe'); L('cf_seat_2', 'cf_t2_a', 'cf_t2_b', 'cf_t2_far');
   L('sw_-24', 'cf_out', 'cf_in', 'cf_counter'); L('cf_in', 'cf_seat_1'); L('cf_in', 'cf_seat_2');
   N('cf_side', -31.5, 18.5, 'cafe'); L('cf_counter', 'cf_side');
   N('cf_kitchen', -31.5, 23, 'cafe'); L('cf_side', 'cf_kitchen', 'cf_back');

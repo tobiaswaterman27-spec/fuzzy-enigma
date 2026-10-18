@@ -5,7 +5,7 @@ import type { ActionState, ActionType, GameState, Id, Person } from './types';
 import { dist, fmtMoney, clamp } from './core';
 import { count, firstItem, isEmpty, moveAll, moveItems, removeItems, spaceFor, total } from './inventory';
 import { CLOTHING, ITEMS, isFood, itemName } from './items';
-import { clockIn, clockOut, isOnShift, openAttendance } from './employment';
+import { clockIn, clockOut, hostingInterview, interviewOpen, isOnShift, openAttendance } from './employment';
 import { basketValue, completeSale, completeTask, isOpen, isStaff, leaveQueue, priceOf, productAt, queueSlot, RESTOCK_DONE } from './retail';
 import { checkInDeliveries } from './logistics';
 import { hasHomeAccess } from './housing';
@@ -185,6 +185,20 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
       out.push(opt('sit', 'Sit down'));
       out.push({ type: 'ui', label: 'Use laptop (job sites, bank, business)', enabled: true, ui: 'laptop' });
       break;
+    case 'iv_chair': {
+      const iv = Object.values(state.applications).find((a) => a.personId === actorId && a.status === 'interview');
+      if (iv) {
+        const host = iv.interviewerId ? state.people[iv.interviewerId] : null;
+        const seated = !!host && host.action?.type === 'sit' && host.action.target === 'iv_host';
+        const open = interviewOpen(state, iv);
+        out.push({ type: 'ui', label: `Sit down for your interview${host ? ` with ${host.name}` : ''}`, enabled: open && seated, reason: !open ? 'Not yet - check the time on your invitation' : !seated ? `${host?.name.split(' ')[0] ?? 'They'} has not arrived yet` : undefined, ui: 'interview', arg: iv.id });
+      }
+      out.push(opt('sit', 'Sit down'));
+      break;
+    }
+    case 'iv_host':
+      out.push(opt('sit', 'Sit down'));
+      break;
     case 'sofa':
       out.push(opt('watch_tv', 'Watch TV (raises mood)', hasHomeAccess(state, actorId, it.locationId) ? undefined : 'Not your home'));
       out.push(opt('sit', 'Sit and rest'));
@@ -202,10 +216,7 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
     case 'person': {
       const other = state.people[it.id.slice(7)];
       const iv = Object.values(state.applications).find((a) => a.personId === actorId && a.status === 'interview' && a.interviewerId === other.id);
-      if (iv) {
-        const open = state.minute >= iv.interviewAt! - 45 && state.minute <= iv.interviewAt! + 60;
-        out.push({ type: 'ui', label: `Attend your interview with ${other.name}`, enabled: open, reason: open ? undefined : 'Not yet - check the time on your invitation', ui: 'interview', arg: iv.id });
-      }
+      if (iv) out.push({ type: 'ui', label: `Interview with ${other.name}`, enabled: false, reason: 'Held at the window table in Tidewater Cafe - sit down there', ui: 'interview', arg: iv.id });
       const fam = Math.round(p.relations?.[other.id] ?? 0);
       out.push(opt('talk', `Chat with ${other.name}${fam ? ` (familiarity ${fam})` : ''}`, other.action?.type === 'serve_customer' ? 'Busy serving' : undefined));
       break;
@@ -371,6 +382,8 @@ export function tickAction(state: GameState, p: Person, dt: number): string | nu
     }
     return null;
   }
+  // an interviewer waiting at the table gets up once the interview is over
+  if (a.type === 'sit' && a.target === 'iv_host' && !hostingInterview(state, p.id)) { finish(state, p); return null; }
   if (a.progress < a.duration) {
     if (a.type === 'sleep' && p.needs.energy >= 100 && a.arg !== 'morning' && a.progress > 30) { finish(state, p); return 'You wake up rested.'; }
     if (a.type === 'buy_meal') p.needs.satiety = clamp(p.needs.satiety + (55 / 8) * dt, 0, 100);

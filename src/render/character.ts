@@ -257,11 +257,14 @@ export function getClip(name: string): THREE.AnimationClip {
 // --------------------------------------------------------------- controller
 /** which clip presents which simulation action (presentation only) */
 export const ACTION_CLIP: Record<string, string> = {
-  clock_in: 'type', clock_out: 'type', take_case: 'pickup', return_case: 'pickup', stock_shelf: 'stock',
+  clock_in: 'type', clock_out: 'type', take_case: 'pickup', return_case: 'pickup', stock_shelf: 'place',
   serve_customer: 'scan', self_checkout: 'scan', take_mop: 'pickup', return_mop: 'pickup', clean: 'mop',
-  check_in_delivery: 'clipboard', pick_item: 'stock', sleep: 'lie', eat: 'eat', store_food: 'stock',
-  change_outfit: 'pickup', buy_meal: 'eat', sit: 'sit', talk: 'talk',
+  check_in_delivery: 'clipboard', pick_item: 'place', sleep: 'lie', eat: 'eat', store_food: 'place',
+  change_outfit: 'dress', buy_meal: 'eat', sit: 'sit', watch_tv: 'sit', talk: 'talk', shower: 'wash', cook: 'cook', phone: 'phone',
 };
+
+/** seated clips: getting into and out of them plays a real sit-down / stand-up move */
+const SEATED = new Set(['sit', 'sit_down']);
 
 /** ground speeds (m/s) the locomotion clips were captured at; playback rate scales with real speed */
 export let WALK_SPEED_REF = 1.5;
@@ -288,6 +291,26 @@ export class AnimationController {
     return a;
   }
 
+  private transition: string | null = null;
+  private transitionEnd = 0;
+
+  private play(clip: string, fade: number) {
+    const next = this.get(clip);
+    next.reset();
+    next.enabled = true;
+    next.setEffectiveWeight(1);
+    next.play();
+    const prev = this.current ? this.actions.get(this.current) : null;
+    // locomotion to locomotion keeps the stride phase so the feet never skip
+    const loco = ['walk', 'run', 'carry_walk'];
+    if (prev && loco.includes(clip) && loco.includes(this.current)) {
+      next.time = (prev.time / prev.getClip().duration) * next.getClip().duration;
+      fade = 0.3;
+    }
+    if (prev && prev !== next) next.crossFadeFrom(prev, fade, true);
+    this.current = clip;
+  }
+
   /** Decide the clip from authoritative state: an action wins over locomotion. */
   update(dt: number, speed: number, carrying: boolean, action: string | null) {
     let clip: string;
@@ -303,20 +326,19 @@ export class AnimationController {
     } else {
       clip = carrying ? 'carry_idle' : 'idle';
     }
-    if (clip !== this.current) {
-      const next = this.get(clip);
-      next.reset();
-      next.enabled = true;
-      next.setEffectiveWeight(1);
-      next.play();
-      const prev = this.current ? this.actions.get(this.current) : null;
-      // locomotion to locomotion keeps the stride phase so the feet never skip
-      const loco = ['walk', 'run', 'carry_walk'];
-      if (prev && loco.includes(clip) && loco.includes(this.current)) next.time = (prev.time / prev.getClip().duration) * next.getClip().duration;
-      const fade = clip === 'lie' || this.current === 'lie' ? 0.08 : loco.includes(clip) && loco.includes(this.current) ? 0.3 : 0.35;
-      if (prev) next.crossFadeFrom(prev, fade, true);
-      this.current = clip;
+    // transitions between standing and seated play the captured sit-down / stand-up move first
+    const now = this.mixer.time;
+    if (this.transition && now >= this.transitionEnd) this.transition = null;
+    if (!this.transition && this.current && MOCAP.sit_down && SEATED.has(clip) !== SEATED.has(this.current) && this.current !== 'lie' && clip !== 'lie') {
+      this.transition = SEATED.has(clip) ? 'sit_down' : 'stand_up';
+      const t = this.get(this.transition);
+      t.setLoop(THREE.LoopOnce, 1);
+      t.clampWhenFinished = true;
+      this.transitionEnd = now + t.getClip().duration * 0.92;
+      this.play(this.transition, 0.25);
     }
+    if (this.transition) { this.mixer.update(dt); this.state = this.transition; return; }
+    if (clip !== this.current) this.play(clip, clip === 'lie' || this.current === 'lie' ? 0.08 : 0.35);
     this.get(clip).timeScale = rate;
     this.state = clip;
     this.mixer.update(dt);

@@ -226,6 +226,17 @@ const ITEM: Record<string, Maker> = {
 };
 
 const cache = new Map<string, THREE.BufferGeometry>();
+const unitCache = new Map<string, THREE.BufferGeometry>();
+
+/** a single unit of a product (for baskets, bags and hands) */
+export function productUnitGeometry(product: string): THREE.BufferGeometry {
+  const hit = unitCache.get(product);
+  if (hit) return hit;
+  const make = ITEM[product] ?? (() => carton(0.1, 0.15, 0.1, 'soap', '#c8ccd0'));
+  const g = mergeGeometries(make(), false)!;
+  unitCache.set(product, g);
+  return g;
+}
 
 /** a shelf facing for one unit of stock: three of the item side by side, two deep */
 export function productGeometry(product: string): THREE.BufferGeometry {

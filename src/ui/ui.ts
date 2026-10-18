@@ -8,6 +8,7 @@ import { accountTxns } from '../sim/ledger';
 import { acceptOffer, acceptPromotion, applyForJob, attendInterview, canApply, currentShift, declineOffer, hoursPerWeek, INTERVIEW, nextShift, openAttendance, positionOf, promotionEligible, resign, shiftLabel, scoreShift } from '../sim/employment';
 import { conditionLabel, skillLevel } from '../sim/needs';
 import { agenda, currentObjective } from '../sim/objectives';
+import { cancelAction, startAction } from '../sim/actions';
 import { activeLease, reRent } from '../sim/housing';
 import { openTasks, inventoryValue, stockPosition } from '../sim/retail';
 import { demandFactors } from '../sim/economy';
@@ -55,7 +56,9 @@ export class UI {
   get s(): GameState { return this.game.state; }
   get p(): Person { return this.s.people[this.s.playerId]; }
 
-  syncModal() { this.game.uiOpen = this.phoneOpen || this.menuOpen || !$('#dialog').hidden; this.game.paused = this.menuOpen || !$('#dialog').hidden; if (this.game.uiOpen) this.game.releaseMouse(); }
+  /** a live dialog (a conversation) keeps the world running */
+  liveDialog = false;
+  syncModal() { this.game.uiOpen = this.phoneOpen || this.menuOpen || !$('#dialog').hidden; this.game.paused = this.menuOpen || (!$('#dialog').hidden && !this.liveDialog); if (this.game.uiOpen) this.game.releaseMouse(); }
 
   toast(msg: string) {
     if (!msg) return;
@@ -374,7 +377,7 @@ export class UI {
     dlg.onclick = (e) => { const b = (e.target as HTMLElement).closest('button'); if (b) onClick(b as HTMLButtonElement); };
     this.syncModal();
   }
-  closeDialog() { $('#dialog').hidden = true; this.syncModal(); }
+  closeDialog() { $('#dialog').hidden = true; this.liveDialog = false; this.syncModal(); }
 
   /** the in-person interview, started by talking to the interviewer at the workplace */
   interviewInPerson(appId: string) {
@@ -385,19 +388,25 @@ export class UI {
     const iv = s.people[a.interviewerId!];
     const pos = b.positions.find((x) => x.id === v.positionId)!;
     const answers: number[] = [];
+    // sit down at the table; the conversation happens in real time (the clock keeps running)
+    startAction(s, 'player', 'iv_chair', 'sit');
+    this.liveDialog = true;
+    const stand = () => { const p = s.people.player; if (p.action?.type === 'sit' && p.action.target === 'iv_chair') cancelAction(s, p, 'interview over'); };
     const ask = () => {
       const qi = answers.length;
       if (qi >= INTERVIEW.length) {
         const r = attendInterview(s, appId, answers);
         this.dialog(`<div class="dlg"><h2>${r.offered ? 'Job offered' : 'Not this time'}</h2><p>${esc(iv.name)}: ${r.offered ? '"We would like you to join us."' : '"Thanks for coming in. We have decided not to go ahead."'}</p>
-          <p class="muted">Interview score ${r.score} (60 needed)</p><ul>${r.feedback.map((f) => `<li>${esc(f)}</li>`).join('')}</ul>
+          <p class="muted">Interview score ${r.score}</p><ul>${r.feedback.map((f) => `<li>${esc(f)}</li>`).join('')}</ul>
           <div class="row">${r.offered ? `<button class="primary" data-acc="1">Accept the job</button><button data-later="1">Think about it (24h)</button>` : '<button data-later="1">Leave</button>'}</div></div>`, (btn) => {
           if (btn.dataset.acc) this.toast(acceptOffer(s, appId).msg);
+          stand();
           this.closeDialog();
         });
         return;
       }
       const Q = INTERVIEW[qi];
+      this.liveDialog = true;
       this.dialog(`<div class="dlg"><h2>Interview: ${esc(pos.title)}</h2><p class="muted">${esc(b.name)} · with ${esc(iv.name)} · question ${qi + 1} of ${INTERVIEW.length}</p><p><b>${esc(iv.name.split(' ')[0])}:</b> "${esc(Q.q)}"</p>${Q.a.map((x, i) => `<button class="answer" data-a="${i}">${esc(x)}</button>`).join('')}</div>`, (btn) => {
         if (btn.dataset.a === undefined) return;
         answers.push(Number(btn.dataset.a));

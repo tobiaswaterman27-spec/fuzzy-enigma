@@ -168,6 +168,7 @@ export function buildWorld(scene: THREE.Scene): WorldView {
   bakeStatic(g, cutaway);
 
   const update = (state: GameState, dt: number) => {
+    for (const f of fixtures) f(state, dt);
     for (const d of doors) {
       let near = false;
       for (const p of Object.values(state.people)) {
@@ -557,6 +558,9 @@ function panelDoor(w: number, h: number) {
 }
 
 // ------------------------------------------------------------------ furniture & props
+/** per-frame animators for fixtures that respond to people using them (shower door, water, ...) */
+const fixtures: ((state: GameState, dt: number) => void)[] = [];
+
 function buildObstacle(o: Obstacle): THREE.Object3D {
   const r = o.rect;
   const cx = (r.x0 + r.x1) / 2, cz = (r.z0 + r.z1) / 2, W = r.x1 - r.x0, D = r.z1 - r.z0;
@@ -736,14 +740,82 @@ function buildObstacle(o: Obstacle): THREE.Object3D {
       grp.add(box(W, o.height, D, M('#3a2e25', 0.6), cx, o.height / 2, cz));
       grp.add(box(0.05, 0.75, 1.3, M('#0b0b0d', 0.15, { emissive: new THREE.Color('#1d3557'), emissiveIntensity: 0.5 }), cx, o.height + 0.45, cz));
       break;
-    case 'shower':
-      grp.add(box(W, 0.1, D, M('#f4f4f4', 0.3), cx, 0.05, cz));
-      grp.add(box(0.03, o.height, D, glassM(), r.x0, o.height / 2, cz, false));
-      grp.add(box(W, o.height, 0.03, M('#e8eef0', 0.4), cx, o.height / 2, r.z0));
-      grp.add(cyl(0.12, 0.12, 0.03, metal('#ccc'), cx + 0.3, 2.0, cz, 12));
-      grp.add(box(0.5, 0.4, 0.4, M('#fafafa', 0.3), r.x1 - 0.25, 0.85, r.z1 + 0.6));
-      grp.add(box(0.02, 0.7, 0.6, M('#cfe3ea', 0.05, { metalness: 0.8 }), r.x1 - 0.02, 1.5, r.z1 + 0.6, false));
+    case 'shower': {
+      // corner shower: tiled walls behind, frosted glass on the open sides, a hinged door, riser, head and mixer
+      const tile = texMat(tex.tiles('#e9eef0', '#dde4e7', 6), 0.25);
+      const frost = new THREE.MeshPhysicalMaterial({ color: '#e8f1f4', roughness: 0.35, transmission: 0.6, thickness: 0.01, transparent: true, opacity: 0.55, side: THREE.DoubleSide });
+      const chrome = metal('#d6d9dc', 0.15);
+      const H = o.height;
+      grp.add(box(W, 0.08, D, M('#f7f7f5', 0.2), cx, 0.04, cz));
+      grp.add(box(0.12, 0.012, 0.12, chrome, cx, 0.085, cz, false));
+      // which open side faces the person using it decides where the door goes
+      const it = Object.values(getWorld().interactables).find((x) => x.kind === 'shower' && x.obj.x >= r.x0 - 0.1 && x.obj.x <= r.x1 + 0.1 && x.obj.z >= r.z0 - 0.1 && x.obj.z <= r.z1 + 0.1);
+      const doorSide = it ? (Math.abs(it.pos.x - cx) > Math.abs(it.pos.z - cz) ? (it.pos.x < cx ? 'xmin' : 'xmax') : (it.pos.z < cz ? 'zmin' : 'zmax')) : 'xmin';
+      const sides = ['xmin', 'xmax', 'zmin', 'zmax'] as const;
+      const along = (sd: string) => (sd === 'xmin' || sd === 'xmax' ? D : W);
+      for (const sd of sides) {
+        const atWall = (sd === 'xmax') || (sd === 'zmin' && doorSide !== 'zmin') ;
+        const len = along(sd);
+        const px = sd === 'xmin' ? r.x0 : sd === 'xmax' ? r.x1 : cx, pz = sd === 'zmin' ? r.z0 : sd === 'zmax' ? r.z1 : cz;
+        const horiz = sd === 'zmin' || sd === 'zmax';
+        if (sd === doorSide) continue;
+        if (atWall) grp.add(box(horiz ? len : 0.02, H, horiz ? 0.02 : len, tile, px, H / 2, pz, false, 1.2));
+        else {
+          grp.add(box(horiz ? len : 0.01, H - 0.1, horiz ? 0.01 : len, frost, px, H / 2 + 0.05, pz, false));
+          grp.add(box(horiz ? len : 0.03, 0.03, horiz ? 0.03 : len, chrome, px, H, pz, false));
+        }
+      }
+      // hinged door on the side you enter from
+      const len = along(doorSide);
+      const horizD = doorSide === 'zmin' || doorSide === 'zmax';
+      const hinge = new THREE.Group();
+      hinge.position.set(doorSide === 'xmin' ? r.x0 : doorSide === 'xmax' ? r.x1 : r.x0, 0, doorSide === 'zmin' ? r.z0 : doorSide === 'zmax' ? r.z1 : r.z0);
+      const leaf = box(horizD ? len : 0.012, H - 0.1, horizD ? 0.012 : len, frost, horizD ? len / 2 : 0, H / 2 + 0.05, horizD ? 0 : len / 2, false);
+      const handle = box(horizD ? 0.02 : 0.03, 0.3, horizD ? 0.03 : 0.02, chrome, horizD ? len - 0.08 : 0, 1.05, horizD ? 0 : len - 0.08, false);
+      hinge.add(leaf, handle);
+      hinge.userData.dynamic = true;
+      hinge.traverse((x) => { x.userData.dynamic = true; });
+      grp.add(hinge);
+      // riser, head and mixer on the wall
+      const wallX = r.x1 - 0.06;
+      grp.add(cyl(0.012, 0.012, 1.0, chrome, wallX, 1.5, cz, 10));
+      const head = cyl(0.09, 0.07, 0.025, chrome, wallX - 0.18, 2.02, cz, 18);
+      grp.add(head, box(0.2, 0.02, 0.02, chrome, wallX - 0.09, 2.04, cz, false), box(0.05, 0.14, 0.1, chrome, wallX, 1.05, cz, false));
+      // falling water: a cloud of droplets that only runs while someone is washing
+      const N = 260;
+      const drops = new Float32Array(N * 3);
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(drops, 3));
+      const water = new THREE.Points(geo, new THREE.PointsMaterial({ color: '#cfe8f5', size: 0.025, transparent: true, opacity: 0.75, depthWrite: false }));
+      water.frustumCulled = false;
+      water.visible = false;
+      water.userData.dynamic = true;
+      grp.add(water);
+      const hx = wallX - 0.18, hz = cz;
+      const seed = drops.map(() => Math.random());
+      fixtures.push((state: GameState, dt: number) => {
+        const user = Object.values(state.people).find((p) => p.action?.type === 'shower' && p.action.target === it?.id);
+        const f = user?.action ? user.action.progress / Math.max(1e-6, user.action.duration) : -1;
+        // door: open while stepping in and out, shut while washing
+        const openT = f < 0 ? 0 : f < 0.12 ? 1 : f < 0.16 ? 1 - (f - 0.12) / 0.04 : f < 0.86 ? 0 : f < 0.9 ? (f - 0.86) / 0.04 : 1;
+        const sign = doorSide === 'xmin' || doorSide === 'zmax' ? -1 : 1;
+        hinge.rotation.y += (sign * openT * 1.4 - hinge.rotation.y) * Math.min(1, dt * 6);
+        const running = f > 0.15 && f < 0.86;
+        water.visible = running;
+        if (running) {
+          for (let i = 0; i < N; i++) {
+            seed[i * 3 + 1] = (seed[i * 3 + 1] + dt * 1.6 * (0.8 + seed[i * 3] * 0.4)) % 1;
+            const t = seed[i * 3 + 1];
+            const a = seed[i * 3 + 2] * Math.PI * 2, rr = 0.03 + 0.07 * seed[i * 3] + t * 0.12;
+            drops[i * 3] = hx + Math.cos(a) * rr;
+            drops[i * 3 + 1] = 2.0 - t * 1.92;
+            drops[i * 3 + 2] = hz + Math.sin(a) * rr;
+          }
+          (geo.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
+        }
+      });
       break;
+    }
     case 'stairs': {
       // dog-leg stair: first flight along the front wall, half landing, second flight back up to the next floor
       const stepM = M('#b9b2a6', 0.8), noseM = M('#3a3a3a', 0.6), railM = metal('#2f3337', 0.4), wallM = M('#e6e0d6', 0.9);

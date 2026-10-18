@@ -21,16 +21,20 @@ export const INTERVIEW = [
     q: 'A customer is waiting at the till while you are restocking. What do you do?',
     a: ['Finish the shelf first - stock matters', 'Put the case down and serve them straight away', 'Wave and tell them someone will be along'],
     pts: [2, 8, 3],
+    // how much each kind of interviewer likes each answer (added to pts, scaled by their trait 0..1)
+    likes: [{ conscientiousness: 4, sociability: -3 }, { sociability: 3, patience: -1 }, { patience: 3, conscientiousness: -2 }],
   },
   {
     q: 'You notice a spill in an aisle near the end of your shift.',
     a: ['Leave it for the next shift', 'Clean it up and make sure the area is safe', 'Put a sign up and tell the manager'],
     pts: [0, 8, 6],
+    likes: [{ thrift: 1 }, { conscientiousness: 3 }, { sociability: 2, ambition: 2 }],
   },
   {
     q: 'Why do you want this job?',
     a: ['I need the money, honestly', 'I want to learn how a business runs from the shop floor up', 'It is close to where I live'],
     pts: [4, 8, 5],
+    likes: [{ thrift: 4, ambition: -2 }, { ambition: 4, thrift: -1 }, { patience: 3, conscientiousness: 1 }],
   },
 ];
 
@@ -393,32 +397,80 @@ function reject(state: GameState, appId: Id, note: string) {
   if (state.people[a.personId].isPlayer) news(state, 'bad', 'Application unsuccessful', note, true);
 }
 
+/** an interview this person is conducting around now (they may already be waiting at the cafe table) */
+export function hostingInterview(state: GameState, personId: Id): Application | null {
+  for (const a of Object.values(state.applications)) {
+    if (a.interviewerId !== personId || a.status !== 'interview' || a.interviewAt == null) continue;
+    if (state.minute >= a.interviewAt - 40 && state.minute <= a.interviewAt + 45) return a;
+  }
+  return null;
+}
+
 export const interviewOpen = (state: GameState, a: Application) => a.status === 'interview' && a.interviewAt !== undefined && state.minute >= a.interviewAt - 45 && state.minute <= a.interviewAt + 60;
 
 /** the face-to-face interview: answers, appearance, hygiene and punctuality decide the outcome on the spot */
+/** a small, stable 'chemistry' between two people (-1..1), from their ids */
+function chemistry(a: Id, b: Id): number {
+  let h = 2166136261;
+  for (const ch of a < b ? a + b : b + a) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+  return ((h >>> 0) % 2001) / 1000 - 1;
+}
+
+/** Scores an in-person interview. Nothing is fixed: what counts and how much depends on who is
+ * interviewing (their traits and mood that day) and on the candidate (experience, rapport). */
 export function attendInterview(state: GameState, appId: Id, answers: number[]): { ok: boolean; offered: boolean; score: number; feedback: string[]; msg: string } {
   const a = state.applications[appId];
   if (!a || !interviewOpen(state, a)) return { ok: false, offered: false, score: 0, feedback: [], msg: 'There is no interview to attend right now.' };
   const p = state.people[a.personId];
+  const iv = a.interviewerId ? state.people[a.interviewerId] : null;
+  const T = iv?.traits ?? { conscientiousness: 0.5, sociability: 0.5, ambition: 0.5, patience: 0.5, thrift: 0.5 };
+  const who = iv ? iv.name.split(' ')[0] : 'They';
   const fb: string[] = [];
   let score = a.score;
   let ans = 0;
-  answers.forEach((ai, qi) => (ans += INTERVIEW[qi]?.pts[ai] ?? 0));
+  answers.forEach((ai, qi) => {
+    const q = INTERVIEW[qi];
+    if (!q) return;
+    let v = q.pts[ai] ?? 0;
+    for (const [trait, w] of Object.entries(q.likes?.[ai] ?? {})) v += w * (T as unknown as Record<string, number>)[trait];
+    ans += v;
+  });
   score += ans;
-  fb.push(ans >= 20 ? 'Strong, customer-focused answers.' : ans >= 14 ? 'Reasonable answers.' : 'Your answers did not convince them.');
+  fb.push(ans >= 22 ? `${who} liked your answers.` : ans >= 15 ? `${who} thought your answers were reasonable.` : `Your answers did not convince ${iv ? who : 'them'}.`);
+  // dress matters more to conscientious interviewers
   const formality = CLOTHING[p.appearance.outfit]?.formality ?? 0;
-  score += formality * 4;
-  fb.push(formality >= 2 ? 'You were smartly dressed (+8).' : formality === 1 ? 'Neatly dressed (+4).' : 'Casual clothes made no impression either way.');
-  if ((p.needs.hygiene ?? 80) < 30) { score -= 10; fb.push('Personal hygiene let you down (-10). Shower before important meetings.'); }
-  const late = Math.max(0, Math.round(state.minute - (a.interviewAt ?? state.minute) - 5));
-  if (late > 0) { score -= Math.min(15, late); fb.push(`You were ${late} minutes late (-${Math.min(15, late)}).`); }
+  const dressW = 2 + 5 * T.conscientiousness;
+  score += formality * dressW;
+  fb.push(formality >= 2 ? `You were smartly dressed (+${Math.round(formality * dressW)}).` : formality === 1 ? `Neatly dressed (+${Math.round(dressW)}).` : T.conscientiousness > 0.7 ? `${who} noticed you had not dressed up for it.` : 'Casual clothes made no impression either way.');
+  if (T.conscientiousness > 0.7 && formality === 0) score -= 4;
+  // hygiene: the threshold and the penalty depend on the interviewer
+  const hyg = p.needs.hygiene ?? 80;
+  const hygLimit = 25 + 20 * T.conscientiousness;
+  if (hyg < hygLimit) { const pen = Math.round(6 + 8 * T.conscientiousness); score -= pen; fb.push(`Personal hygiene let you down (-${pen}). Shower before important meetings.`); }
+  // lateness: patient people forgive more
+  const late = Math.max(0, Math.round(state.minute - (a.interviewAt ?? state.minute) - 3));
+  if (late > 0) { const pen = Math.min(20, Math.round(late * (0.5 + 1.5 * (1 - T.patience)))); score -= pen; fb.push(`You were ${late} minutes late (-${pen}).`); }
   else fb.push('You arrived on time.');
-  if ((p.needs.mood ?? 60) > 70) { score += 2; fb.push('You came across as upbeat (+2).'); }
+  // rapport: your mood meets their sociability, plus a little personal chemistry
+  const rapport = ((p.needs.mood ?? 60) - 55) / 45 * 6 * (0.4 + T.sociability) + chemistry(p.id, iv?.id ?? 'x') * 4 * T.sociability + (p.traits.sociability - 0.5) * 6;
+  score += rapport;
+  if (rapport > 3) fb.push(`You got on well with ${who} (+${Math.round(rapport)}).`);
+  else if (rapport < -3) fb.push(`The conversation felt awkward (${Math.round(rapport)}).`);
+  // experience counts for more with ambitious interviewers
+  const exp = Math.min(10, (p.skills.retail ?? 0) / 30) * (0.5 + T.ambition);
+  if (exp >= 1) { score += exp; fb.push(`Relevant experience (+${Math.round(exp)}).`); }
+  // their own day colours the decision
+  if (iv) {
+    const dayMood = ((iv.needs.mood ?? 60) - 60) / 8;
+    score += dayMood;
+    if (dayMood < -2) fb.push(`${who} seemed to be having a bad day.`);
+  }
   score = Math.round(clamp(score, 0, 100));
   a.score = score;
   a.answers = answers;
   a.interviewFeedback = fb;
-  if (score >= OFFER_THRESHOLD) {
+  const bar = OFFER_THRESHOLD + (T.conscientiousness - 0.5) * 10;
+  if (score >= bar) {
     a.status = 'offered';
     a.offerExpires = state.minute + MIN_PER_DAY;
     lifeEvent(state, p, `Interviewed at ${state.businesses[state.vacancies[a.vacancyId].businessId].name}: offered the job`);
