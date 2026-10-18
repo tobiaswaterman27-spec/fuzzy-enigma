@@ -18,6 +18,7 @@ import { capability } from '../sim/needs';
 import { daylight, hourOfDay } from '../sim/clock';
 import { buildWorld, type WorldView } from '../render/world';
 import { Views } from '../render/views';
+import { Traffic } from '../render/traffic';
 import { safeWrite, loadSlot, type KV } from '../sim/save';
 import { news } from '../sim/events';
 import { fmtDate, fmtClock } from '../sim/clock';
@@ -46,6 +47,7 @@ export class Game {
   hemi: THREE.HemisphereLight;
   world: WorldView;
   views: Views;
+  traffic: Traffic;
   keys = new Set<string>();
   camYaw = Math.PI; // camera sits behind (south of) the player looking north
   camPitch = 0.22;
@@ -109,6 +111,7 @@ export class Game {
     this.setupComposer();
     this.world = buildWorld(this.scene);
     this.views = new Views(this.scene);
+    this.traffic = new Traffic(this.scene);
     this.resize();
     window.addEventListener('resize', () => this.resize());
     this.bindInput();
@@ -250,6 +253,7 @@ export class Game {
       if (performance.now() > this.autosaveAt) { this.autosave(); this.autosaveAt = performance.now() + 180000; }
     }
     this.views.update(s, this.paused ? 0 : dt, this.player.pos, this.insideId, this.speech);
+    this.traffic.update(s, this.paused ? 0 : dt);
     this.watchFrameRate(dt);
     this.world.update(s, dt);
     if (!this.freeCam) this.updateCamera(dt);
