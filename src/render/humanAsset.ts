@@ -7,6 +7,49 @@ import type { Appearance } from '../sim/types';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { GARMENTS } from './human';
 import { fetchBinary } from './binary';
+import { hasModel, modelInstance } from './models';
+
+/** which Blender shoe each outfit wears */
+const SHOE_STYLE: Record<string, string> = { outfit_casual: 'shoe_trainer', outfit_smart: 'shoe_oxford', uniform_market: 'shoe_trainer', uniform_wholesale: 'shoe_boot', uniform_cafe: 'shoe_oxford' };
+
+/** A shoe model fitted to each foot in the bind pose and skinned rigidly to the foot bone. */
+function shoeGeometries(style: string, pos: Float32Array, footW: Float32Array, footX: [number, number], bones: [number, number]): { geo: THREE.BufferGeometry; paint: boolean; color: THREE.Color }[] {
+  const tpl = modelInstance(style);
+  if (!tpl) return [];
+  const parts: { geo: THREE.BufferGeometry; name: string; color: THREE.Color }[] = [];
+  tpl.updateMatrixWorld(true);
+  tpl.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) parts.push({ geo: m.geometry, name: (m.material as THREE.MeshStandardMaterial).name, color: (m.material as THREE.MeshStandardMaterial).color.clone() }); });
+  const tb = new THREE.Box3();
+  for (const p of parts) { p.geo.computeBoundingBox(); tb.union(p.geo.boundingBox!); }
+  const out: { geo: THREE.BufferGeometry; paint: boolean; color: THREE.Color }[] = [];
+  for (let side = 0; side < 2; side++) {
+    // the foot's extent in the bind pose
+    const fb = new THREE.Box3();
+    const n = pos.length / 3;
+    for (let v = 0; v < n; v++) {
+      if (footW[v] < 0.5 || pos[v * 3 + 1] > 0.13) continue;
+      const x = pos[v * 3];
+      if (Math.abs(x - footX[side]) > Math.abs(x - footX[1 - side])) continue;
+      fb.expandByPoint(new THREE.Vector3(x, pos[v * 3 + 1], pos[v * 3 + 2]));
+    }
+    if (fb.isEmpty()) continue;
+    const fl = fb.max.z - fb.min.z, fw = fb.max.x - fb.min.x;
+    const sx = (fw * 1.18) / (tb.max.x - tb.min.x), sz = (fl * 1.07) / (tb.max.z - tb.min.z);
+    const m = new THREE.Matrix4().makeTranslation((fb.min.x + fb.max.x) / 2, Math.min(0, fb.min.y), (fb.min.z + fb.max.z) / 2 + fl * 0.01)
+      .multiply(new THREE.Matrix4().makeScale(sx, sz, sz))
+      .multiply(new THREE.Matrix4().makeTranslation(-(tb.min.x + tb.max.x) / 2, -tb.min.y, -(tb.min.z + tb.max.z) / 2));
+    for (const p of parts) {
+      const g = p.geo.clone().applyMatrix4(m);
+      const cnt = g.getAttribute('position').count;
+      const si = new Uint16Array(cnt * 4), sw = new Float32Array(cnt * 4);
+      for (let i = 0; i < cnt; i++) { si[i * 4] = bones[side]; sw[i * 4] = 1; }
+      g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(si, 4));
+      g.setAttribute('skinWeight', new THREE.Float32BufferAttribute(sw, 4));
+      out.push({ geo: g, paint: p.name === 'paint', color: p.color });
+    }
+  }
+  return out;
+}
 
 export interface HumanAsset {
   meta: any;
@@ -716,7 +759,7 @@ function buildRealHumanUncached(a: Appearance): HumanBuild {
     const ndx = x - nk.x, ndz = z - nk.z, r = Math.hypot(ndx, ndz);
     const frontness = Math.max(0, ndz / Math.max(1e-6, r));
     const yCut = neckBase - 0.008 - 0.022 * frontness * frontness;
-    const fNeck = Math.max(Math.min(y - yCut, (r - 0.083) * -1), (y - (neckBase + 0.06)), neck > 0.9 ? 0.1 : -1) * 10;
+    const fNeck = Math.max(smin(y - yCut, 0.083 - r, 0.012), (y - (neckBase + 0.06)), (neck - 0.97) * 0.5) * 10;
     const fWaist = (waist - 0.06 - y) * 10;
     const fSleeve = Math.min(arm - 0.5, (sleeveEnd - y) * 10);
     const fHand = hand - 0.5;
@@ -750,7 +793,8 @@ function buildRealHumanUncached(a: Appearance): HumanBuild {
   for (const F of ov ? [fTop, fBot, fShoe, fHair, fTopLong, fOver] : [fTop, fBot, fShoe, fHair, fTopLong]) {
     let cur = new Float32Array(W.nOrig), next = new Float32Array(W.nOrig);
     for (let v = 0; v < n; v++) cur[W.orig[v]] = F[v];
-    for (let it = 0; it < 5; it++) {
+    const iters = F === fTop || F === fTopLong || F === fOver ? 9 : 5;
+    for (let it = 0; it < iters; it++) {
       for (let o = 0; o < W.nOrig; o++) {
         const s0 = W.adjStart[o], s1 = W.adjStart[o + 1];
         if (s1 === s0) { next[o] = cur[o]; continue; }
@@ -788,7 +832,12 @@ function buildRealHumanUncached(a: Appearance): HumanBuild {
     sk(poolGeometry(shirt.pool, shirt.buckets[0], 0.011, 6, 6, bridge), cloth(g.top.color, g.top.tex));
     void topTris;
     sk(poolGeometry(pool, botTris, 0.008, 6, 8, bridge, legHang), cloth(g.bottom.color, g.bottom.tex, 0.9));
-    sk(poolGeometry(pool, shoeTris, 0.011, 4, 10), cached(`shoe${g.shoes}`, () => new THREE.MeshStandardMaterial({ color: g.shoes, roughness: 0.4, metalness: 0.05 })));
+    const style = SHOE_STYLE[a.outfit] ?? 'shoe_trainer';
+    const shoes = hasModel(style) ? shoeGeometries(style, pos, W.foot, [joints.footL.x, joints.footR.x], [bi('footL'), bi('footR')]) : [];
+    if (shoes.length) {
+      // real shoes replace the feet
+      for (const sh of shoes) sk(sh.geo, sh.paint ? cached(`shoe${g.shoes}`, () => new THREE.MeshStandardMaterial({ color: g.shoes, roughness: 0.45, metalness: 0.05 })) : cached(`shoepart${sh.color.getHexString()}`, () => new THREE.MeshStandardMaterial({ color: sh.color, roughness: 0.6 })));
+    } else sk(poolGeometry(pool, shoeTris, 0.011, 4, 10), cached(`shoe${g.shoes}`, () => new THREE.MeshStandardMaterial({ color: g.shoes, roughness: 0.4, metalness: 0.05 })));
     if (ov?.kind === 'apron') {
       const apronM = cloth(ov.color, 'twill', 0.85);
       const panel = apronPanel(pos, joints, shoulderY - 0.1, kneeY + 0.1, waist);
@@ -819,6 +868,14 @@ function buildRealHumanUncached(a: Appearance): HumanBuild {
       const hairM = cached(`hhair${a.hairColor}${style}`, () => new THREE.MeshStandardMaterial({ color: '#ffffff', map: hairTexture(a.hairColor, style === 'curly'), roughness: 0.5, side: THREE.DoubleSide }));
       // the hair layer plus a hair-coloured scalp under it (so thin spots never show bare skin), as one mesh
       sk(mergeGeometries([poolGeometry(pool, hairTris, thick, 9, 3), poolGeometry(pool, hairTris, 0.001, 9, 0)])!, hairM);
+      // strand shells: progressively sparser layers of loose strands above the hair, for a soft, fuzzy outline
+      const shells = style === 'curly' ? 4 : 3;
+      const step = style === 'curly' ? 0.006 : 0.0035;
+      for (let k = 1; k <= shells; k++) {
+        const shellM = cached(`hshell${a.hairColor}${style}${k}`, () => new THREE.MeshStandardMaterial({ color: '#ffffff', map: strandTexture(a.hairColor, style === 'curly', k), roughness: 0.55, alphaTest: 0.35 + k * 0.1, side: THREE.DoubleSide }));
+        const shell = sk(poolGeometry(pool, hairTris, thick + k * step, 9, 3), shellM);
+        shell.castShadow = false;
+      }
       if (style === 'bun') {
         const bun = new THREE.Mesh(new THREE.SphereGeometry(0.04, 18, 14), hairM);
         bun.userData.attach = 'head';
@@ -849,6 +906,35 @@ function buildRealHumanUncached(a: Appearance): HumanBuild {
   return { joints, meshes };
 }
 
+/** loose strands on a transparent background for the hair shells (sparser on the outer shells) */
+function strandTexture(color: string, curly: boolean, layer: number): THREE.Texture {
+  const key = `strandtex${color}${curly}${layer}`;
+  const hit = matCache.get(key) as any;
+  if (hit) return hit;
+  const S = 256;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = S;
+  const c = cv.getContext('2d')!;
+  const base = new THREE.Color(color);
+  let seed = layer * 977 + (curly ? 13 : 0);
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+  const count = Math.round((curly ? 1600 : 2200) / layer);
+  for (let i = 0; i < count; i++) {
+    const x = rnd() * S, y = rnd() * S;
+    c.strokeStyle = base.clone().multiplyScalar(0.7 + rnd() * 0.7).getStyle();
+    c.lineWidth = 1.2;
+    c.beginPath();
+    if (curly) c.arc(x, y, 2 + rnd() * 3, rnd() * 6, rnd() * 6 + 3.5);
+    else { c.moveTo(x, y); c.quadraticCurveTo(x + (rnd() - 0.5) * 6, y + 10, x + (rnd() - 0.5) * 8, y + 18 + rnd() * 24); }
+    c.stroke();
+  }
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  matCache.set(key, t as any);
+  return t;
+}
+
 function hairTexture(color: string, curly: boolean): THREE.Texture {
   const key = `hairtex${color}${curly}`;
   const hit = matCache.get(key) as any;
@@ -877,5 +963,8 @@ function hairTexture(color: string, curly: boolean): THREE.Texture {
   matCache.set(key, t as any);
   return t;
 }
+
+/** smooth minimum: no crease where the two cut surfaces meet (a hard min makes zigzag cut lines) */
+function smin(a: number, b: number, k: number) { const h = Math.max(0, Math.min(1, 0.5 + (0.5 * (b - a)) / k)); return b + (a - b) * h - k * h * (1 - h); }
 
 function hashStr(s: string) { let h = 0; for (const ch of s) h = (h * 31 + ch.charCodeAt(0)) | 0; return h; }
