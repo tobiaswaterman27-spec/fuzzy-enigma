@@ -1,6 +1,6 @@
 // SupplyChainSystem + VehicleSystem: orders, allocation, loading, a delivery
 // van that physically drives the route, unloading, verified receipt and invoicing.
-import type { Business, GameState, Id, Shipment, Vec2 } from './types';
+import type { Business, GameState, Id, Shipment, Task, Vec2 } from './types';
 import { at, dayIndex, fmtClock, minuteOfDay } from './clock';
 import { dist, fmtMoney, nextId } from './core';
 import { transfer } from './ledger';
@@ -13,6 +13,90 @@ import { getWorld, SHOPS } from './world/layout';
 export const VAN_SPEED = 15; // metres per game minute
 export const DISPATCH_HOUR = 6.5;
 export const ORDER_CUTOFF = 18 * 60;
+
+// ---------------------------------------------------------------- picking
+/** picked order lines wait here (by the loading door) until the van is loaded */
+export const STAGING = 'wholesale_staging';
+
+/** units of an item still to be picked for one shipment */
+export const pickNeed = (s: Shipment, item: string) => Math.max(0, (s.items[item] ?? 0) - (s.picked?.[item] ?? 0));
+
+/** shipments waiting for dispatch from a supplier, oldest dispatch first */
+export function pickQueue(state: GameState, supplierId: Id): Shipment[] {
+  return Object.values(state.shipments).filter((s) => s.supplierId === supplierId && s.status === 'ordered').sort((a, b) => a.dispatchAt - b.dispatchAt || a.orderedAt - b.orderedAt);
+}
+
+/** units of an item the open orders still need picked, minus what pickers are already carrying */
+export function pickDemand(state: GameState, supplierId: Id, item: string): number {
+  let n = 0;
+  for (const s of pickQueue(state, supplierId)) n += pickNeed(s, item);
+  for (const p of Object.values(state.people)) {
+    const c = p.contractId ? state.contracts[p.contractId] : null;
+    if (c?.businessId === supplierId) n -= count(state.containers[p.handsId], item);
+  }
+  return Math.max(0, n);
+}
+
+/** a picker puts what they carry into the staging lanes: it is allocated to the oldest orders that need it */
+export function stageFromHands(state: GameState, personId: Id, supplierId: Id): { units: number; orders: string[] } {
+  const p = state.people[personId];
+  const hands = state.containers[p.handsId];
+  const orders: string[] = [];
+  let units = 0;
+  for (const [item, have] of Object.entries({ ...hands.items })) {
+    let left = have;
+    for (const s of pickQueue(state, supplierId)) {
+      if (left <= 0) break;
+      const k = Math.min(left, pickNeed(s, item));
+      if (k <= 0) continue;
+      const moved = moveItems(state, p.handsId, STAGING, item, k);
+      (s.picked ??= {})[item] = (s.picked[item] ?? 0) + moved;
+      left -= moved;
+      units += moved;
+      const name = state.businesses[s.buyerId]?.name ?? s.buyerId;
+      if (!orders.includes(name)) orders.push(name);
+    }
+  }
+  return { units, orders };
+}
+
+/** loading: picked units come out of the staging lanes, anything not picked in time straight off the racking */
+function loadLine(state: GameState, s: Shipment, wh: Id, dest: Id, item: string, qty: number): number {
+  let n = 0;
+  const staged = Math.min(qty, s.picked?.[item] ?? 0);
+  if (staged > 0 && state.containers[STAGING]) {
+    n += moveItems(state, STAGING, dest, item, staged);
+    s.picked![item] -= n;
+  }
+  if (n < qty) n += moveItems(state, wh, dest, item, qty - n);
+  return n;
+}
+
+/** keep a pick task for each order line still to be picked */
+export function warehouseTick(state: GameState, supplierId: Id) {
+  const open = new Map<string, Task>();
+  for (const t of Object.values(state.tasks)) if (t.businessId === supplierId && t.kind === 'pick' && (t.status === 'open' || t.status === 'claimed')) open.set(t.target, t);
+  const live = new Set<string>();
+  for (const s of pickQueue(state, supplierId)) for (const item of Object.keys(s.items)) {
+    if (pickNeed(s, item) <= 0) continue;
+    const key = `${s.id}|${item}`;
+    live.add(key);
+    if (!open.has(key)) {
+      const t: Task = { id: nextId(state, 'task'), businessId: supplierId, kind: 'pick', target: key, product: item, status: 'open', claimedBy: null, createdAt: state.minute, doneAt: null, doneBy: null };
+      state.tasks[t.id] = t;
+    }
+  }
+  for (const [key, t] of open) if (!live.has(key)) { t.status = 'done'; t.doneAt = state.minute; t.doneBy = t.claimedBy; }
+  // staged stock no order is waiting for any more (a split or cancelled order) goes back on the racking
+  const stage = state.containers[STAGING];
+  const back = state.businesses[supplierId]?.stockContainers[0];
+  if (stage && back) for (const [item, have] of Object.entries({ ...stage.items })) {
+    const reserved = pickQueue(state, supplierId).reduce((n, s) => n + (s.picked?.[item] ?? 0), 0);
+    if (have > reserved) moveItems(state, STAGING, back, item, have - reserved);
+  }
+  // claims held by people no longer on shift are released
+  for (const t of open.values()) if (t.claimedBy && !isOnShift(state, t.claimedBy, supplierId)) { t.claimedBy = null; t.status = 'open'; }
+}
 
 export function placeOrder(state: GameState, buyerId: Id, supplierId: Id, items: Record<string, number>): Shipment | null {
   const supplier = state.businesses[supplierId];
@@ -67,7 +151,7 @@ function collectAtDepot(state: GameState, s: Shipment) {
   const buyer = state.businesses[s.buyerId];
   const wh = supplier.stockContainers[0];
   const dest = buyer.stockContainers[0];
-  for (const [item, qty] of Object.entries(s.items)) s.loaded[item] = moveItems(state, wh, dest, item, qty);
+  for (const [item, qty] of Object.entries(s.items)) s.loaded[item] = loadLine(state, s, wh, dest, item, qty);
   s.status = 'received';
   s.receivedAt = state.minute;
   settleInvoice(state, s);
@@ -94,7 +178,7 @@ export function logisticsTick(state: GameState, dt: number) {
           // the van only holds so much: what does not fit goes out on the next run
           const room = Math.max(0, cargo.capacity - total(cargo));
           const want = Math.min(qty, room);
-          const n = want > 0 ? moveItems(state, wh, v.cargoId, item, want) : 0;
+          const n = want > 0 ? loadLine(state, s, wh, v.cargoId, item, want) : 0;
           s.loaded[item] = n;
           if (n < want) short = true;
           if (want < qty) rest[item] = qty - want;
@@ -104,7 +188,7 @@ export function logisticsTick(state: GameState, dt: number) {
         s.note = short ? 'Short shipment: supplier stock was insufficient.' : '';
         if (Object.keys(rest).length) {
           // split delivery: the remainder is a new order dispatched as soon as the van is back
-          const r: Shipment = { ...s, id: nextId(state, 'ship'), items: rest, loaded: {}, status: 'ordered', dispatchAt: state.minute, vehicleId: null, invoiced: 0, paid: false, note: `Second part of ${s.id} (van was full).` };
+          const r: Shipment = { ...s, id: nextId(state, 'ship'), items: rest, loaded: {}, picked: {}, status: 'ordered', dispatchAt: state.minute, vehicleId: null, invoiced: 0, paid: false, note: `Second part of ${s.id} (van was full).` };
           state.shipments[r.id] = r;
           s.items = Object.fromEntries(Object.entries(s.items).map(([k, q]) => [k, q - (rest[k] ?? 0)]).filter(([, q]) => (q as number) > 0));
           s.note = `${s.note} Split: the van was full.`.trim();

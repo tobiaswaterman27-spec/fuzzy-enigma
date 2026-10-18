@@ -146,6 +146,8 @@ export type ActionType =
   | 'cook'
   | 'talk'
   | 'sit'
+  | 'pick_case'
+  | 'stage_case'
   | 'face_shelf'
   | 'bale_cardboard'
   | 'empty_bin'
@@ -416,7 +418,7 @@ export interface Application {
 }
 
 // --------------------------------------------------------------- tasks
-export type TaskKind = 'restock' | 'serve' | 'clean' | 'receive' | 'face' | 'cardboard' | 'rubbish';
+export type TaskKind = 'restock' | 'serve' | 'clean' | 'receive' | 'face' | 'cardboard' | 'rubbish' | 'pick';
 
 export interface Task {
   id: Id;
@@ -467,6 +469,8 @@ export interface Shipment {
   invoiced: Cents;
   paid: boolean;
   note: string;
+  /** units already picked from the racking into the dispatch staging lanes */
+  picked?: Record<string, number>;
 }
 
 export interface Vehicle {

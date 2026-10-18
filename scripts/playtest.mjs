@@ -13,6 +13,7 @@ await page.goto('http://localhost:4173/?skipcreator');
 await page.waitForTimeout(2000);
 const ev = (f, a) => page.evaluate(f, a);
 await ev(() => { window.__bigshot.game.camLocked = true; });
+const tpTo = (id) => ev((id) => { const g = window.__bigshot.game; const it = window.__bigshot.sim.getWorld().interactables[id]; g.player.pos = { ...it.pos }; g.player.facing = it.facing; }, id);
 const tp = (x, z, facing) => ev(([x, z, f]) => { const g = window.__bigshot.game; const p = g.player; p.pos = { x, z }; if (f !== undefined) p.facing = f; }, [x, z, facing]);
 const waitIdle = async () => { await ev(() => { window.__bigshot.game.speedMult = 20; }); try { await waitIdle0(); } finally { await ev(() => { window.__bigshot.game.speedMult = 1; }); } };
 const waitIdle0 = async () => { for (let i = 0; i < 12 && !(await ev(() => !!window.__bigshot.game.player.action)); i++) await page.waitForTimeout(250); for (let i = 0; i < 160; i++) { if (!(await ev(() => !!window.__bigshot.game.player.action))) return; await page.waitForTimeout(250); } };
@@ -41,7 +42,7 @@ await ev(() => { const g = window.__bigshot.game; for (let i = 0; i < 150; i++) 
 const inv = await ev(() => { const s = window.__bigshot.game.state; const a = Object.values(s.applications).find((x) => x.personId === 'player'); return { status: a.status, at: a.interviewAt, who: a.interviewerId }; });
 console.log('application', JSON.stringify(inv));
 // dress smartly at the wardrobe first
-await tp(23.7, 23.1, -Math.PI / 2); await waitFocus('Smart');
+await tpTo('wardrobe'); await waitFocus('Smart');
 const smartIdx = await ev(() => window.__bigshot.game.focus?.options.findIndex((o) => o.label.includes('Smart')));
 await page.keyboard.press(`Digit${smartIdx + 1}`); await page.waitForTimeout(300); await waitIdle();
 // go to the shop at the interview time and talk to the manager in person
@@ -71,7 +72,7 @@ if (!offered) {
 }
 await page.waitForTimeout(300);
 // put on uniform at the wardrobe
-await tp(23.7, 23.1, -Math.PI / 2);
+await tpTo('wardrobe');
 await waitFocus('Smart');
 const opts = await ev(() => window.__bigshot.game.focus?.options.map((o) => o.label));
 console.log('wardrobe options', opts);

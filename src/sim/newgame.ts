@@ -16,7 +16,7 @@ import { rand, randInt, pick } from './core';
 import { news } from './events';
 import { spawnDirt, SHELF_CAPACITY, shelfId } from './retail';
 
-export const SAVE_VERSION = 5;
+export const SAVE_VERSION = 6;
 
 export interface PlayerSetup {
   name: string;
@@ -155,7 +155,7 @@ export function createNewGame(seed: number, setup: PlayerSetup): GameState {
     id: 'wholesale', name: 'Harbour Wholesale', kind: 'wholesale', ownerId: 'p_gail', locationId: 'wholesale', open: [sh(MON_SAT, 6, 18)],
     positions: [
       pos({ id: 'driver', title: 'Delivery Driver', wage: 1450, shifts: [sh(MON_SAT, 6, 14)], uniform: 'uniform_wholesale', description: 'Drives the delivery van.' }),
-      pos({ id: 'operative', title: 'Warehouse Operative', wage: 1350, shifts: [sh(MON_SAT, 6, 14)], uniform: 'uniform_wholesale', headcount: 2, requires: {}, description: 'Picks and packs orders (not yet playable).' }),
+      pos({ id: 'operative', title: 'Warehouse Operative', wage: 1350, shifts: [sh(MON_SAT, 14, 22)], uniform: 'uniform_wholesale', headcount: 2, requires: {}, playable: true, duties: ['Pick order lines from the racking', 'Stage cases for the morning van', 'Put back stock not on the pick list'], description: 'Evening shift: picks the day\'s shop orders from the racking into the staging lanes for the morning van.' }),
     ],
     prices: Object.fromEntries([...PRODUCTS, 'cafe_supplies'].map((k) => [k, ITEMS[k].wholesale])), reputation: 60, supplierId: null,
     reorder: { ...Object.fromEntries(PRODUCTS.map((k) => [k, { min: 250, target: 450 }])), cafe_supplies: { min: 100, target: 200 } },
@@ -196,6 +196,9 @@ export function createNewGame(seed: number, setup: PlayerSetup): GameState {
   state.containers.shelf_milk.items.milk = 4;
   const wh = createContainer(state, 'warehouse', 'wholesale', 'wholesale', 20000, undefined, 'wholesale_stock');
   for (const k of [...PRODUCTS, 'cafe_supplies']) { addItems(wh, k, 400); wholesale.unitCost[k] = ITEMS[k].importCost; }
+  // picked orders wait in the staging lanes by the loading door for the van
+  createContainer(state, 'warehouse', 'wholesale', 'wholesale', 3000, undefined, 'wholesale_staging');
+  wholesale.stockContainers.push('wholesale_staging');
   const cs = createContainer(state, 'supplies', 'cafe', 'cafe', 400, undefined, 'cafe_supplies');
   addItems(cs, 'cafe_supplies', 60);
   cafe.unitCost.cafe_supplies = ITEMS.cafe_supplies.wholesale;

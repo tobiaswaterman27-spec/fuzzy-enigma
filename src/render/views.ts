@@ -5,7 +5,7 @@ import { AnimationController, buildRig, dress, type Rig } from './character';
 import { buildCar } from './world';
 import { modelInstance } from './models';
 import { productGeometry, productMaterial, productUnitGeometry } from './products';
-import { buildingAt, getWorld, type Interactable, SHELF_LAYOUT, PALLET_X, SHOPS, U4_SECTIONS, U4_PALLET_Z } from '../sim/world/layout';
+import { buildingAt, getWorld, type Interactable, SHELF_LAYOUT, PALLET_X, SHOPS, U4_SECTIONS, U4_PALLET_Z, WH_PRODUCTS } from '../sim/world/layout';
 import { ITEMS } from '../sim/items';
 import { count, total, firstItem } from '../sim/inventory';
 import { SHELF_CAPACITY } from '../sim/retail';
@@ -378,6 +378,8 @@ export class Views {
   cartons = new Map<string, { group: THREE.Group; n: number }>();
   palletMeshes = new Map<string, { mesh: THREE.InstancedMesh; bid: string; shelf: string }>();
   bayMeshes = new Map<string, THREE.InstancedMesh>();
+  rackMeshes = new Map<string, THREE.InstancedMesh>();
+  stageMesh: THREE.InstancedMesh | null = null;
   van: THREE.Group;
   spills = new Map<string, THREE.Mesh>();
   queueMarker: THREE.Mesh;
@@ -450,6 +452,38 @@ export class Views {
       this.bayMeshes.set(bid, bm);
     }
     scene.add(this.home);
+    // warehouse: cases on each pick-face pallet (live stock) and picked cases in the staging lanes
+    const caseGeo = new THREE.BoxGeometry(0.4, 0.26, 0.3);
+    const caseMat = new THREE.MeshStandardMaterial({ color: '#b8925d', roughness: 0.9 });
+    for (const p of WH_PRODUCTS) {
+      const it = getWorld().interactables[`wh_rack_${p}`];
+      if (!it) continue;
+      const m = new THREE.InstancedMesh(caseGeo, caseMat, 48);
+      const dummy = new THREE.Object3D();
+      for (let k = 0; k < 48; k++) {
+        const side = k % 2 ? 0.68 : -0.68, slot = Math.floor(k / 2), layer = Math.floor(slot / 6), cell = slot % 6;
+        dummy.position.set(it.obj.x + side + ((cell % 3) - 1) * 0.4, 0.28 + layer * 0.27, it.obj.z - 0.3 + Math.floor(cell / 3) * 0.32);
+        dummy.updateMatrix();
+        m.setMatrixAt(k, dummy.matrix);
+      }
+      m.count = 0; m.frustumCulled = false; m.castShadow = true;
+      scene.add(m);
+      this.rackMeshes.set(p, m);
+    }
+    {
+      const m = new THREE.InstancedMesh(caseGeo, new THREE.MeshStandardMaterial({ color: '#c4a06b', roughness: 0.9 }), 120);
+      const dummy = new THREE.Object3D();
+      for (let k = 0; k < 120; k++) {
+        // one pallet per lane, cases stacked five high
+        const lane = Math.floor(k / 30), slot = k % 30, layer = Math.floor(slot / 6), cell = slot % 6;
+        dummy.position.set(-58 + lane * 2.6 + (cell % 3) * 0.4, 0.28 + layer * 0.27, 16.2 + Math.floor(cell / 3) * 0.32);
+        dummy.updateMatrix();
+        m.setMatrixAt(k, dummy.matrix);
+      }
+      m.count = 0; m.frustumCulled = false; m.castShadow = true;
+      scene.add(m);
+      this.stageMesh = m;
+    }
     this.van = buildCar('#f2f2f2', 0, 0, 0, true);
     scene.add(this.van);
     this.queueMarker = new THREE.Mesh(new THREE.RingGeometry(0.35, 0.45, 24), new THREE.MeshBasicMaterial({ color: '#2e8b57', transparent: true, opacity: 0.5 }));
@@ -527,6 +561,8 @@ export class Views {
       const k = b?.sections[v.shelf];
       v.mesh.count = k ? Math.min(16, Math.ceil(count(state.containers[SHOPS[v.bid].backroom], k) / ITEMS[k].caseSize)) : 0;
     }
+    for (const [p, m] of this.rackMeshes) m.count = Math.min(48, Math.ceil(count(state.containers.wholesale_stock, p) / (ITEMS[p]?.caseSize ?? 12)));
+    if (this.stageMesh) this.stageMesh.count = Math.min(120, Math.ceil(total(state.containers.wholesale_staging) / 12));
     for (const [bid, m] of this.bayMeshes) m.count = state.containers[SHOPS[bid].bayContainer] ? Math.min(40, Math.ceil(total(state.containers[SHOPS[bid].bayContainer]) / 10)) : 0;
     const van = state.vehicles.van_1;
     this.van.position.set(van.pos.x, 0, van.pos.z);

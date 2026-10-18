@@ -109,7 +109,8 @@ export type ObstacleKind =
   | 'pallet_rack'
   | 'forklift'
   | 'roller_door'
-  | 'pallet_load';
+  | 'pallet_load'
+  | 'lane_marking';
 
 export interface Obstacle {
   kind: ObstacleKind;
@@ -143,6 +144,8 @@ export type InteractKind =
   | 'shower'
   | 'sofa'
   | 'stove'
+  | 'rack'
+  | 'staging'
   | 'baler'
   | 'shopbin'
   | 'dumpster'
@@ -263,14 +266,14 @@ const B: BuildingDef[] = [
     interior: true, floorColor: '#b89f7a',
   },
   {
-    id: 'wholesale', name: 'Harbour Wholesale', category: 'simplified', role: 'Wholesale supplier & depot (staff only)',
+    id: 'wholesale', name: 'Harbour Wholesale', category: 'functional', role: 'Wholesale supplier & depot - pallet racking, picking and dispatch',
     rect: { x0: -66, z0: 14, x1: -40, z1: 40 }, height: 8, floors: 1, color: '#9aa3a8', trim: '#f4c20d', roof: '#6d7478',
     sign: { text: 'HARBOUR WHOLESALE', side: 'zmin', color: '#111111', bg: '#f4c20d' },
     doors: [
       { side: 'zmin', a: -58, b: -50, open: false },
-      { side: 'zmin', a: -44, b: -42, open: false },
+      { side: 'zmin', a: -44, b: -42, open: true },
     ],
-    interior: false,
+    interior: true, floorColor: '#9a9d9f',
   },
   {
     id: 'oldbank', name: 'Old Bank Building', category: 'decorative', role: 'Background building (not in service)',
@@ -430,6 +433,14 @@ export interface ShopDef {
   vanBack: Vec2[];
 }
 
+/** Harbour Wholesale racking: two rows of 2.7 m bays, products picked from the ground level */
+export const WH_X0 = -64;
+export const WH_BAY = 2.7;
+export const WH_BAYS = 7;
+export const WH_ROW_A = 23.4;
+export const WH_ROW_B = 29.5;
+export const WH_PRODUCTS = ['bread', 'milk', 'apples', 'soup', 'pasta', 'coffee', 'snacks', 'soap', 'cafe_supplies'];
+
 export const U4_SECTIONS = [
   { id: 'u4_s1', gx: 80.5, zc: 21.5 }, { id: 'u4_s2', gx: 80.5, zc: 26.5 },
   { id: 'u4_s3', gx: 84.5, zc: 21.5 }, { id: 'u4_s4', gx: 84.5, zc: 26.5 },
@@ -585,6 +596,32 @@ function buildWorldData(homeDesign: HomeDesign): World {
   // job interviews happen over a coffee at the window table: candidate faces the counter, interviewer opposite
   add({ id: 'iv_chair', kind: 'iv_chair', label: 'Interview table', pos: { x: -17, z: 12.6 }, facing: 0, obj: { x: -17, z: 13.05 }, locationId: 'cafe', range: 1.6 });
   add({ id: 'iv_host', kind: 'iv_host', label: 'Interview table', pos: { x: -17, z: 15.75 }, facing: Math.PI, obj: { x: -17, z: 14.95 }, locationId: 'cafe', range: 1.6 });
+
+  // ---- Harbour Wholesale: pallet racking with a pick face per product, staging lanes by the loading door
+  for (const z0 of [WH_ROW_A, WH_ROW_B]) obstacles.push({ kind: 'pallet_rack', rect: { x0: WH_X0, z0, x1: WH_X0 + WH_BAYS * WH_BAY, z1: z0 + 1.1 }, height: 4.2, solid: true });
+  obstacles.push({ kind: 'pallet_rack', rect: { x0: WH_X0, z0: WH_ROW_B + 1.1, x1: WH_X0 + WH_BAYS * WH_BAY, z1: WH_ROW_B + 2.2 }, height: 4.2, solid: true, rot: 0 });
+  obstacles.push({ kind: 'pallet_rack', rect: { x0: WH_X0, z0: 38.6, x1: WH_X0 + WH_BAYS * WH_BAY, z1: 39.7 }, height: 4.2, solid: true, rot: Math.PI });
+  WH_PRODUCTS.forEach((p, i) => {
+    const row = i < 5 ? WH_ROW_A : WH_ROW_B;
+    const cx = WH_X0 + WH_BAY / 2 + (i < 5 ? i : i - 5) * WH_BAY;
+    add({ id: `wh_rack_${p}`, kind: 'rack', label: `Racking: ${p}`, pos: { x: cx, z: row - 0.85 }, facing: 0, obj: { x: cx, z: row + 0.5 }, locationId: 'wholesale', businessId: 'wholesale', product: p, container: 'wholesale_stock', range: 1.8 });
+  });
+  add({ id: 'wh_stage', kind: 'staging', label: 'Dispatch staging lanes', pos: { x: -54, z: 18.6 }, facing: Math.PI, obj: { x: -54, z: 16.6 }, locationId: 'wholesale', businessId: 'wholesale', range: 2.6 });
+  obstacles.push({ kind: 'terminal', rect: { x0: -40.6, z0: 16.5, x1: -40.15, z1: 17.5 }, height: 1.4, solid: true });
+  add({ id: 'wh_terminal', kind: 'terminal', label: 'Staff terminal', pos: { x: -41.4, z: 17 }, facing: Math.PI / 2, obj: { x: -40.4, z: 17 }, locationId: 'wholesale', businessId: 'wholesale' });
+  WH_PRODUCTS.forEach((_p, i) => {
+    const row = i < 5 ? WH_ROW_A : WH_ROW_B;
+    const cx = WH_X0 + WH_BAY / 2 + (i < 5 ? i : i - 5) * WH_BAY;
+    for (const dx of [-0.68, 0.68]) obstacles.push({ kind: 'pallet', rect: { x0: cx + dx - 0.6, z0: row + 0.05, x1: cx + dx + 0.6, z1: row + 1.05 }, height: 0.15, solid: false });
+  });
+  for (let lane = 0; lane < 4; lane++) {
+    const x0 = -58.6 + lane * 2.6;
+    obstacles.push({ kind: 'lane_marking', rect: { x0, z0: 15.0, x1: x0 + 2.2, z1: 17.6 }, height: 0.01, solid: false });
+    obstacles.push({ kind: 'pallet', rect: { x0: x0 + 0.4, z0: 15.8, x1: x0 + 1.6, z1: 16.8 }, height: 0.15, solid: false });
+  }
+  obstacles.push({ kind: 'forklift', rect: { x0: -43.6, z0: 30, x1: -42.4, z1: 32.3 }, height: 2.2, solid: true, rot: Math.PI / 2 });
+  obstacles.push({ kind: 'roller_door', rect: { x0: -58, z0: 14.05, x1: -50, z1: 14.3 }, height: 4, solid: false, rot: Math.PI });
+  for (const [x, z] of [[-41.2, 36.8], [-41.2, 35.4], [-41.2, 38.6]]) obstacles.push({ kind: 'pallet_load', rect: { x0: x - 0.6, z0: z - 0.5, x1: x + 0.6, z1: z + 0.5 }, height: 1.3, solid: true });
 
   // ---- Dockside Unit 4 (player-leasable shop)
   for (const gx of [80.5, 84.5]) obstacles.push({ kind: 'gondola', rect: { x0: gx - 0.6, z0: 19, x1: gx + 0.6, z1: 29 }, height: 1.8, solid: true });
@@ -850,8 +887,17 @@ function buildWorldData(homeDesign: HomeDesign): World {
   }
   // upstairs residents use the communal entrance
   N('door_upper', 16.6, 9.3, 'flat_upper'); L('se_16', 'door_upper');
-  // Wholesale staff door
-  N('door_wholesale', -43, 13.3, 'wholesale'); L('sw_-43', 'door_wholesale');
+  // Wholesale staff door, and the warehouse floor: front aisle, middle aisle, staging lanes
+  N('door_wholesale', -43, 13.3); L('sw_-43', 'door_wholesale');
+  N('wh_in', -43, 15.4, 'wholesale'); L('door_wholesale', 'wh_in');
+  N('wh_term', -41.4, 17, 'wholesale'); L('wh_in', 'wh_term');
+  N('wh_stage', -54, 18.6, 'wholesale'); N('wh_east_s', -44, 18.6, 'wholesale'); L('wh_in', 'wh_east_s', 'wh_stage');
+  const bayX = Array.from({ length: WH_BAYS }, (_, k) => WH_X0 + WH_BAY / 2 + k * WH_BAY);
+  bayX.forEach((x, k) => { N(`wh_fa_${k}`, x, WH_ROW_A - 1.6, 'wholesale'); N(`wh_ma_${k}`, x, (WH_ROW_A + 1.1 + WH_ROW_B) / 2, 'wholesale'); });
+  N('wh_fa_e', -43.5, WH_ROW_A - 1.6, 'wholesale'); N('wh_ma_e', -43.5, (WH_ROW_A + 1.1 + WH_ROW_B) / 2, 'wholesale');
+  L(...bayX.map((_, k) => `wh_fa_${k}`), 'wh_fa_e'); L(...bayX.map((_, k) => `wh_ma_${k}`), 'wh_ma_e');
+  L('wh_east_s', 'wh_fa_e', 'wh_ma_e'); L('wh_stage', 'wh_fa_3'); L('wh_stage', 'wh_fa_4');
+  WH_PRODUCTS.forEach((p, i) => { const k = i < 5 ? i : i - 5; N(`wh_pick_${p}`, bayX[k], (i < 5 ? WH_ROW_A : WH_ROW_B) - 0.85, 'wholesale'); L(i < 5 ? `wh_fa_${k}` : `wh_ma_${k}`, `wh_pick_${p}`); });
   // Park
   N('pk_gate', 56, 10.5, 'park'); N('pk_a', 52, 25, 'park'); N('pk_b', 62, 26, 'park'); N('pk_c', 56, 32, 'park');
   N('pk_bench_1', 50, 22.9, 'park'); N('pk_bench_2', 62, 22.9, 'park');

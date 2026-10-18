@@ -13,7 +13,7 @@ Status vocabulary: **planned → implemented → integrated → tested → playa
 | 6 | Employees & management | **playable** | Player hires from the real labour pool, sets shifts, dismisses; NPC owners recruit |
 | 7 | Property | partial | Residential and business leases, arrears, eviction, re-rent; no purchase yet |
 | 8 | Construction | planned | — |
-| 9 | Transport & logistics | **integrated** | Van drives real routes for both shops, cargo, receipt, invoicing |
+| 9 | Transport & logistics | **playable** | Van drives real routes for both shops, cargo, receipt, invoicing; Harbour Wholesale is a walkable warehouse where Warehouse Operatives (player or NPC, evening shift) pick order lines from pallet racking into staging lanes that the morning van loads from |
 | 10 | Connected regional economy | partial | District demand split between competing shops, wholesale trade, government |
 | 11–13 | Corporate, national, polish | planned | — |
 
@@ -38,7 +38,7 @@ Status vocabulary: **planned → implemented → integrated → tested → playa
 - Pixel ratio capped (1.5 high / 1.0 low); automatic drop to Low graphics if frames stay above ~35 ms.
 
 ## Next highest-priority tasks
-1. Second playable profession (Warehouse Operative at Harbour Wholesale): walkable warehouse, picking for shipments.
+1. Goods-in put-away at the warehouse; forklift driving; delivery driver as a playable job.
 2. Faces, hair and shoes; props gripped properly (cases between the hands, picked items held then placed).
 3. More step-by-step action sequences (cooking at the stove, getting changed at the wardrobe).
 4. NPC–NPC avoidance and queue spacing; long-run economy verification (8+ weeks), events.
@@ -52,4 +52,4 @@ Status vocabulary: **planned → implemented → integrated → tested → playa
 - **v5** — clothes hang naturally (bum fix), apron/long-hair rebuilt, render performance work.
 - **v6** — normal-mapped surfaces, consistent road markings, Blender cars/van/gondolas/checkout, more parked cars.
 - **v7–v10** — motion capture, automatic camera, Blender furniture, Marlow Court block of flats, seated real-time interviews with spoken questions, staff roles, AI-arranged homes with decoration, see-through windows.
-- **v11** — chores: facing up shelves, cardboard baler, litter bin and dumpster at work; washing up, laundry and tidying at home. New Blender models; messy shelves, cardboard piles, dirty dishes and clutter are visible.
+- **v11** — playable Warehouse Operative job at Harbour Wholesale (racking, pick lists, staging, dispatch). Flat rebuilt as a realistic 2-bed with spare room, dining area and utility room. Chores: facing up shelves, cardboard baler, litter bin and dumpster at work; washing up, laundry and tidying at home. New Blender models; messy shelves, cardboard piles, dirty dishes and clutter are visible.

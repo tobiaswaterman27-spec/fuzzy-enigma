@@ -677,6 +677,24 @@ function buildObstacle(o: Obstacle): THREE.Object3D {
     case 'baler': if (fit('baler', r, o.rot ?? 0)) return grp; grp.add(box(W, o.height, D, M('#d98c14', 0.5), cx, o.height / 2, cz)); return grp;
     case 'dumpster': if (fit('dumpster', r, o.rot ?? 0, '#2f6b3a')) return grp; grp.add(box(W, o.height, D, metal('#8a8f94'), cx, o.height / 2, cz)); return grp;
     case 'shopbin': if (fit('shopbin', r, o.rot ?? 0)) return grp; grp.add(cyl(W / 2, W / 2, o.height, metal('#c0c4c8'), cx, o.height / 2, cz, 16)); return grp;
+    case 'pallet_rack': {
+      // Blender racking bays tiled along the run (the ground-level pick face is filled from live stock)
+      const along = W >= D, len = along ? W : D, n = Math.max(1, Math.round(len / 2.7)), bay = len / n;
+      for (let k = 0; k < n; k++) {
+        const rr = along ? { x0: r.x0 + k * bay, x1: r.x0 + (k + 1) * bay, z0: r.z0, z1: r.z1 } : { x0: r.x0, x1: r.x1, z0: r.z0 + k * bay, z1: r.z0 + (k + 1) * bay };
+        if (!fit('rack_bay', rr, o.rot ?? Math.PI)) grp.add(box(rr.x1 - rr.x0, o.height, rr.z1 - rr.z0, M('#2b4f8c', 0.5), (rr.x0 + rr.x1) / 2, o.height / 2, (rr.z0 + rr.z1) / 2));
+      }
+      return grp;
+    }
+    case 'lane_marking': {
+      // yellow floor lines around a staging lane, with the lane number painted at the front
+      const paint = M('#e8c12a', 0.6);
+      grp.add(box(W, 0.006, 0.08, paint, cx, 0.093, r.z0), box(W, 0.006, 0.08, paint, cx, 0.093, r.z1), box(0.08, 0.006, D, paint, r.x0, 0.093, cz), box(0.08, 0.006, D, paint, r.x1, 0.093, cz));
+      return grp;
+    }
+    case 'forklift': if (fit('forklift', r, o.rot ?? 0, '#f2a516')) return grp; break;
+    case 'pallet_load': if (fit('pallet_load', r, o.rot ?? 0)) return grp; break;
+    case 'roller_door': if (fit('roller_door', r, o.rot ?? 0)) return grp; break;
     case 'storage_shelf': case 'ironing_board': case 'laundry_basket': case 'drying_rack': case 'bike': case 'vacuum':
       if (fit(o.kind, r, o.rot ?? 0, o.kind === 'bike' ? '#2f6d8f' : undefined)) return grp;
       grp.add(box(W, o.height, D, M('#9aa0a6', 0.6), cx, o.height / 2, cz)); return grp;
@@ -836,6 +854,7 @@ function buildObstacle(o: Obstacle): THREE.Object3D {
       break;
     }
     case 'pallet': {
+      if (fit('pallet', r, o.rot ?? (W > D ? 0 : Math.PI / 2), undefined, o.height)) return grp;
       const wood = M('#a5814f', 0.9);
       for (const dz of [-0.45, 0, 0.45]) grp.add(box(W, 0.1, 0.12, wood, cx, 0.05, cz + (dz * D) / 1.2));
       grp.add(box(W, 0.04, D, wood, cx, 0.12, cz));

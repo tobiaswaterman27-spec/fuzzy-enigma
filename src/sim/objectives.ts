@@ -67,7 +67,7 @@ export function agenda(state: GameState): Reminder | null {
     const c = state.contracts[p.contractId];
     const sh = nextShift(c, now - 30);
     const pos = positionOf(state, c);
-    if (sh && sh.start > now - 60) items.push({ what: 'shift', at: sh.start, where: workplaceOf(c.businessId).pos, place: state.businesses[c.businessId].name, outfit: pos?.uniform ?? undefined, strict: true });
+    if (sh && sh.start > now - 60) items.push({ what: 'shift', at: sh.start, where: workplaceOf(c.businessId, c.positionId).pos, place: state.businesses[c.businessId].name, outfit: pos?.uniform ?? undefined, strict: true });
   }
   let best: Reminder | null = null;
   for (const it of items) {

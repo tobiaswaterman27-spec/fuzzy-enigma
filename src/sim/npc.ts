@@ -11,6 +11,7 @@ import { hostingInterview, acceptOffer as acceptOfferNpc, applyForJob as applyFo
 import { cancelAction, interactable, startAction } from './actions';
 import { isOpen, joinQueue, leaveQueue, openTasks, queueSlot, shelfFor, staffOnDuty, walkout, productsOf } from './retail';
 import { getWorld, SHOPS } from './world/layout';
+import { pickNeed, pickQueue } from './logistics';
 import { planRoute, routeLength } from './world/nav';
 import { capability } from './needs';
 import { npcLog } from './events';
@@ -18,19 +19,22 @@ import { npcLog } from './events';
 export const WALK = 4.5; // metres per game minute (1.5 m/s real at the default 1/3 game-min per real second)
 
 interface Workplace {
-  mode: 'shop' | 'post' | 'hidden';
+  mode: 'shop' | 'post' | 'hidden' | 'warehouse';
   pos: Vec2;
   facing: number;
 }
 
-export function workplaceOf(bid: Id): Workplace {
+export function workplaceOf(bid: Id, positionId?: Id): Workplace {
   const w = getWorld();
   const n = (id: string) => ({ x: w.nodes[id].x, z: w.nodes[id].z });
   switch (bid) {
     case 'market': case 'unit4': return { mode: 'shop', pos: w.interactables[SHOPS[bid].terminal].pos, facing: w.interactables[SHOPS[bid].terminal].facing };
     case 'cafe': return { mode: 'post', pos: { x: -24, z: 21.3 }, facing: Math.PI };
     case 'council': return { mode: 'post', pos: n('jc_desk_back'), facing: 0 };
-    case 'wholesale': return { mode: 'hidden', pos: n('door_wholesale'), facing: 0 };
+    case 'wholesale':
+      // operatives work the warehouse floor; drivers go out with the van
+      if (positionId !== 'driver' && w.interactables.wh_terminal) return { mode: 'warehouse', pos: w.interactables.wh_terminal.pos, facing: w.interactables.wh_terminal.facing };
+      return { mode: 'hidden', pos: n('door_wholesale'), facing: 0 };
     default: return { mode: 'hidden', pos: n('bus_w'), facing: 0 };
   }
 }
@@ -162,7 +166,7 @@ function decide(state: GameState, p: Person) {
   const c = p.contractId ? state.contracts[p.contractId] : null;
   // 1. work
   if (c) {
-    const wp = workplaceOf(c.businessId);
+    const wp = workplaceOf(c.businessId, c.positionId);
     const travel = travelMinutes(p, wp.pos);
     const s = currentShift(c, now, travel + 15);
     const att = openAttendance(state, p.id);
@@ -173,7 +177,7 @@ function decide(state: GameState, p: Person) {
   }
   if (n.goal === 'work' || n.goal === 'go_work') return; // finishing is handled by the work plan
   const nextS = c ? nextShift(c, now) : null;
-  const freeFor = nextS ? nextS.start - now - travelMinutes(p, workplaceOf(c!.businessId).pos) - 20 : 9999;
+  const freeFor = nextS ? nextS.start - now - travelMinutes(p, workplaceOf(c!.businessId, c!.positionId).pos) - 20 : 9999;
   const sleepy = p.needs.energy < 15 || mod >= n.bedtime || mod < n.wake;
   if (atHome(p) && p.needs.satiety < 50) eatAtHome(state, p);
   // 2. sleep
@@ -293,12 +297,13 @@ export function startShopping(state: GameState, p: Person, shopId: string, list:
 function startWork(state: GameState, p: Person) {
   const c = state.contracts[p.contractId!];
   const pos = positionOf(state, c);
-  const wp = workplaceOf(c.businessId);
+  const wp = workplaceOf(c.businessId, c.positionId);
   if (p.action) cancelAction(state, p);
   p.sleeping = false;
   if (pos?.uniform) p.appearance.outfit = pos.uniform;
   const plan: PlanStep[] = [{ kind: 'move', to: wp.pos, label: 'work' }];
   if (wp.mode === 'shop') plan.push({ kind: 'act', it: SHOPS[c.businessId].terminal, type: 'clock_in' });
+  else if (wp.mode === 'warehouse') plan.push({ kind: 'act', it: 'wh_terminal', type: 'clock_in' });
   else plan.push({ kind: 'call', fn: 'arriveWork' });
   setGoal(state, p, 'go_work', plan);
 }
@@ -316,7 +321,7 @@ function runCall(state: GameState, p: Person, fn: string) {
       break;
     case 'arriveWork': {
       const c = state.contracts[p.contractId!];
-      const wp = workplaceOf(c.businessId);
+      const wp = workplaceOf(c.businessId, c.positionId);
       if (!openAttendance(state, p.id)) clockIn(state, p.id);
       if (wp.mode === 'hidden') hide(p, c.businessId === 'wholesale' ? 'wholesale' : 'offsite');
       p.facing = wp.facing;
@@ -402,12 +407,13 @@ function workChoose(state: GameState, p: Person) {
   const w = getWorld();
   const I = w.interactables;
   const hands = state.containers[p.handsId];
-  const wp = workplaceOf(c.businessId);
+  const wp = workplaceOf(c.businessId, c.positionId);
   const bid = c.businessId;
   const S = SHOPS[bid];
   const b = state.businesses[bid];
   const palletOf = (item: string) => { const sh = shelfFor(state, bid, item); return sh ? S.pallets[sh] : null; };
   // end of shift
+  if (wp.mode === 'warehouse') { warehouseWork(state, p, state.minute >= att.scheduledEnd); return; }
   if (state.minute >= att.scheduledEnd) {
     if (wp.mode !== 'shop') {
       if (p.where === 'vehicle') return; // driver still out on the road
@@ -566,6 +572,45 @@ function workChoose(state: GameState, p: Person) {
   const spot = colleagues.some((o) => dist(o.pos, S.standby[0]) < 1) ? S.standby[1] : S.standby[0];
   if (dist(p.pos, spot) > 0.4) n.plan = [{ kind: 'move', to: spot, label: 'shop floor' }];
   else { p.facing = I[S.till].facing; n.plan = [{ kind: 'wait', until: state.minute + 1 }]; }
+}
+
+/** Warehouse operative: take the oldest pick line, pick it from the racking, bring it to the staging lanes */
+function warehouseWork(state: GameState, p: Person, ending: boolean) {
+  const n = p.npc!;
+  const I = getWorld().interactables;
+  const hands = state.containers[p.handsId];
+  const bid = 'wholesale';
+  const item = Object.keys(hands.items)[0];
+  if (ending) {
+    const plan: PlanStep[] = [];
+    if (item) plan.push({ kind: 'move', to: I[`wh_rack_${item}`].pos, label: 'racking' }, { kind: 'act', it: `wh_rack_${item}`, type: 'return_case' });
+    plan.push({ kind: 'move', to: I.wh_terminal.pos, label: 'terminal' }, { kind: 'act', it: 'wh_terminal', type: 'clock_out' }, { kind: 'call', fn: 'leaveWork' });
+    releaseClaim(state, p);
+    n.plan = plan;
+    n.step = 'finishing';
+    return;
+  }
+  if (item) {
+    const needed = pickQueue(state, bid).some((s) => pickNeed(s, item) > 0);
+    n.plan = needed
+      ? [{ kind: 'move', to: I.wh_stage.pos, label: 'staging' }, { kind: 'act', it: 'wh_stage', type: 'stage_case' }]
+      : [{ kind: 'move', to: I[`wh_rack_${item}`].pos, label: 'racking' }, { kind: 'act', it: `wh_rack_${item}`, type: 'return_case' }];
+    return;
+  }
+  const tasks = openTasks(state, bid).filter((t) => t.kind === 'pick' && claimable(t, p) && I[`wh_rack_${t.product}`] && count(state.containers.wholesale_stock, t.product!) > 0);
+  const order = new Map(pickQueue(state, bid).map((s, i) => [s.id, i]));
+  const t = tasks.sort((a, b) => (order.get(a.target.split('|')[0]) ?? 99) - (order.get(b.target.split('|')[0]) ?? 99))[0];
+  if (t) {
+    claim(state, p, t);
+    const rack = `wh_rack_${t.product}`;
+    n.plan = [{ kind: 'move', to: I[rack].pos, label: 'racking' }, { kind: 'act', it: rack, type: 'pick_case' }, { kind: 'move', to: I.wh_stage.pos, label: 'staging' }, { kind: 'act', it: 'wh_stage', type: 'stage_case' }];
+    return;
+  }
+  releaseClaim(state, p);
+  // nothing to pick: wait by the staging lanes
+  const spot = { x: -48 + (p.id.length % 3), z: 18.6 };
+  if (dist(p.pos, spot) > 0.6) n.plan = [{ kind: 'move', to: spot, label: 'staging' }];
+  else n.plan = [{ kind: 'wait', until: state.minute + 2 }];
 }
 
 // ------------------------------------------------------------ shopper queue

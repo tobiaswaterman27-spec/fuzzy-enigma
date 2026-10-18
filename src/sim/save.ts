@@ -48,6 +48,15 @@ const MIGRATIONS: Record<number, (s: any) => void> = {
     const spawn = getWorld().playerSpawn;
     for (const p of Object.values<any>(s.people ?? {})) if (p.where === 'flat' && p.visible && !p.sleeping) p.pos = { ...spawn };
   },
+  5: (s) => {
+    // v5 -> v6: Harbour Wholesale is a walkable warehouse; picked orders wait in staging lanes; the flat has more rooms
+    if (!s.containers.wholesale_staging) {
+      s.containers.wholesale_staging = { id: 'wholesale_staging', kind: 'warehouse', ownerId: 'wholesale', locationId: 'wholesale', capacity: 3000, items: {} };
+      s.businesses.wholesale?.stockContainers.push('wholesale_staging');
+    }
+    const spawn = getWorld().playerSpawn;
+    for (const p of Object.values<any>(s.people ?? {})) if (p.where === 'flat' && p.visible && !p.sleeping) p.pos = { ...spawn };
+  },
 };
 
 export function serialize(state: GameState, summary = ''): string {

@@ -7,7 +7,7 @@ import { count, firstItem, isEmpty, moveAll, moveItems, removeItems, spaceFor, t
 import { CLOTHING, ITEMS, isFood, itemName } from './items';
 import { clockIn, clockOut, hostingInterview, interviewOpen, isOnShift, openAttendance } from './employment';
 import { basketValue, BIN_CAPACITY, completeSale, completeTask, isOpen, isStaff, leaveQueue, priceOf, productAt, queueSlot, RESTOCK_DONE } from './retail';
-import { checkInDeliveries } from './logistics';
+import { checkInDeliveries, pickDemand, pickQueue, stageFromHands, STAGING } from './logistics';
 import { hasHomeAccess } from './housing';
 import { addXp, capability, skillLevel } from './needs';
 import { getWorld, locationOf, SHOPS, type Interactable } from './world/layout';
@@ -150,6 +150,22 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
       if (p.equipment === 'mop') out.push(opt('return_mop', 'Put mop away'));
       else out.push(opt('take_mop', 'Take mop & bucket', !onShift ? 'Staff only' : !handsFree(state, p) ? 'Your hands are full' : undefined));
       break;
+    case 'rack': {
+      const prod = it.product!;
+      const stock = count(state.containers[it.container!], prod);
+      const need = pickDemand(state, bid!, prod);
+      if (carrying === prod) out.push(opt('return_case', `Put ${itemName(prod)} back on the racking`));
+      out.push(opt('pick_case', `Pick ${itemName(prod)} (${need ? `${need} still needed for orders` : 'no orders need it'} · ${stock} in stock)`, !onShift ? 'Staff only - clock in first' : !handsFree(state, p) ? 'Your hands are full' : !need ? 'Nothing on the pick list' : !stock ? 'Out of stock' : undefined));
+      break;
+    }
+    case 'staging': {
+      const q = pickQueue(state, bid!);
+      const lines = q.reduce((n, s) => n + Object.keys(s.items).filter((k) => (s.items[k] ?? 0) > (s.picked?.[k] ?? 0)).length, 0);
+      const staged = total(state.containers[STAGING]);
+      if (carrying) out.push(opt('stage_case', `Stage ${count(h, carrying)} ${itemName(carrying)} for dispatch`, !onShift ? 'Staff only' : !q.some((s) => (s.items[carrying] ?? 0) > (s.picked?.[carrying] ?? 0)) ? 'No order needs it - put it back on the racking' : undefined));
+      else out.push(opt('stage_case', q.length ? `Pick list: ${q.length} order${q.length === 1 ? '' : 's'}, ${lines} line${lines === 1 ? '' : 's'} to pick · ${staged} units staged` : `No orders waiting · ${staged} units staged`, 'Pick from the racking, then bring the cases here'));
+      break;
+    }
     case 'baler': {
       const n = b?.cardboard ?? 0;
       out.push(opt('bale_cardboard', `Flatten and bale cardboard (${n} empty case${n === 1 ? '' : 's'})`, !onShift ? 'Staff only' : n === 0 ? 'No cardboard waiting' : !handsFree(state, p) ? 'Your hands are full' : undefined));
@@ -324,6 +340,10 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
       begin(p, type, itId, { unitTime: 0.15 / speed(p, 'cleaning') }, now); break;
     case 'face_shelf':
       begin(p, type, itId, { unitTime: 0.1 / sp }, now); break;
+    case 'pick_case':
+      begin(p, type, itId, { duration: 0.6 / speed(p, 'warehouse') }, now); break;
+    case 'stage_case':
+      begin(p, type, itId, { duration: 0.4 / speed(p, 'warehouse') }, now); break;
     case 'bale_cardboard':
       begin(p, type, itId, { unitTime: 0.3 / speed(p, 'warehouse') }, now); break;
     case 'empty_bin':
@@ -461,6 +481,20 @@ export function tickAction(state: GameState, p: Person, dt: number): string | nu
       break;
     }
     case 'take_mop': p.equipment = 'mop'; msg = 'Mop & bucket ready.'; break;
+    case 'pick_case': {
+      const prod = it!.product!;
+      const want = Math.min(ITEMS[prod].caseSize, pickDemand(state, it!.businessId!, prod));
+      const n = want > 0 ? moveItems(state, it!.container!, p.handsId, prod, want) : 0;
+      if (n) addXp(p, 'warehouse', 1);
+      msg = n ? `Picked ${n} ${itemName(prod)} - take them to the staging lanes.` : 'Nothing to pick.';
+      break;
+    }
+    case 'stage_case': {
+      const r = stageFromHands(state, p.id, it!.businessId!);
+      if (r.units) { creditTask(state, p); addXp(p, 'warehouse', 2); }
+      msg = r.units ? `Staged ${r.units} units for ${r.orders.join(', ')}.` : 'No order needs that.';
+      break;
+    }
     case 'empty_bin': {
       const b = state.businesses[it!.businessId!];
       if (b) b.binFill = 0;
@@ -705,6 +739,11 @@ export function enforceLocationRules(state: GameState, p: Person) {
   if (loc === p.where) return;
   const prev = p.where;
   p.where = loc;
+  // warehouse stock stays in the warehouse
+  if (prev === 'wholesale' && total(hands(state, p)) > 0) {
+    moveAll(state, p.handsId, 'wholesale_stock');
+    if (p.isPlayer) news(state, 'info', 'Stock stays in the warehouse', 'The cases you were carrying were put back on the racking.', true);
+  }
   const S = SHOPS[prev];
   const b = state.businesses[prev];
   if (S && b && loc !== prev) {

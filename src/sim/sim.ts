@@ -9,7 +9,7 @@ import { tickChores } from './home';
 import { enforceLocationRules, tickAction } from './actions';
 import { employmentTick, processApplications, refreshVacancies, runPayroll } from './employment';
 import { autoReorder, dailyClose, nightFill, retailTick } from './retail';
-import { logisticsTick, retryInvoices, wholesaleImports } from './logistics';
+import { logisticsTick, retryInvoices, warehouseTick, wholesaleImports } from './logistics';
 import { rentTick } from './housing';
 import { npcJobSearch, npcPostAction, npcTick, tickMovement } from './npc';
 import { cafeReorder, dailyEconomy, economyTick } from './economy';
@@ -67,6 +67,7 @@ export function minuteTick(state: GameState) {
   const mod = minuteOfDay(now);
   const day = dayIndex(now);
   for (const b of Object.values(state.businesses)) if (b.kind === 'retail') retailTick(state, b);
+  if (state.businesses.wholesale) warehouseTick(state, 'wholesale');
   npcTick(state);
   for (const p of Object.values(state.people)) if (p.npc) npcPostAction(state, p);
   economyTick(state);
