@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { createNewGame, step, startAction, optionsFor, getWorld, choresOf, isDirty, retailTick, openTasks, addItems, type GameState } from '../src/sim/index';
+import { createNewGame, step, startAction, optionsFor, getWorld, choresOf, isDirty, retailTick, openTasks, addItems, auditLedger, type GameState } from '../src/sim/index';
+import { buyHome, ONLINE_DELIVERY, quoteHome } from '../src/sim/homestore';
 
 const setup = { name: 'Tester', appearance: { skin: '#e3b48f', hair: 'short' as const, hairColor: '#3b2416', build: 'average' as const } };
 function act(s: GameState, itId: string, type: Parameters<typeof startAction>[3], arg?: string) {
@@ -70,5 +71,28 @@ describe('chores', () => {
     expect(p.equipment).toBe(null);
     retailTick(s, b);
     expect(openTasks(s, 'market').filter((t) => t.kind === 'face' || t.kind === 'cardboard' || t.kind === 'rubbish')).toEqual([]);
+  });
+});
+
+describe('Harbour Home', () => {
+  it('home changes are bought (online here), paid through the ledger and fitted later', () => {
+    const s = createNewGame(7, setup);
+    const p = s.people.player;
+    const before = s.ledger.accounts[p.accountId].balance;
+    const storeBefore = s.ledger.accounts[s.businesses.homestore.accountId].balance;
+    const want = JSON.parse(JSON.stringify(s.homeDesigns.flat));
+    want.wallpaper.living = 'navy';
+    want.rug.living = 'blue';
+    const q = quoteHome(s.homeDesigns.flat, want);
+    expect(q.lines.length).toBe(2);
+    expect(buyHome(s, 'player', want, true).ok).toBe(false); // not at a staffed counter: online only
+    const r = buyHome(s, 'player', want, false);
+    expect(r.ok).toBe(true);
+    expect(s.ledger.accounts[p.accountId].balance).toBe(before - q.total - ONLINE_DELIVERY);
+    expect(s.ledger.accounts[s.businesses.homestore.accountId].balance).toBeGreaterThan(storeBefore);
+    expect(s.homeDesigns.flat.wallpaper.living).not.toBe('navy');
+    while (s.pendingHome) step(s, 10);
+    expect(s.homeDesigns.flat.wallpaper.living).toBe('navy');
+    expect(auditLedger(s)).toEqual([]);
   });
 });

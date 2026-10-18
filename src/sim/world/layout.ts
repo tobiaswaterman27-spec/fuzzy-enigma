@@ -150,6 +150,7 @@ export type InteractKind =
   | 'stove'
   | 'rack'
   | 'staging'
+  | 'home_counter'
   | 'vehicle'
   | 'baler'
   | 'shopbin'
@@ -281,9 +282,10 @@ const B: BuildingDef[] = [
     interior: true, floorColor: '#9a9d9f',
   },
   {
-    id: 'oldbank', name: 'Old Bank Building', category: 'decorative', role: 'Background building (not in service)',
+    id: 'homestore', name: 'Harbour Home', category: 'functional', role: 'Furniture & decor store in the old bank - buy furniture, wallpaper, flooring and rugs for your home',
     rect: { x0: -62, z0: -34, x1: -40, z1: -12 }, height: 10, floors: 3, color: '#d7cfc0', trim: '#8c7b63', roof: '#555a5e',
-    doors: [{ side: 'zmax', a: -53, b: -49, open: false }], interior: false,
+    sign: { text: 'HARBOUR HOME', side: 'zmax', color: '#ffffff', bg: '#4d6b5c' },
+    doors: [{ side: 'zmax', a: -53, b: -49, open: true }], interior: true, floorColor: '#b9a68a',
   },
   {
     id: 'chambers', name: 'Harbour Chambers', category: 'decorative', role: 'Office block (background, not yet in service)',
@@ -638,6 +640,43 @@ function buildWorldData(homeDesign: HomeDesign): World {
   obstacles.push({ kind: 'roller_door', rect: { x0: -58, z0: 14.05, x1: -50, z1: 14.3 }, height: 4, solid: false, rot: Math.PI });
   for (const [x, z] of [[-41.2, 36.8], [-41.2, 35.4], [-41.2, 38.6]]) obstacles.push({ kind: 'pallet_load', rect: { x0: x - 0.6, z0: z - 0.5, x1: x + 0.6, z1: z + 0.5 }, height: 1.3, solid: true });
 
+  // ---- Harbour Home showroom: room sets either side of a clear aisle to the sales counter
+  {
+    const O = (kind: ObstacleKind, x0: number, z0: number, x1: number, z1: number, height: number, rot?: number, solid = true, color?: string) => obstacles.push({ kind, rect: { x0, z0, x1, z1 }, height, solid, rot, color });
+    // counter at the back with the assistant behind it
+    O('desk', -53.5, -33.0, -48.5, -31.8, 0.9, 0);
+    add({ id: 'home_counter', kind: 'home_counter', label: 'Harbour Home sales counter', pos: { x: -51, z: -30.6 }, facing: Math.PI, obj: { x: -51, z: -32.4 }, locationId: 'homestore', businessId: 'homestore', range: 2.0 });
+    // living room set (west side)
+    O('rug', -60.6, -25.2, -56.2, -20.4, 0.01, 0, false, '#8a3e3a');
+    O('sofa', -60.0, -25.2, -57.8, -24.25, 0.85, 0, true, '#4f6d60');
+    O('coffee_table', -59.5, -23.3, -58.4, -22.7, 0.45, 0);
+    O('armchair', -57.2, -22.6, -56.35, -21.75, 0.85, -Math.PI / 2, true, '#b8892b');
+    O('tv', -59.7, -20.0, -58.1, -19.55, 0.5, Math.PI);
+    O('lampstand', -61.2, -25.4, -60.8, -25.0, 1.6);
+    O('plant', -61.4, -20.4, -60.9, -19.9, 1.3);
+    // bookcases, sideboard and a desk along the west wall
+    O('bookcase', -61.85, -31.9, -61.53, -31.0, 1.9, Math.PI / 2);
+    O('bookcase', -61.85, -30.6, -61.53, -29.7, 1.9, Math.PI / 2);
+    O('sideboard', -61.85, -28.6, -61.4, -27.2, 0.8, Math.PI / 2);
+    O('desk', -58.6, -33.6, -57.4, -33.0, 0.75, 0);
+    // bedroom set (east side)
+    O('rug', -46.6, -28.2, -42.2, -23.4, 0.01, 0, false, '#4b6283');
+    O('bed', -45.2, -28.3, -43.6, -26.2, 0.6, 0, true, '#2f3f5e');
+    O('bedside', -45.75, -28.3, -45.3, -27.9, 0.5, 0);
+    O('bedside', -43.5, -28.3, -43.05, -27.9, 0.5, 0);
+    O('wardrobe', -40.85, -26.2, -40.15, -24.0, 2.1, -Math.PI / 2);
+    O('drawers', -40.63, -22.6, -40.15, -21.7, 0.85, -Math.PI / 2);
+    O('armchair', -42.6, -32.6, -41.8, -31.8, 0.85, Math.PI, true, '#c79b98');
+    // dining set (east, near the windows)
+    O('dining_table', -46.7, -16.0, -45.3, -15.1, 0.75, 0);
+    O('dining_chair', -46.22, -16.77, -45.78, -16.33, 0.9, 0, false);
+    O('dining_chair', -46.22, -14.77, -45.78, -14.33, 0.9, Math.PI, false);
+    O('plant', -41.0, -13.1, -40.5, -12.6, 1.3);
+    O('plant', -61.5, -13.1, -61.0, -12.6, 1.3);
+    // framed prints, wallpaper and flooring samples on the walls
+    for (const [x, color] of [[-58, '#c45a3c'], [-56, '#3c6e8c'], [-46, '#d9b44a'], [-44, '#5f8a5a']] as [number, string][]) O('art', x - 0.4, -33.96, x + 0.4, -33.92, 1.55, 0, false, color);
+  }
+
   // ---- Dockside Unit 4 (player-leasable shop)
   for (const gx of [80.5, 84.5]) obstacles.push({ kind: 'gondola', rect: { x0: gx - 0.6, z0: 19, x1: gx + 0.6, z1: 29 }, height: 1.8, solid: true });
   for (const sct of U4_SECTIONS) add({ id: sct.id, kind: 'shelf', label: 'Shelf section', pos: { x: sct.gx - 1.15, z: sct.zc }, facing: Math.PI / 2, obj: { x: sct.gx, z: sct.zc }, locationId: 'unit4', businessId: 'unit4', container: sct.id });
@@ -902,6 +941,12 @@ function buildWorldData(homeDesign: HomeDesign): World {
   }
   // upstairs residents use the communal entrance
   N('door_upper', 16.6, 9.3, 'flat_upper'); L('se_16', 'door_upper');
+  // Harbour Home: in through the door, down the aisle to the counter
+  N('hh_out', -51, -9.0); N('hh_in', -51, -13.2, 'homestore'); N('hh_mid', -51, -22, 'homestore'); N('hh_counter', -51, -30.6, 'homestore');
+  L('nw_-50', 'hh_out', 'hh_in', 'hh_mid', 'hh_counter');
+  // staff go round the end of the counter to stand behind it
+  N('hh_side', -47.6, -30.6, 'homestore'); N('hh_side_back', -47.6, -33.45, 'homestore'); N('hh_staff', -51, -33.45, 'homestore');
+  L('hh_counter', 'hh_side', 'hh_side_back', 'hh_staff');
   // Wholesale staff door, and the warehouse floor: front aisle, middle aisle, staging lanes
   N('door_wholesale', -43, 13.3); L('sw_-43', 'door_wholesale');
   N('wh_in', -43, 15.4, 'wholesale'); L('door_wholesale', 'wh_in');

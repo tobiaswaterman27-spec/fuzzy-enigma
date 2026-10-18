@@ -257,7 +257,7 @@ export interface Person {
 }
 
 // ------------------------------------------------------------- business
-export type BusinessKind = 'retail' | 'wholesale' | 'cafe' | 'landlord' | 'offsite' | 'government';
+export type BusinessKind = 'retail' | 'wholesale' | 'cafe' | 'landlord' | 'offsite' | 'government' | 'store';
 
 export interface ShiftTemplate {
   days: number[]; // 0 = Monday
@@ -339,6 +339,8 @@ export interface Business {
   cardboard?: number;
   /** litter bin by the door (0..BIN_CAPACITY) */
   binFill?: number;
+  /** small per-business daily flags (e.g. the counter was staffed today) */
+  flags?: Record<string, boolean>;
 }
 
 export interface Policy {
@@ -553,6 +555,8 @@ import type { HomeDesign } from './world/homes';
 export interface GameState {
   /** how each home is furnished and decorated (by home id) */
   homeDesigns: Record<string, HomeDesign>;
+  /** a Harbour Home order waiting to be delivered and fitted */
+  pendingHome?: { design: HomeDesign; fitAt: number };
   version: number;
   seed: number;
   rng: number;

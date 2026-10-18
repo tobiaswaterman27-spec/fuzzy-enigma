@@ -30,6 +30,7 @@ export function workplaceOf(bid: Id, positionId?: Id): Workplace {
   switch (bid) {
     case 'market': case 'unit4': return { mode: 'shop', pos: w.interactables[SHOPS[bid].terminal].pos, facing: w.interactables[SHOPS[bid].terminal].facing };
     case 'cafe': return { mode: 'post', pos: { x: -24, z: 21.3 }, facing: Math.PI };
+    case 'homestore': return { mode: 'post', pos: { x: -51, z: -33.45 }, facing: 0 };
     case 'council': return { mode: 'post', pos: n('jc_desk_back'), facing: 0 };
     case 'wholesale':
       // operatives work the warehouse floor; drivers go out with the van

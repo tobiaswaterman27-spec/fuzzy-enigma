@@ -122,6 +122,7 @@ export class Game {
     const d = this.state.homeDesigns.flat;
     if (!d) return;
     setHomeDesign(d);
+    this.homeKey = JSON.stringify(d);
     this.scene.remove(this.world.group);
     this.world = buildWorld(this.scene);
     this.cutawayOn = !this.cutawayOn; // force the cut-away state to be re-applied
@@ -222,7 +223,7 @@ export class Game {
     return r;
   }
 
-  onUi: (which: 'jobs' | 'advisor' | 'interview' | 'laptop', arg?: string) => void = () => {};
+  onUi: (which: 'jobs' | 'advisor' | 'interview' | 'laptop' | 'homestore', arg?: string) => void = () => {};
 
   /** game minutes per real second right now */
   get rate() {
@@ -252,6 +253,8 @@ export class Game {
       this.updateFocus();
       if (performance.now() > this.autosaveAt) { this.autosave(); this.autosaveAt = performance.now() + 180000; }
     }
+    // the flat is refitted when an order arrives (or a save is loaded): rebuild it
+    if (++this.homeCheck % 30 === 0) { const k = JSON.stringify(s.homeDesigns.flat ?? null); if (k !== this.homeKey) { if (this.homeKey) this.applyHomeDesign(); this.homeKey = k; } }
     this.views.update(s, this.paused ? 0 : dt, this.player.pos, this.insideId, this.speech);
     this.traffic.update(s, this.paused ? 0 : dt);
     this.watchFrameRate(dt);
@@ -269,6 +272,8 @@ export class Game {
     return Object.values(this.state.vehicles).find((v) => v.driverId === p.id) ?? null;
   }
   private vanSpeed = 0;
+  private homeCheck = 0;
+  private homeKey = '';
 
   /** driving: W/S throttle and brake/reverse, A/D steer; buildings and walls stop the van */
   private updateDriving(dt: number) {

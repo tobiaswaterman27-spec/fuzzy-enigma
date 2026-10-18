@@ -16,7 +16,7 @@ import { rand, randInt, pick } from './core';
 import { news } from './events';
 import { spawnDirt, SHELF_CAPACITY, shelfId } from './retail';
 
-export const SAVE_VERSION = 6;
+export const SAVE_VERSION = 7;
 
 export interface PlayerSetup {
   name: string;
@@ -179,6 +179,11 @@ export function createNewGame(seed: number, setup: PlayerSetup): GameState {
   });
   void port;
   makeBusiness(state, {
+    id: 'homestore', name: 'Harbour Home', kind: 'store', ownerId: 'external', locationId: 'homestore', open: [sh(MON_SAT, 9, 18)],
+    positions: [pos({ id: 'sales', title: 'Sales Assistant', wage: 1300, shifts: [sh(MON_SAT, 9, 18)], headcount: 1, description: 'Helps customers choose furniture and decor and takes their orders at the counter.' })],
+    prices: {}, reputation: 60, supplierId: null, reorder: {}, rentDue: 0, utilitiesPerDay: 1200, stockContainers: [], cashReserve: 400000, cash: 500000,
+  });
+  makeBusiness(state, {
     id: 'estates', name: 'Harbourside Estates', kind: 'landlord', ownerId: 'district', locationId: 'outside', open: [],
     positions: [], prices: {}, reputation: 50, supplierId: null, reorder: {}, rentDue: 0, utilitiesPerDay: 0, stockContainers: [], cashReserve: 800000, cash: 1000000,
   });
@@ -253,6 +258,8 @@ export function createNewGame(seed: number, setup: PlayerSetup): GameState {
     { id: 'p_tom', name: 'Tom Reyes', home: 'house_6', cash: 25000, rent: 0, skills: { retail: 160 }, search: 3 },
     { id: 'p_nadia', name: 'Nadia Haddad', home: 'flat_upper', cash: 40000, rent: 0, skills: { retail: 60, cleaning: 80 }, search: 3 },
     { id: 'p_ben', name: 'Ben Ashworth', home: 'house_1', cash: 15000, rent: 0, skills: {}, search: 4, traits: { conscientiousness: 0.4 } },
+    { id: 'p_ivy', name: 'Ivy Marsh', home: 'house_5', cash: 55000, job: ['homestore', 'sales'], rent: 12500, traits: { sociability: 0.85 } },
+    { id: 'p_raj', name: 'Raj Patel', home: 'house_3', cash: 20000, rent: 0, skills: { retail: 90 }, search: 4 },
   ];
   for (const n of npcs) {
     const p = makePerson(state, n.id, n.name, { homeId: n.home, cash: n.cash, traits: n.traits });

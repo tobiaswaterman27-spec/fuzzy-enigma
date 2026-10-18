@@ -63,7 +63,7 @@ function facadeFor(b: BuildingDef): { mat: THREE.MeshStandardMaterial; tile: num
   const id = b.id;
   let t: THREE.CanvasTexture;
   let key: string;
-  if (id === 'flat' || id === 'terrace_w' || id === 'oldbank') { t = tex.brick(b.color); key = `brick${b.color}`; }
+  if (id === 'flat' || id === 'terrace_w' || id === 'homestore') { t = tex.brick(b.color); key = `brick${b.color}`; }
   else if (id === 'jobcentre' || id === 'chambers' || id === 'unit4' || id === 'wholesale' || id === 'warehouse_e' || id === 'garage_e') { t = tex.cladding(b.color); key = `clad${b.color}`; }
   else if (id.startsWith('house_')) { const hn = Number(id.slice(6)); if (hn % 2) { t = tex.brick(b.color); key = `brick${b.color}`; } else { t = tex.render(b.color); key = `render${b.color}`; } }
   else { t = tex.render(b.color); key = `render${b.color}`; }

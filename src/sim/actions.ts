@@ -15,6 +15,7 @@ import { clearLine } from './world/nav';
 import { transfer } from './ledger';
 import { news } from './events';
 import { fmtClock, minuteOfDay } from './clock';
+import { storeStaffed } from './homestore';
 import { choresOf, DISHES_BLOCK, homeMess, inWash, messLabel, wearOf, WASH_MINUTES } from './home';
 
 export interface ActionOption {
@@ -23,7 +24,7 @@ export interface ActionOption {
   enabled: boolean;
   reason?: string;
   arg?: string;
-  ui?: 'jobs' | 'advisor' | 'interview' | 'laptop';
+  ui?: 'jobs' | 'advisor' | 'interview' | 'laptop' | 'homestore';
 }
 
 export function interactable(state: GameState, id: Id): Interactable | null {
@@ -290,6 +291,11 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
       const s = v?.shipmentId ? state.shipments[v.shipmentId] : null;
       const buyer = s ? state.businesses[s.buyerId]?.name : '';
       out.push(opt('drive_van', `Get in and drive the delivery to ${buyer}`, v?.driverId !== actorId ? 'Only the driver on shift can take the van' : undefined));
+      break;
+    }
+    case 'home_counter': {
+      const staffed = storeStaffed(state);
+      out.push({ type: 'ui', label: 'Browse furniture, wallpaper, flooring and rugs for your home', enabled: true, ui: 'homestore', reason: staffed ? undefined : 'Counter closed - you can still order online' });
       break;
     }
     case 'bench':

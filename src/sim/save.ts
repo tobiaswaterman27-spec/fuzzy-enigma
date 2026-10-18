@@ -1,6 +1,6 @@
 // SaveLoadSystem: versioned JSON, validation, migration, safe writes.
 import type { GameState } from './types';
-import { SAVE_VERSION } from './newgame';
+import { makeBusiness, SAVE_VERSION } from './newgame';
 import { auditLedger } from './ledger';
 import { getWorld, setHomeDesign } from './world/layout';
 import { defaultDesign } from './world/homes';
@@ -56,6 +56,16 @@ const MIGRATIONS: Record<number, (s: any) => void> = {
     }
     const spawn = getWorld().playerSpawn;
     for (const p of Object.values<any>(s.people ?? {})) if (p.where === 'flat' && p.visible && !p.sleeping) p.pos = { ...spawn };
+  },
+  6: (s) => {
+    // v6 -> v7: the old bank reopens as Harbour Home, the furniture & decor store
+    if (!s.businesses.homestore) {
+      makeBusiness(s, {
+        id: 'homestore', name: 'Harbour Home', kind: 'store', ownerId: 'external', locationId: 'homestore', open: [{ days: [0, 1, 2, 3, 4, 5], start: 9 * 60, end: 18 * 60 }],
+        positions: [{ id: 'sales', title: 'Sales Assistant', wage: 1300, shifts: [{ days: [0, 1, 2, 3, 4, 5], start: 9 * 60, end: 18 * 60 }], payEvery: 'daily', headcount: 1, requires: {}, uniform: null, playable: false, description: 'Helps customers choose furniture and decor and takes their orders at the counter.', duties: [] }],
+        prices: {}, reputation: 60, supplierId: null, reorder: {}, rentDue: 0, utilitiesPerDay: 1200, stockContainers: [], cashReserve: 400000, cash: 500000,
+      });
+    }
   },
 };
 

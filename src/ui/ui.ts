@@ -9,6 +9,7 @@ import { questionsFor } from '../sim/employment';
 import { acceptOffer, acceptPromotion, applyForJob, attendInterview, canApply, currentShift, declineOffer, hoursPerWeek, INTERVIEW, nextShift, openAttendance, positionOf, promotionEligible, resign, shiftLabel, scoreShift } from '../sim/employment';
 import { conditionLabel, skillLevel } from '../sim/needs';
 import { choreStatus } from '../sim/home';
+import { buyHome, ONLINE_DELIVERY, quoteHome, storeStaffed } from '../sim/homestore';
 import { agenda, currentObjective } from '../sim/objectives';
 import { defaultDesign, EXTRAS, FABRICS, FLOORS, RUGS, WALLPAPERS, type HomeDesign } from '../sim/world/homes';
 import { cancelAction, startAction } from '../sim/actions';
@@ -37,7 +38,7 @@ export class UI {
 
   constructor(private game: Game) {
     game.onToast = (m) => this.toast(m);
-    game.onUi = (w, arg) => (w === 'jobs' || w === 'laptop' ? this.openPhone(w === 'laptop' ? this.tab : 'jobs') : w === 'interview' ? this.interviewInPerson(arg!) : this.advisor());
+    game.onUi = (w, arg) => (w === 'jobs' || w === 'laptop' ? this.openPhone(w === 'laptop' ? this.tab : 'jobs') : w === 'homestore' ? this.openPhone('home') : w === 'interview' ? this.interviewInPerson(arg!) : this.advisor());
     game.onQualityAuto = () => this.toast('Graphics switched to Low for smoother play (Menu > Graphics to change).');
     game.onFrame = () => this.frame();
     window.addEventListener('keydown', (e) => {
@@ -52,10 +53,10 @@ export class UI {
       if (t.dataset.home) {
         const [k, room] = t.dataset.home.split('.');
         const v = t.value || null;
-        this.changeHome((d) => { if (room) ((d as unknown as Record<string, Record<string, string | null>>)[k])[room] = v; else (d as unknown as Record<string, string | null>)[k] = v; });
+        this.draftHome((d) => { if (room) ((d as unknown as Record<string, Record<string, string | null>>)[k])[room] = v; else (d as unknown as Record<string, string | null>)[k] = v; });
       }
       const ex = (t as unknown as HTMLInputElement).dataset.homeExtra;
-      if (ex) { const on = (t as unknown as HTMLInputElement).checked; this.changeHome((d) => { d.extras = d.extras.filter((x) => x !== ex); if (on) d.extras.push(ex); }); }
+      if (ex) { const on = (t as unknown as HTMLInputElement).checked; this.draftHome((d) => { d.extras = d.extras.filter((x) => x !== ex); if (on) d.extras.push(ex); }); }
     });
     document.querySelectorAll<HTMLButtonElement>('[data-speed]').forEach((b) => b.addEventListener('click', () => { game.speedMult = Number(b.dataset.speed); }));
     $('#btn-phone').addEventListener('click', () => (this.phoneOpen ? this.closePhone() : this.openPhone(this.tab)));
@@ -288,21 +289,40 @@ export class UI {
       <h3>Recent days</h3>${days.map(row).join('') || '<p class="muted">No trading recorded yet.</p>'}`;
   }
 
-  /** decorate and arrange the home: changes rebuild the flat around you */
+  /** decorate and arrange the home: choose from the Harbour Home catalogue, pay, and it is fitted at your flat */
   tab_home(): string {
     const s = this.s;
-    const d = s.homeDesigns.flat ?? defaultDesign(1);
+    const cur = s.homeDesigns.flat ?? defaultDesign(1);
+    const d = this.homeDraft ?? cur;
     const sel = (name: string, key: string, opts: Record<string, { name: string } | string>, cur: string | null, none = false) =>
       `<label class="line"><span>${name}</span><select data-home="${key}">${none ? `<option value="" ${!cur ? 'selected' : ''}>None</option>` : ''}${Object.entries(opts).map(([k, v]) => `<option value="${k}" ${k === cur ? 'selected' : ''}>${typeof v === 'string' ? k[0].toUpperCase() + k.slice(1) : v.name}</option>`).join('')}</select></label>`;
     const rooms = [['living', 'Living room'], ['kitchen', 'Kitchen'], ['hall', 'Hall'], ['bedroom', 'Bedroom'], ['bathroom', 'Bathroom']];
-    let h = `<h3>Flat 1, Marlow Court</h3><p class="muted">Choose finishes and furniture. Changes are made straight away (a decorating shop will sell these later).</p>
-      <div class="row"><button data-home-rearrange="1" class="primary">Rearrange the furniture</button></div>
+    const q = quoteHome(cur, d);
+    const atCounter = this.p.where === 'homestore';
+    const staffed = storeStaffed(s);
+    const pend = s.pendingHome;
+    let h = `<h3>Flat 1, Marlow Court</h3><p class="muted">Pick from the Harbour Home catalogue below. Buy at the store's counter, or order online for ${fmtMoney(ONLINE_DELIVERY)} delivery; it is fitted at your flat. Moving the furniture around is free.</p>
+      ${pend ? `<div class="card">Order on its way: fitting at ${fmtClock(pend.fitAt)}${dayIndex(pend.fitAt) > dayIndex(s.minute) ? ' tomorrow' : ''}.</div>` : ''}
+      ${q.lines.length ? `<div class="card"><b>Your basket</b>${q.lines.map((l) => `<div class="line"><span>${esc(l.what)}</span><span>${fmtMoney(l.price)}</span></div>`).join('')}<div class="line"><b>Total</b><b>${fmtMoney(q.total)}</b></div>
+        <div class="row"><button data-home-buy="counter" class="primary" ${atCounter && staffed && !pend ? '' : 'disabled'}>Pay at the counter</button><button data-home-buy="online" ${pend ? 'disabled' : ''}>Order online (+${fmtMoney(ONLINE_DELIVERY)})</button><button data-home-reset="1">Clear</button></div>
+        ${!atCounter ? '<p class="muted">Paying in person: Harbour Home, by the bus stop on the west side of the high street (Mon-Sat 09:00-18:00).</p>' : !staffed ? '<p class="muted">Nobody is at the counter right now.</p>' : ''}</div>` : ''}
+      <div class="row"><button data-home-rearrange="1">Rearrange the furniture (free)</button></div>
       <h3>Furniture</h3>${sel('Sofa & armchair fabric', 'sofa', FABRICS, d.sofa)}${sel('Bedding', 'bedding', FABRICS, d.bedding)}
       ${sel('Living room rug', 'rug.living', RUGS, d.rug.living ?? null, true)}${sel('Bedroom rug', 'rug.bedroom', RUGS, d.rug.bedroom ?? null, true)}
       <h3>Extras</h3>${Object.entries(EXTRAS).map(([k, x]) => `<label class="line"><span>${x.name}</span><input type="checkbox" data-home-extra="${k}" ${d.extras.includes(k) ? 'checked' : ''}></label>`).join('')}
       <h3>Walls & floors</h3>`;
     for (const [id, name] of rooms) h += `<div class="card"><b>${name}</b>${sel('Walls', `wallpaper.${id}`, WALLPAPERS, d.wallpaper[id] ?? null)}${sel('Floor', `floor.${id}`, FLOORS, d.floor[id] ?? null)}</div>`;
     return h;
+  }
+
+  /** the catalogue selections waiting to be bought */
+  homeDraft: HomeDesign | null = null;
+  private draftHome(f: (d: HomeDesign) => void) {
+    const d: HomeDesign = JSON.parse(JSON.stringify(this.homeDraft ?? this.s.homeDesigns.flat ?? defaultDesign(1)));
+    f(d);
+    this.homeDraft = d;
+    this.lastBody = '';
+    this.renderPhone();
   }
 
   private changeHome(f: (d: HomeDesign) => void) {
@@ -395,6 +415,11 @@ export class UI {
     if (d.order) this.toast(E.orderStock(s, { [d.order]: ITEMS[d.order].caseSize * Number(d.q) }).msg);
     if (d.invest) this.toast(E.invest(s, Number(d.invest)).msg);
     if (d.withdraw) this.toast(E.withdraw(s, Number(d.withdraw)).msg);
+    if (d.homeBuy) {
+      if (this.homeDraft) { const r = buyHome(s, this.p.id, this.homeDraft, d.homeBuy === 'counter'); this.toast(r.msg); if (r.ok) this.homeDraft = null; }
+      this.lastBody = ''; this.renderPhone(); return;
+    }
+    if (d.homeReset) { this.homeDraft = null; this.lastBody = ''; this.renderPhone(); return; }
     if (d.homeRearrange) { this.changeHome((h) => { h.seed = (h.seed * 48271 + 11) % 100003 || 7; }); this.toast('The furniture has been moved around.'); return; }
     if (d.closed) this.toast(E.setClosed(s, d.closed === '1').msg);
     if (d.nightfill) this.toast(E.setNightFill(s, d.nightfill === '1').msg);
