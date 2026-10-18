@@ -18,7 +18,7 @@ const waitIdle = async () => { await ev(() => { window.__bigshot.game.speedMult 
 const waitIdle0 = async () => { for (let i = 0; i < 12 && !(await ev(() => !!window.__bigshot.game.player.action)); i++) await page.waitForTimeout(250); for (let i = 0; i < 160; i++) { if (!(await ev(() => !!window.__bigshot.game.player.action))) return; await page.waitForTimeout(250); } };
 const settle = () => ev(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))));
 const waitFocus = async (txt) => { for (let i = 0; i < 60; i++) { if (await ev((t) => !!window.__bigshot.game.focus?.options.some((o) => o.label.includes(t)), txt)) return true; await page.waitForTimeout(250); } console.log('focus never showed', txt); return false; };
-const shot = async (n) => { await page.waitForTimeout(700); await page.screenshot({ path: `${out}/${n}.png`, timeout: 120000 }); };
+const shot = async (n) => { await page.waitForTimeout(700); await page.screenshot({ path: `${out}/${n}.png`, timeout: 300000 }); };
 // walk with real keys out of the flat
 await page.keyboard.down('KeyW'); await page.waitForTimeout(1500); await page.keyboard.up('KeyW');
 const pos1 = await ev(() => window.__bigshot.game.player.pos);

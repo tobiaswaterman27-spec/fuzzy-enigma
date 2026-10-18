@@ -4,7 +4,7 @@ import type { GameState, Person } from '../sim/types';
 import { AnimationController, buildRig, dress, type Rig } from './character';
 import { buildCar } from './world';
 import { productGeometry, productMaterial, productUnitGeometry } from './products';
-import { buildingAt, getWorld, SHELF_LAYOUT, PALLET_X, SHOPS, U4_SECTIONS, U4_PALLET_Z } from '../sim/world/layout';
+import { buildingAt, getWorld, type Interactable, SHELF_LAYOUT, PALLET_X, SHOPS, U4_SECTIONS, U4_PALLET_Z } from '../sim/world/layout';
 import { ITEMS } from '../sim/items';
 import { count, total, firstItem } from '../sim/inventory';
 import { SHELF_CAPACITY } from '../sim/retail';
@@ -97,13 +97,37 @@ class PersonView {
     // lying down / sitting alignment
     const a = p.action;
     const it = a ? getWorld().interactables[a.target] : null;
-    if (a?.type === 'sleep' && it) {
-      this.rig.body.rotation.set(-Math.PI / 2, 0, 0);
-      const bedTop = it.kind === 'bed' ? 0.62 : 0.5;
-      this.rig.body.position.set(0, bedTop + 0.12, -0.9);
-      root.position.set(it.obj.x - (it.kind === 'bed' ? 0.9 : 0), 0, it.obj.z);
-      root.rotation.y = it.kind === 'bed' ? Math.PI / 2 : 0;
+    // getting into and out of bed: sit on the edge, then swing round and lie down (and the reverse)
+    if (a?.type === 'sleep' && it) this.bedIt = it;
+    this.bedT = Math.max(0, Math.min(1, this.bedT + (a?.type === 'sleep' ? dt : -dt) / 1.6));
+    if (this.bedT <= 0 && a?.type !== 'sleep') this.bedIt = null;
+    const bed = this.bedIt;
+    if (bed) {
+      const t = smooth(this.bedT);
+      const isBed = bed.kind === 'bed';
+      const bedTop = isBed ? 0.62 : 0.5;
+      // edge: seated beside the bed facing the room; lying: along the bed, head on the pillow
+      const ex = bed.pos.x + (bed.obj.x - bed.pos.x) * 0.45, ez = bed.pos.z + (bed.obj.z - bed.pos.z) * 0.45;
+      const outYaw = Math.atan2(bed.pos.x - bed.obj.x, bed.pos.z - bed.obj.z);
+      // lie along the bed's long axis: feet at the foot end, head towards the headboard (against the wall)
+      const r = getWorld().obstacles.find((o) => (o.kind === 'bed' || o.kind === 'sofa') && bed.obj.x >= o.rect.x0 - 0.2 && bed.obj.x <= o.rect.x1 + 0.2 && bed.obj.z >= o.rect.z0 - 0.2 && bed.obj.z <= o.rect.z1 + 0.2)?.rect;
+      let lx = bed.obj.x, lz = bed.obj.z, lieYaw = 0;
+      if (r) {
+        const alongX = r.x1 - r.x0 >= r.z1 - r.z0;
+        // the headboard is on the side away from where you get in (the interaction point)
+        const headPlus = alongX ? Math.abs(bed.pos.x - r.x1) > Math.abs(bed.pos.x - r.x0) : Math.abs(bed.pos.z - r.z1) > Math.abs(bed.pos.z - r.z0);
+        const cxr = (r.x0 + r.x1) / 2, czr = (r.z0 + r.z1) / 2;
+        if (alongX) { lx = headPlus ? r.x0 + 0.12 : r.x1 - 0.12; lz = czr; lieYaw = headPlus ? -Math.PI / 2 : Math.PI / 2; }
+        else { lz = headPlus ? r.z0 + 0.12 : r.z1 - 0.12; lx = cxr; lieYaw = headPlus ? Math.PI : 0; }
+      }
+      const k = smooth((t - 0.35) / 0.65);
+      root.position.set(ex + (lx - ex) * k, 0, ez + (lz - ez) * k);
+      let dy = lieYaw - outYaw; dy = ((dy + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+      root.rotation.y = outYaw + dy * k;
+      this.rig.body.rotation.set(-Math.PI / 2 * k, 0, 0);
+      this.rig.body.position.set(0, (bedTop + 0.1) * k, 0);
       yaw = root.rotation.y;
+      this.bedPose = this.bedT < 0.4 ? 'sit' : 'sleep';
     } else {
       this.rig.body.rotation.set(0, 0, 0);
       this.rig.body.position.set(0, 0, 0);
@@ -170,10 +194,11 @@ class PersonView {
     // shopping basket (picked goods) in the left hand, carrier bag (paid goods) in the right
     this.syncHeld(state, p);
     const stepping = a?.type === 'shower' && this.showerStep;
-    const realSpeed = stepping ? 0.9 : a ? 0 : this.speed;
-    this.anim.update(dt, realSpeed, !!item, stepping ? null : a?.type ?? null);
+    const realSpeed = stepping ? 0.9 : a || this.bedIt ? 0 : this.speed;
+    const clipAction = this.bedIt ? this.bedPose : stepping ? null : a?.type ?? null;
+    this.anim.update(dt, realSpeed, !!item, clipAction);
     // keep the feet on the floor: whatever the animation does, the lower foot rests on the ground
-    if (a?.type !== 'sleep' && this.rig.joints) {
+    if (!this.bedIt && this.rig.joints) {
       this.rig.root.updateMatrixWorld(true);
       this.rig.bones.footL.getWorldPosition(FOOT_A);
       this.rig.bones.footR.getWorldPosition(FOOT_B);
@@ -186,6 +211,9 @@ class PersonView {
   }
   private ground = 0;
   private showerStep = false;
+  private bedIt: Interactable | null = null;
+  private bedT = 0;
+  private bedPose = 'sit';
   private basket: THREE.Group | null = null;
   private basketKey = '';
   private bag: THREE.Group | null = null;
