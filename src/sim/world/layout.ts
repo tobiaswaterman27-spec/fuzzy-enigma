@@ -95,7 +95,21 @@ export type ObstacleKind =
   | 'plant'
   | 'fridge'
   | 'shelfunit'
-  | 'lampstand';
+  | 'lampstand'
+  | 'baler'
+  | 'shopbin'
+  | 'dumpster'
+  | 'washer'
+  | 'storage_shelf'
+  | 'ironing_board'
+  | 'laundry_basket'
+  | 'drying_rack'
+  | 'bike'
+  | 'vacuum'
+  | 'pallet_rack'
+  | 'forklift'
+  | 'roller_door'
+  | 'pallet_load';
 
 export interface Obstacle {
   kind: ObstacleKind;
@@ -128,7 +142,12 @@ export type InteractKind =
   | 'person'
   | 'shower'
   | 'sofa'
-  | 'stove';
+  | 'stove'
+  | 'baler'
+  | 'shopbin'
+  | 'dumpster'
+  | 'sink'
+  | 'washer';
 
 export interface Interactable {
   id: string;
@@ -227,6 +246,13 @@ const B: BuildingDef[] = [
       { x0: 22, z0: 17.35, x1: 22.9, z1: 17.65 },
       { x0: 24.1, z0: 17.35, x1: 30, z1: 17.65 },
       { x0: 21.85, z0: 17.65, x1: 22.15, z1: 26 },
+      // spare room / study off the living room
+      { x0: 15.9, z0: 13.75, x1: 16.2, z1: 15.4 },
+      { x0: 15.9, z0: 16.6, x1: 16.2, z1: 20.8 },
+      { x0: 12, z0: 20.5, x1: 15.9, z1: 20.8 },
+      // utility room in the front corner, off the hall
+      { x0: 18.15, z0: 13.45, x1: 23.0, z1: 13.75 },
+      { x0: 24.2, z0: 13.45, x1: 25.35, z1: 13.75 },
     ],
   },
   {
@@ -389,6 +415,10 @@ export interface ShopDef {
   cupboard: string;
   bay: string;
   kiosk: string | null;
+  /** cardboard baler, litter bin and outside dumpster (chores) */
+  baler: string | null;
+  bin: string | null;
+  dumpster: string | null;
   backroom: string;
   bayContainer: string;
   queue: Vec2[];
@@ -411,7 +441,7 @@ export const SHOPS: Record<string, ShopDef> = {
   market: {
     id: 'market', shelves: SHELF_LAYOUT.map((x) => `shelf_${x.product}`),
     pallets: Object.fromEntries(PRODUCTS.map((p) => [`shelf_${p}`, `pallet_${p}`])),
-    till: 'till', terminal: 'terminal', cupboard: 'cupboard', bay: 'bay', kiosk: 'kiosk', backroom: 'market_backroom', bayContainer: 'market_bay',
+    till: 'till', terminal: 'terminal', cupboard: 'cupboard', bay: 'bay', kiosk: 'kiosk', baler: 'baler', bin: 'shopbin', dumpster: 'dumpster', backroom: 'market_backroom', bayContainer: 'market_bay',
     queue: QUEUE_SLOTS,
     dirtSpots: [{ x: 14.5, z: -19.5 }, { x: 19.5, z: -20.5 }, { x: 24.5, z: -23 }, { x: 29.5, z: -19 }, { x: 34.3, z: -22 }, { x: 19.5, z: -15.6 }, { x: 27, z: -15.6 }, { x: 17.5, z: -12.6 }],
     entrance: { x: 17.5, z: -11.4 }, standby: [{ x: 22, z: -15.1 }, { x: 27, z: -15.6 }], dropZone: { x: 24, z: -38.7 },
@@ -419,7 +449,7 @@ export const SHOPS: Record<string, ShopDef> = {
   },
   unit4: {
     id: 'unit4', shelves: U4_SECTIONS.map((x) => x.id), pallets: Object.fromEntries(U4_SECTIONS.map((x, i) => [x.id, `u4_p${i + 1}`])),
-    till: 'u4_till', terminal: 'u4_terminal', cupboard: 'u4_cupboard', bay: 'u4_bay', kiosk: null, backroom: 'unit4_backroom', bayContainer: 'unit4_bay',
+    till: 'u4_till', terminal: 'u4_terminal', cupboard: 'u4_cupboard', bay: 'u4_bay', kiosk: null, baler: 'u4_baler', bin: 'u4_bin', dumpster: 'u4_dumpster', backroom: 'unit4_backroom', bayContainer: 'unit4_bay',
     queue: U4_QUEUE, dirtSpots: [{ x: 78.3, z: 22 }, { x: 82.5, z: 24 }, { x: 86.5, z: 21 }, { x: 82.5, z: 17.5 }],
     entrance: { x: 80.5, z: 13.4 }, standby: [{ x: 84.5, z: 16.1 }, { x: 82.5, z: 17.5 }], dropZone: { x: 90.5, z: 9.6 },
     vanOut: [], vanBack: [],
@@ -491,6 +521,13 @@ function buildWorldData(homeDesign: HomeDesign): World {
   obstacles.push({ kind: 'cupboard', rect: { x0: 35.2, z0: -31, x1: 35.85, z1: -29 }, height: 2.0, solid: true });
   add({ id: 'cupboard', kind: 'cupboard', label: 'Cleaning cupboard', pos: { x: 34.5, z: -30 }, facing: Math.PI / 2, obj: { x: 35.5, z: -30 }, locationId: 'market', businessId: 'market' });
   add({ id: 'bay', kind: 'bay', label: 'Loading bay', pos: { x: 24, z: -37.4 }, facing: Math.PI, obj: { x: 24, z: -38.7 }, locationId: 'market', businessId: 'market', range: 2.2 });
+  // chores: a cardboard baler in the store room, a litter bin by the door and a dumpster out by the loading bay
+  obstacles.push({ kind: 'baler', rect: { x0: 15.9, z0: -28.95, x1: 17.5, z1: -28.15 }, height: 1.9, solid: true, rot: Math.PI });
+  add({ id: 'baler', kind: 'baler', label: 'Cardboard baler', pos: { x: 16.7, z: -29.8 }, facing: 0, obj: { x: 16.7, z: -28.55 }, locationId: 'market', businessId: 'market' });
+  obstacles.push({ kind: 'shopbin', rect: { x0: 14.6, z0: -10.85, x1: 15.2, z1: -10.25 }, height: 0.95, solid: true, rot: Math.PI });
+  add({ id: 'shopbin', kind: 'shopbin', label: 'Litter bin', pos: { x: 14.9, z: -11.6 }, facing: 0, obj: { x: 14.9, z: -10.55 }, locationId: 'market', businessId: 'market' });
+  obstacles.push({ kind: 'dumpster', rect: { x0: 29.85, z0: -37.25, x1: 31.15, z1: -36.15 }, height: 1.3, solid: true, rot: Math.PI });
+  add({ id: 'dumpster', kind: 'dumpster', label: 'Dumpster', pos: { x: 30.5, z: -38.1 }, facing: 0, obj: { x: 30.5, z: -36.7 }, locationId: 'outside', businessId: 'market', range: 1.8 });
 
   // ---- Flat 1 interior: fixed fittings, then the occupant's design furnishes the rooms
   {
@@ -498,26 +535,32 @@ function buildWorldData(homeDesign: HomeDesign): World {
     const stove: PlacedItem = { kind: 'stove', rect: { x0: 17.6, z0: 25.2, x1: 18.2, z1: 25.85 }, height: 0.92, solid: true, rot: Math.PI, room: 'kitchen' };
     const shower: PlacedItem = { kind: 'shower', rect: { x0: 28.85, z0: 13.2, x1: 29.85, z1: 14.2 }, height: 2.1, solid: true, rot: -Math.PI / 2, room: 'bathroom' };
     const toilet: PlacedItem = { kind: 'toilet', rect: { x0: 29.2, z0: 16.0, x1: 29.85, z1: 16.7 }, height: 0.8, solid: true, rot: -Math.PI / 2, room: 'bathroom' };
+    const washer: PlacedItem = { kind: 'washer', rect: { x0: 18.25, z0: 25.22, x1: 18.85, z1: 25.82 }, height: 0.85, solid: true, rot: Math.PI, room: 'kitchen' };
     const basin: PlacedItem = { kind: 'basin', rect: { x0: 27.0, z0: 13.2, x1: 27.6, z1: 13.65 }, height: 0.85, solid: true, rot: 0, room: 'bathroom' };
     const furnished = furnish({
       rooms: [
-        { id: 'living', name: 'Living room', kind: 'living', rect: { x0: 12.15, z0: 13.75, x1: 21.85, z1: 23.6 }, doors: [{ x: 16.7, z: 13.75 }], outside: ['x0'], open: [{ side: 'z1', from: 12, to: 22 }, { side: 'x1', from: 13.7, to: 17.7 }] },
+        { id: 'living', name: 'Living room', kind: 'living', rect: { x0: 16.2, z0: 13.75, x1: 21.85, z1: 23.6 }, doors: [{ x: 16.7, z: 13.75 }, { x: 16.2, z: 16.0 }], outside: [], open: [{ side: 'z1', from: 12, to: 22 }, { side: 'x1', from: 13.7, to: 17.7 }, { side: 'x0', from: 20.8, to: 23.6 }] },
+        { id: 'dining', name: 'Dining area', kind: 'dining', rect: { x0: 12.15, z0: 20.8, x1: 16.2, z1: 23.6 }, doors: [], outside: ['x0'], open: [{ side: 'x1', from: 20.8, to: 23.6 }, { side: 'z1', from: 12, to: 16.2 }] },
+        { id: 'spare', name: 'Spare room', kind: 'spare', rect: { x0: 12.15, z0: 13.75, x1: 15.9, z1: 20.5 }, doors: [{ x: 15.9, z: 16.0 }], outside: ['x0'] },
+        { id: 'utility', name: 'Utility room', kind: 'utility', rect: { x0: 18.15, z0: 10.15, x1: 25.35, z1: 13.45 }, doors: [{ x: 23.6, z: 13.45 }], outside: ['z0'] },
         { id: 'kitchen', name: 'Kitchen', kind: 'kitchen', rect: { x0: 12.15, z0: 23.6, x1: 21.85, z1: 25.85 }, doors: [], outside: ['x0', 'z1'] },
-        { id: 'hall', name: 'Hall', kind: 'hall', rect: { x0: 21.85, z0: 13.75, x1: 25.35, z1: 17.35 }, doors: [{ x: 23.5, z: 17.5 }, { x: 25.5, z: 15.0 }], outside: [], open: [{ side: 'x0', from: 13.7, to: 17.7 }] },
+        { id: 'hall', name: 'Hall', kind: 'hall', rect: { x0: 21.85, z0: 13.75, x1: 25.35, z1: 17.35 }, doors: [{ x: 23.5, z: 17.5 }, { x: 25.5, z: 15.0 }, { x: 23.6, z: 13.75 }], outside: [], open: [{ side: 'x0', from: 13.7, to: 17.7 }] },
         { id: 'bedroom', name: 'Bedroom', kind: 'bedroom', rect: { x0: 22.15, z0: 17.65, x1: 29.85, z1: 25.85 }, doors: [{ x: 23.5, z: 17.65 }], outside: ['x1', 'z1'] },
         { id: 'bathroom', name: 'Bathroom', kind: 'bathroom', rect: { x0: 25.65, z0: 13.15, x1: 29.85, z1: 17.35 }, doors: [{ x: 25.65, z: 15.0 }], outside: ['x1'] },
       ],
       routes: [
         [{ x: 16.7, z: 12.9 }, { x: 16.7, z: 14.4 }], [{ x: 16.7, z: 14.4 }, { x: 23.5, z: 14.5 }], [{ x: 23.5, z: 14.5 }, { x: 23.5, z: 19.5 }],
-        [{ x: 16.7, z: 14.4 }, { x: 15.5, z: 20 }], [{ x: 23.5, z: 14.5 }, { x: 27.2, z: 15 }], [{ x: 15.5, z: 20 }, { x: 15.0, z: 24.4 }], [{ x: 15.5, z: 20 }, { x: 17.9, z: 24.4 }],
+        [{ x: 16.7, z: 14.4 }, { x: 17.2, z: 20.8 }], [{ x: 23.5, z: 14.5 }, { x: 27.2, z: 15 }], [{ x: 17.2, z: 20.8 }, { x: 15.0, z: 24.4 }], [{ x: 17.2, z: 20.8 }, { x: 17.9, z: 24.4 }], [{ x: 17.2, z: 20.8 }, { x: 18.6, z: 24.5 }],
+        [{ x: 16.7, z: 14.4 }, { x: 16.7, z: 16.0 }], [{ x: 16.7, z: 16.0 }, { x: 15.1, z: 16.0 }], [{ x: 23.5, z: 14.5 }, { x: 23.6, z: 12.6 }],
       ],
-      fixed: [kitchenRun, stove, shower, toilet, basin],
+      fixed: [kitchenRun, stove, washer, shower, toilet, basin],
       fixedUses: [
         { id: 'kitchen', kind: 'kitchen', label: 'Kitchen', pos: { x: 15.0, z: 24.4 }, facing: 0, obj: { x: 15.0, z: 25.5 } },
         { id: 'stove', kind: 'stove', label: 'Cooker', pos: { x: 17.9, z: 24.4 }, facing: 0, obj: { x: 17.9, z: 25.5 } },
+        { id: 'washer', kind: 'washer', label: 'Washing machine', pos: { x: 18.6, z: 24.5 }, facing: 0, obj: { x: 18.55, z: 25.5 } },
         { id: 'shower', kind: 'shower', label: 'Shower', pos: { x: 28.2, z: 14.7 }, facing: Math.PI / 2, obj: { x: 29.35, z: 13.7 } },
       ],
-      hubs: { living: 'fl_k', bedroom: 'fl_bed', bathroom: 'fl_bath', hall: 'fl_c', kitchen: 'fl_k' },
+      hubs: { living: 'fl_k', dining: 'fl_k', spare: 'fl_door_i', utility: 'fl_c', bedroom: 'fl_bed', bathroom: 'fl_bath', hall: 'fl_c', kitchen: 'fl_k' },
     }, homeDesign);
     for (const it of furnished.items) obstacles.push({ kind: it.kind as ObstacleKind, rect: it.rect, height: it.height, solid: it.solid, rot: it.rot, color: it.color });
     for (const u of furnished.uses) add({ ...u, kind: u.kind as InteractKind, locationId: 'flat' });
@@ -556,6 +599,12 @@ function buildWorldData(homeDesign: HomeDesign): World {
   add({ id: 'u4_terminal', kind: 'terminal', label: 'Staff terminal', pos: { x: 89.4, z: 31 }, facing: -Math.PI / 2, obj: { x: 88.4, z: 31 }, locationId: 'unit4', businessId: 'unit4' });
   obstacles.push({ kind: 'cupboard', rect: { x0: 93.2, z0: 31.5, x1: 93.85, z1: 33.5 }, height: 2.0, solid: true });
   add({ id: 'u4_cupboard', kind: 'cupboard', label: 'Cleaning cupboard', pos: { x: 92.5, z: 32.5 }, facing: Math.PI / 2, obj: { x: 93.5, z: 32.5 }, locationId: 'unit4', businessId: 'unit4' });
+  obstacles.push({ kind: 'baler', rect: { x0: 88.15, z0: 26.5, x1: 88.95, z1: 28.1 }, height: 1.9, solid: true, rot: Math.PI / 2 });
+  add({ id: 'u4_baler', kind: 'baler', label: 'Cardboard baler', pos: { x: 89.8, z: 27.3 }, facing: -Math.PI / 2, obj: { x: 88.55, z: 27.3 }, locationId: 'unit4', businessId: 'unit4' });
+  obstacles.push({ kind: 'shopbin', rect: { x0: 77.0, z0: 12.25, x1: 77.6, z1: 12.85 }, height: 0.95, solid: true });
+  add({ id: 'u4_bin', kind: 'shopbin', label: 'Litter bin', pos: { x: 77.3, z: 13.6 }, facing: Math.PI, obj: { x: 77.3, z: 12.55 }, locationId: 'unit4', businessId: 'unit4' });
+  obstacles.push({ kind: 'dumpster', rect: { x0: 92.65, z0: 10.65, x1: 93.95, z1: 11.75 }, height: 1.3, solid: true, rot: Math.PI });
+  add({ id: 'u4_dumpster', kind: 'dumpster', label: 'Dumpster', pos: { x: 93.3, z: 9.7 }, facing: 0, obj: { x: 93.3, z: 11.2 }, locationId: 'outside', businessId: 'unit4', range: 1.8 });
   add({ id: 'u4_bay', kind: 'bay', label: 'Goods-in', pos: { x: 90.5, z: 10.8 }, facing: Math.PI, obj: { x: 90.5, z: 9.6 }, locationId: 'unit4', businessId: 'unit4', range: 2.2 });
 
   // ---- outdoor props
@@ -713,6 +762,9 @@ function buildWorldData(homeDesign: HomeDesign): World {
   N('mk_cupboard', 34.5, -30, 'market'); L('mk_b_34.5', 'mk_cupboard');
   N('mk_rd_in', 24, -34.8, 'market'); N('mk_bay', 24, -37.4, 'outside');
   L('mk_b_24', 'mk_rd_in', 'mk_bay', 'hn_e_38');
+  N('mk_baler', 16.7, -29.8, 'market'); L('mk_b_16', 'mk_baler');
+  N('mk_bin', 14.9, -11.6, 'market'); L('mk_in', 'mk_bin', 'mk_kiosk');
+  N('mk_dump', 30.5, -38.1, 'outside'); L('mk_bay', 'mk_dump');
 
   // Dockside Unit 4
   N('u4_out', 80.5, 9.8); N('u4_in', 80.5, 13.4, 'unit4');
@@ -733,6 +785,9 @@ function buildWorldData(homeDesign: HomeDesign): World {
   N('u4_term', 89.4, 31, 'unit4'); N('u4_cup', 92.5, 32.5, 'unit4'); L('u4_b2', 'u4_term'); L('u4_b2', 'u4_cup');
   N('u4_goods_in', 90.5, 13.4, 'unit4'); N('u4_goods_out', 90.5, 10.8);
   L('u4_b1', 'u4_goods_in', 'u4_goods_out', 'se_88');
+  N('u4_baler', 89.8, 27.3, 'unit4'); L('u4_pal3', 'u4_baler');
+  N('u4_bin', 77.3, 13.6, 'unit4'); L('u4_in', 'u4_bin');
+  N('u4_dump', 93.3, 9.7); L('u4_goods_out', 'u4_dump');
 
   // Job centre
   N('jc_out', -24, -8.6); N('jc_in', -24, -11.6, 'jobcentre'); N('jc_board', -24, -26.3, 'jobcentre'); N('jc_adv', -31, -17.6, 'jobcentre');
@@ -749,20 +804,22 @@ function buildWorldData(homeDesign: HomeDesign): World {
   // Flat (player only, but graph allows player-follow tests)
   N('fl_out', 16, 8.6); N('fl_in', 16, 11.6, 'flat');
   L('se_16', 'fl_out', 'fl_in');
-  N('fl_c', 23.5, 14.5, 'flat'); N('fl_k', 15.5, 20, 'flat'); N('fl_bed', 23.5, 19.5, 'flat'); N('fl_bath', 27.2, 15.0, 'flat');
+  N('fl_c', 23.5, 14.5, 'flat'); N('fl_k', 17.2, 20.8, 'flat'); N('fl_bed', 23.5, 19.5, 'flat'); N('fl_bath', 27.2, 15.0, 'flat');
   N('fl_door_o', 16.7, 12.9, 'flat'); N('fl_door_i', 16.7, 14.4, 'flat');
   L('fl_in', 'fl_door_o', 'fl_door_i', 'fl_c', 'fl_bed'); L('fl_door_i', 'fl_k'); L('fl_c', 'fl_bath');
   // designed furniture: a node in front of each thing you use, linked to its room's hub
   // the home's furniture changes with its design, so its floor gets a fine walking grid: every free
   // spot links to its neighbours, and fixed nodes and the designed furniture's stand points join it
   {
-    const H = { x0: 12.2, z0: 13.8, x1: 29.8, z1: 25.8 };
+    const H = { x0: 12.2, z0: 10.2, x1: 29.8, z1: 25.8 };
     const step = 0.6;
     const blocked = (x: number, z: number) => colliders.some((r) => x > r.x0 - 0.28 && x < r.x1 + 0.28 && z > r.z0 - 0.28 && z < r.z1 + 0.28);
     const clear = (a: Vec2, b: Vec2) => !colliders.some((r) => segIntersectsRect(a, b, r, 0.2));
     const grid: string[] = [];
     for (let x = H.x0 + 0.3; x < H.x1; x += step) for (let z = H.z0 + 0.3; z < H.z1; z += step) {
       if (blocked(x, z)) continue;
+      // the communal lobby and the bin store are not part of the flat
+      if (z < 13.45 && (x < 18.15 || x > 25.35)) continue;
       const id = `flg_${Math.round(x * 10)}_${Math.round(z * 10)}`;
       N(id, x, z, 'flat');
       grid.push(id);

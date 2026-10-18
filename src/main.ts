@@ -9,7 +9,7 @@ import { loadHumanAsset, buildRealHuman } from './render/humanAsset';
 import { loadModels } from './render/models';
 import { buildRig, loadMocap } from './render/character';
 
-await Promise.all([loadHumanAsset(), loadMocap(), loadModels(['car', 'van', 'gondola_bay', 'checkout', 'sofa', 'bed', 'wardrobe', 'table', 'chair', 'tvunit', 'kitchen_base', 'cooker', 'fridge', 'coffee_table', 'bookcase', 'drawers', 'armchair', 'desk', 'sideboard', 'bedside', 'basin'])]);
+await Promise.all([loadHumanAsset(), loadMocap(), loadModels(['car', 'van', 'gondola_bay', 'checkout', 'sofa', 'bed', 'wardrobe', 'table', 'chair', 'tvunit', 'kitchen_base', 'cooker', 'fridge', 'coffee_table', 'bookcase', 'drawers', 'armchair', 'desk', 'sideboard', 'bedside', 'basin', 'baler', 'dumpster', 'shopbin', 'washer', 'binbag', 'carton', 'storage_shelf', 'ironing_board', 'laundry_basket', 'drying_rack', 'bike', 'vacuum', 'rack_bay', 'pallet_load', 'pallet', 'forklift', 'roller_door'])]);
 const canvas = document.getElementById('view') as HTMLCanvasElement;
 const seed = (Date.now() % 100000) + 1;
 const appearance = { frame: 'm', skin: SKIN_TONES[2], hair: 'short', hairColor: HAIR_COLORS[1], build: 'average' } as Omit<Appearance, 'outfit' | 'height'>;

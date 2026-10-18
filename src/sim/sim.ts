@@ -5,6 +5,7 @@
 import type { GameState, Person } from './types';
 import { MIN_PER_DAY, minuteOfDay, dayIndex } from './clock';
 import { tickNeeds } from './needs';
+import { tickChores } from './home';
 import { enforceLocationRules, tickAction } from './actions';
 import { employmentTick, processApplications, refreshVacancies, runPayroll } from './employment';
 import { autoReorder, dailyClose, nightFill, retailTick } from './retail';
@@ -49,6 +50,7 @@ function substep(state: GameState, dt: number, ev: StepEvents) {
     }
     if (p.move) tickMovement(state, p, dt);
     tickNeeds(state, p, dt);
+    tickChores(state, p, dt);
     if (p.visible) enforceLocationRules(state, p);
   }
   logisticsTick(state, dt);

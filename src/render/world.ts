@@ -674,6 +674,13 @@ function buildObstacle(o: Obstacle): THREE.Object3D {
       break;
     case 'sideboard': if (fit('sideboard', r, o.rot ?? 0)) return grp; break;
     case 'basin': if (fit('basin', r, o.rot ?? 0)) return grp; break;
+    case 'baler': if (fit('baler', r, o.rot ?? 0)) return grp; grp.add(box(W, o.height, D, M('#d98c14', 0.5), cx, o.height / 2, cz)); return grp;
+    case 'dumpster': if (fit('dumpster', r, o.rot ?? 0, '#2f6b3a')) return grp; grp.add(box(W, o.height, D, metal('#8a8f94'), cx, o.height / 2, cz)); return grp;
+    case 'shopbin': if (fit('shopbin', r, o.rot ?? 0)) return grp; grp.add(cyl(W / 2, W / 2, o.height, metal('#c0c4c8'), cx, o.height / 2, cz, 16)); return grp;
+    case 'storage_shelf': case 'ironing_board': case 'laundry_basket': case 'drying_rack': case 'bike': case 'vacuum':
+      if (fit(o.kind, r, o.rot ?? 0, o.kind === 'bike' ? '#2f6d8f' : undefined)) return grp;
+      grp.add(box(W, o.height, D, M('#9aa0a6', 0.6), cx, o.height / 2, cz)); return grp;
+    case 'washer': if (fit('washer', r, o.rot ?? 0)) return grp; grp.add(box(W, o.height, D, M('#f0f0ee', 0.3), cx, o.height / 2, cz)); return grp;
     case 'wardrobe': if (fit('wardrobe', r, o.rot ?? Math.PI)) return grp; break;
     case 'drawers': if (fit('drawers', r, o.rot ?? Math.PI)) return grp; break;
     case 'coffee_table': if (fit('coffee_table', r, o.rot ?? Math.PI / 2)) return grp; break;

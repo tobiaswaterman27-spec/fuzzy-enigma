@@ -15,6 +15,12 @@ export const SHELF_CAPACITY = 64;
 export const RESTOCK_BELOW = 13;
 export const RESTOCK_DONE = 24;
 
+/** facings this untidy get a face-up task; a case this many boxes deep gets a baling task */
+export const FACE_AT = 35;
+export const CARDBOARD_AT = 4;
+export const BIN_CAPACITY = 30;
+export const BIN_EMPTY_AT = 20;
+
 export const shelfId = (p: string) => `shelf_${p}`;
 
 export const shopDef = (bid: Id): ShopDef => SHOPS[bid];
@@ -110,8 +116,13 @@ export function completeSale(state: GameState, businessId: Id, customerId: Id, s
     const a = openAttendance(state, staffId);
     if (a) { a.served++; a.tasks++; }
   }
-  // a small chance that a visit leaves a mess behind
+  // a small chance that a visit leaves a mess behind; receipts and wrappers go in the bin by the door
   if (rand(state) < 0.05) spawnDirt(state, b.id);
+  if (SHOPS[b.id]?.bin) {
+    b.binFill = (b.binFill ?? 0) + (rand(state) < 0.45 ? 1 : 0);
+    // an overflowing bin ends up as litter on the floor
+    if (b.binFill > BIN_CAPACITY) { b.binFill = BIN_CAPACITY; if (rand(state) < 0.5) spawnDirt(state, b.id); }
+  }
   return { ok: true, total: value, units, msg: `Paid ${fmtMoney(value)} for ${units} item${units > 1 ? 's' : ''}.` };
 }
 
@@ -208,6 +219,25 @@ export function retailTick(state: GameState, b: Business) {
     else if (t && n >= Math.min(RESTOCK_DONE, shelf.capacity * 0.8)) { t.status = 'done'; t.doneAt = state.minute; }
     else if (t && !supply) cancelTask(t);
   }
+  // chores: untidy facings, flattened boxes, the litter bin
+  const messy = b.messy ?? {};
+  for (const sh of Object.keys(b.sections)) {
+    const t = findTask(state, b.id, 'face', sh);
+    const m = messy[sh] ?? 0;
+    if (!t && m >= FACE_AT) createTask(state, b.id, 'face', sh, b.sections[sh]);
+    else if (t && m < 5) { t.status = 'done'; t.doneAt = state.minute; }
+  }
+  if (S.baler) {
+    const t = findTask(state, b.id, 'cardboard', S.baler);
+    if (!t && (b.cardboard ?? 0) >= CARDBOARD_AT) createTask(state, b.id, 'cardboard', S.baler);
+    else if (t && (b.cardboard ?? 0) === 0) { t.status = 'done'; t.doneAt = state.minute; }
+  }
+  if (S.bin) {
+    const t = findTask(state, b.id, 'rubbish', S.bin);
+    const bagOut = Object.values(state.people).some((p) => p.equipment === 'rubbish' && p.where !== 'flat');
+    if (!t && (b.binFill ?? 0) >= BIN_EMPTY_AT) createTask(state, b.id, 'rubbish', S.bin);
+    else if (t && (b.binFill ?? 0) === 0 && !bagOut) { t.status = 'done'; t.doneAt = state.minute; }
+  }
   for (const d of Object.values(state.dirt)) if (d.locationId === b.id && !findTask(state, b.id, 'clean', d.id)) createTask(state, b.id, 'clean', d.id);
   for (const t of openTasks(state, b.id)) if (t.kind === 'clean' && !state.dirt[t.target]) cancelTask(t);
   for (const s of Object.values(state.shipments)) if (s.buyerId === b.id && s.status === 'arrived' && !findTask(state, b.id, 'receive', s.id)) createTask(state, b.id, 'receive', s.id);
@@ -296,6 +326,8 @@ export function nightFill(state: GameState, b: Business): number {
   if (!S) return 0;
   const back = state.containers[S.backroom];
   let moved = 0;
+  // the crew faces up as it goes, and takes its own empty cases away
+  if (b.messy) for (const sh of Object.keys(b.messy)) b.messy[sh] = Math.round(b.messy[sh] * 0.3);
   for (const [sh, k] of Object.entries(b.sections)) {
     const c = state.containers[sh];
     if (!c || !k) continue;
@@ -325,6 +357,12 @@ export function dailyClose(state: GameState, b: Business) {
     const unitsSold = Math.max(1, Math.round(s.cogs / 100));
     const inStock = unitsSold / (unitsSold + s.lostSales);
     let d = (served - 0.85) * 8 + (inStock - 0.7) * 5 + (b.cleanliness >= 70 ? 0.4 : -1);
+    // a tidy shop: neat facings, no boxes piling up, a bin that is not overflowing
+    const facings = Object.keys(b.sections).map((sh) => b.messy?.[sh] ?? 0);
+    const untidy = facings.length ? facings.reduce((a, c) => a + c, 0) / facings.length : 0;
+    d += untidy < 25 ? 0.2 : untidy > 50 ? -0.8 : -0.3;
+    if ((b.cardboard ?? 0) > 12) d -= 0.4;
+    if ((b.binFill ?? 0) >= BIN_CAPACITY) d -= 0.5;
     d = clamp(d, -4, 3);
     b.reputation = clamp(b.reputation + d, 5, 100);
   }

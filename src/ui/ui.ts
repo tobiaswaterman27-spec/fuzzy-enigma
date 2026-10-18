@@ -8,6 +8,7 @@ import { accountTxns } from '../sim/ledger';
 import { questionsFor } from '../sim/employment';
 import { acceptOffer, acceptPromotion, applyForJob, attendInterview, canApply, currentShift, declineOffer, hoursPerWeek, INTERVIEW, nextShift, openAttendance, positionOf, promotionEligible, resign, shiftLabel, scoreShift } from '../sim/employment';
 import { conditionLabel, skillLevel } from '../sim/needs';
+import { choreStatus } from '../sim/home';
 import { agenda, currentObjective } from '../sim/objectives';
 import { defaultDesign, EXTRAS, FABRICS, FLOORS, RUGS, WALLPAPERS, type HomeDesign } from '../sim/world/homes';
 import { cancelAction, startAction } from '../sim/actions';
@@ -114,7 +115,7 @@ export class UI {
       const role = positionOf(s, s.contracts[att.contractId])?.role;
       shiftCard.innerHTML = `<b>On shift</b>${role && role !== 'general' ? ` · ${ROLE_LABEL[role]}` : ''} · ${left > 0 ? `${fmtDuration(left)} left` : '<span class="warn">Shift over: clock out</span>'}<br>
         Tasks done: ${att.tasks} · Served: ${att.served}${att.late ? ` · <span class="warn">${att.late}m late</span>` : ''}<br>
-        <span class="muted">Waiting work:</span> ${Object.entries(by).map(([k, n]) => `${n} ${k}`).join(', ') || 'none'}${(() => { const q = Object.values(s.tills).find((t) => t.businessId === s.contracts[att.contractId].businessId)?.queue.length ?? 0; return q ? ` · <span class="warn">${q} at till</span>` : ''; })()}<br>
+        <span class="muted">Waiting work:</span> ${Object.entries(by).map(([k, n]) => `${n} ${TASK_LABELS[k]?.[n === 1 ? 0 : 1] ?? k}`).join(', ') || 'none'}${(() => { const q = Object.values(s.tills).find((t) => t.businessId === s.contracts[att.contractId].businessId)?.queue.length ?? 0; return q ? ` · <span class="warn">${q} at till</span>` : ''; })()}<br>
         <span class="muted">Score so far ~${preview}</span>`;
     } else shiftCard.hidden = true;
     // interaction prompt
@@ -245,7 +246,7 @@ export class UI {
     const bag = s.containers[p.bagId];
     const pantry = p.pantryId ? s.containers[p.pantryId] : null;
     const inv = (c: typeof bag | null) => c && total(c) ? Object.entries(c.items).map(([k, n]) => `${n}× ${itemName(k)}`).join(', ') : 'empty';
-    return `<div class="card"><b>${esc(p.name)}</b><br>Energy ${p.needs.energy.toFixed(0)} · Food ${p.needs.satiety.toFixed(0)} · Hygiene ${p.needs.hygiene.toFixed(0)} · Mood ${p.needs.mood.toFixed(0)}<br><span class="muted">${conditionLabel(p).join(' · ') || 'Feeling fine'}</span><br>Professional reputation ${p.reputation.toFixed(0)}/100</div>
+    return `<div class="card"><b>${esc(p.name)}</b><br>Energy ${p.needs.energy.toFixed(0)} · Food ${p.needs.satiety.toFixed(0)} · Hygiene ${p.needs.hygiene.toFixed(0)} · Mood ${p.needs.mood.toFixed(0)}<br><span class="muted">${conditionLabel(p).join(' · ') || 'Feeling fine'}</span><br>${choreStatus(s, p).length ? `<span class="muted">Home: ${esc(choreStatus(s, p).join(' · '))}</span><br>` : ''}Professional reputation ${p.reputation.toFixed(0)}/100</div>
       <h3>Effects</h3><p class="muted">Below 25 energy you move and work 20% slower (36% below 10). Starving slows work. Sleep in your bed to recover. Eat food from your kitchen or a cafe meal.</p>
       <h3>Skills</h3>${['retail', 'cleaning', 'warehouse'].map((k) => `<div class="line"><span>${k}</span><span>level ${skillLevel(p.skills[k] ?? 0)} (${p.skills[k] ?? 0} xp)</span></div>`).join('')}
       <p class="muted">Each level makes related work 6% faster and improves job applications.</p>
@@ -547,5 +548,12 @@ const ACTION_LABELS: Record<string, string> = {
   serve_customer: 'Scanning items…', self_checkout: 'Scanning and paying…', take_mop: 'Getting the mop…', return_mop: 'Putting the mop away…', clean: 'Mopping…',
   check_in_delivery: 'Counting the delivery in…', pick_item: 'Taking item…', sleep: 'Sleeping… (time is fast-forwarding)', eat: 'Eating…', store_food: 'Putting shopping away…',
   change_outfit: 'Changing clothes…', buy_meal: 'Eating a cafe meal…', sit: 'Sitting (resting slowly)',
+  shower: 'Showering…', cook: 'Cooking…', watch_tv: 'Watching TV', talk: 'Chatting…',
+  face_shelf: 'Facing up: pulling packs forward, labels out…', bale_cardboard: 'Flattening boxes into the baler…', empty_bin: 'Tying off the bin bag…', dump_rubbish: 'Throwing the bag in…',
+  wash_up: 'Washing up…', laundry: 'Doing the laundry…', tidy: 'Tidying up…',
+};
+const TASK_LABELS: Record<string, [string, string]> = {
+  restock: ['restock', 'restocks'], serve: ['customer to serve', 'customers to serve'], clean: ['spill', 'spills'], receive: ['delivery', 'deliveries'],
+  face: ['shelf to face up', 'shelves to face up'], cardboard: ['cardboard to bale', 'cardboard to bale'], rubbish: ['bin to empty', 'bins to empty'],
 };
 const actionLabel = (t: string) => ACTION_LABELS[t] ?? t;

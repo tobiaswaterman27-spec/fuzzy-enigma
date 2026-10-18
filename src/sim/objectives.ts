@@ -6,6 +6,8 @@ import { nextShift, openAttendance, positionOf } from './employment';
 import { workplaceOf } from './npc';
 import { getWorld } from './world/layout';
 import { planRoute, routeLength } from './world/nav';
+import { inWash, isDirty } from './home';
+import { itemName } from './items';
 
 export const OBJECTIVES: { id: string; text: string; done: (s: GameState) => boolean }[] = [
   { id: 'find_job', text: 'Find work: check the vacancy board at the Job Centre (or Phone > Jobs)', done: (s) => !!s.flags.viewedJobs },
@@ -89,5 +91,15 @@ export function agenda(state: GameState): Reminder | null {
     const r = { text, urgent: late || now >= leaveAt, leaveAt, startsAt: it.at };
     if (!best || r.startsAt < best.startsAt) best = r;
   }
-  return best;
+  if (best) return best;
+  // laundry: a grubby uniform with a shift coming up, or a finished wash waiting in the machine
+  const c = p.chores;
+  if (c?.washer && now >= c.washer.until && p.where !== p.homeId) return { text: 'Your washing is done - unload the machine when you are home.', urgent: false, leaveAt: now, startsAt: now };
+  if (p.contractId) {
+    const ct = state.contracts[p.contractId];
+    const sh = nextShift(ct, now);
+    const u = positionOf(state, ct)?.uniform;
+    if (sh && u && isDirty(p, u) && !inWash(p, u) && sh.start - now < 16 * 60) return { text: `Your ${itemName(u)} is dirty - put a wash on before your ${fmtClock(sh.start)} shift (the machine takes 75 min).`, urgent: false, leaveAt: now, startsAt: sh.start };
+  }
+  return null;
 }

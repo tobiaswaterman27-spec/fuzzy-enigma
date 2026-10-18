@@ -145,7 +145,14 @@ export type ActionType =
   | 'watch_tv'
   | 'cook'
   | 'talk'
-  | 'sit';
+  | 'sit'
+  | 'face_shelf'
+  | 'bale_cardboard'
+  | 'empty_bin'
+  | 'dump_rubbish'
+  | 'wash_up'
+  | 'laundry'
+  | 'tidy';
 
 export interface ActionState {
   type: ActionType;
@@ -242,6 +249,8 @@ export interface Person {
   sleeping: boolean;
   /** familiarity with other people built through conversation and working together (0..100) */
   relations: Record<Id, number>;
+  /** home upkeep (player): dirty dishes, untidiness, clothes wear and the washing machine */
+  chores?: { dishes: number; mess: number; wear: Record<string, number>; washer: { items: string[]; until: number } | null };
 }
 
 // ------------------------------------------------------------- business
@@ -321,6 +330,12 @@ export interface Business {
   equipment: Record<string, boolean>;
   /** player-owned: the owner decides on hiring instead of automatic offers */
   ownerDecidesHiring?: boolean;
+  /** shelf id -> how untidy the facings are (0 neat .. 100 ransacked); customers' picks mess them up */
+  messy?: Record<string, number>;
+  /** emptied stock cases waiting to be flattened in the baler */
+  cardboard?: number;
+  /** litter bin by the door (0..BIN_CAPACITY) */
+  binFill?: number;
 }
 
 export interface Policy {
@@ -401,7 +416,7 @@ export interface Application {
 }
 
 // --------------------------------------------------------------- tasks
-export type TaskKind = 'restock' | 'serve' | 'clean' | 'receive';
+export type TaskKind = 'restock' | 'serve' | 'clean' | 'receive' | 'face' | 'cardboard' | 'rubbish';
 
 export interface Task {
   id: Id;

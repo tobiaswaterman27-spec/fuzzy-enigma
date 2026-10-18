@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import type { GameState, Person } from '../sim/types';
 import { AnimationController, buildRig, dress, type Rig } from './character';
 import { buildCar } from './world';
+import { modelInstance } from './models';
 import { productGeometry, productMaterial, productUnitGeometry } from './products';
 import { buildingAt, getWorld, type Interactable, SHELF_LAYOUT, PALLET_X, SHOPS, U4_SECTIONS, U4_PALLET_Z } from '../sim/world/layout';
 import { ITEMS } from '../sim/items';
@@ -47,6 +48,7 @@ class PersonView {
   carriedItem = '';
   carriedHeld = true;
   mop: THREE.Group | null = null;
+  binbag: THREE.Object3D | null = null;
   label: THREE.Sprite | null = null;
   culled = false;
   shadow = true;
@@ -64,6 +66,8 @@ class PersonView {
     this.p = p;
     const root = this.rig.root;
     root.visible = p.visible && !this.culled;
+    if (this.mop) this.mop.visible = root.visible;
+    if (this.binbag) this.binbag.visible = root.visible;
     if (!root.visible) { root.position.set(p.pos.x, 0, p.pos.z); return; }
     const key = JSON.stringify(p.appearance);
     if (key !== this.outfitKey && buildBudget > 0) {
@@ -77,7 +81,9 @@ class PersonView {
         this.anim = new AnimationController(this.rig);
         this.rig.root.position.copy(pos); this.rig.root.rotation.y = rot;
         parent.add(this.rig.root);
-        this.carried = null; this.carriedItem = ''; this.mop = null;
+        this.carried = null; this.carriedItem = '';
+        this.mop?.parent?.remove(this.mop); this.mop = null;
+        this.binbag?.parent?.remove(this.binbag); this.binbag = null;
       } else dress(this.rig, p.appearance);
       this.outfitKey = key;
     }
@@ -191,6 +197,15 @@ class PersonView {
       this.mop.parent?.remove(this.mop);
       this.mop = null;
     }
+    // a tied bin bag carried out to the dumpster in the right hand
+    if (p.equipment === 'rubbish' && !this.binbag) {
+      this.binbag = modelInstance('binbag') ?? new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 10), new THREE.MeshStandardMaterial({ color: '#111', roughness: 0.3 }));
+      this.binbag.traverse((o) => { o.castShadow = true; });
+      this.rig.root.parent!.add(this.binbag);
+    } else if (p.equipment !== 'rubbish' && this.binbag) {
+      this.binbag.parent?.remove(this.binbag);
+      this.binbag = null;
+    }
     // shopping basket (picked goods) in the left hand, carrier bag (paid goods) in the right
     this.syncHeld(state, p);
     const stepping = a?.type === 'shower' && this.showerStep;
@@ -255,9 +270,18 @@ class PersonView {
   /** Props that follow the hands of the final pose: the mop runs through both hands to the floor,
    * a carried case sits between the hands. */
   private placeProps(action: string | null, facing: number) {
-    if (!this.mop && !this.carried) return;
+    if (!this.mop && !this.carried && !this.binbag) return;
     this.rig.root.updateMatrixWorld(true);
     const hl = this.rig.bones.handL.getWorldPosition(HAND_L), hr = this.rig.bones.handR.getWorldPosition(HAND_R);
+    if (this.binbag) {
+      // hangs from the knot in the fist, swinging slightly behind the hand as you walk
+      const lag = Math.min(0.12, this.speed * 0.05);
+      // held out from the body so it clears the leg
+      const root = this.rig.root.position;
+      const ox = hr.x - root.x, oz = hr.z - root.z, ol = Math.hypot(ox, oz) || 1;
+      this.binbag.position.set(hr.x + (ox / ol) * 0.12 - Math.sin(facing) * lag, Math.max(0.02, hr.y - 0.62), hr.z + (oz / ol) * 0.12 - Math.cos(facing) * lag);
+      this.binbag.rotation.set(0, facing, 0);
+    }
     if (this.mop) {
       const stick = this.mop.getObjectByName('stick')!, head = this.mop.getObjectByName('head')!;
       let top: THREE.Vector3, low: THREE.Vector3;
@@ -339,12 +363,19 @@ class PersonView {
     }
   }
 
-  dispose(scene: THREE.Scene) { scene.remove(this.rig.root); this.mop?.parent?.remove(this.mop); }
+  dispose(scene: THREE.Scene) { scene.remove(this.rig.root); this.mop?.parent?.remove(this.mop); this.binbag?.parent?.remove(this.binbag); }
 }
 
 export class Views {
   people = new Map<string, PersonView>();
-  shelfMeshes = new Map<string, { mesh: THREE.InstancedMesh; bid: string; product: string }>();
+  shelfMeshes = new Map<string, { mesh: THREE.InstancedMesh; bid: string; product: string; base: THREE.Vector3[]; side: number[]; mess: number }>();
+  /** the player's home: dirty dishes, clutter and the washing machine */
+  private home = new THREE.Group();
+  private homeKey = '';
+  private homeWorld: unknown = null;
+  private drum: THREE.Mesh | null = null;
+  /** empty cases waiting by each shop's baler */
+  cartons = new Map<string, { group: THREE.Group; n: number }>();
   palletMeshes = new Map<string, { mesh: THREE.InstancedMesh; bid: string; shelf: string }>();
   bayMeshes = new Map<string, THREE.InstancedMesh>();
   van: THREE.Group;
@@ -360,6 +391,7 @@ export class Views {
     for (const sct of sections) {
       const m = new THREE.InstancedMesh(productGeometry('bread'), productMaterial, SHELF_CAPACITY);
       const dummy = new THREE.Object3D();
+      const base: THREE.Vector3[] = [], sides: number[] = [];
       for (let i = 0; i < SHELF_CAPACITY; i++) {
         // 16 facings per shelf level: 8 along the run on each face of the gondola, filling from the bottom
         const level = Math.floor(i / 16);
@@ -368,12 +400,21 @@ export class Views {
         dummy.position.set(sct.gx + side * 0.42, 0.19 + level * 0.45, sct.zc - sct.len / 2 + (Math.floor(col / 2) + 0.5) * (sct.len / 8));
         dummy.updateMatrix();
         m.setMatrixAt(i, dummy.matrix);
+        base.push(dummy.position.clone());
+        sides.push(side);
       }
       m.count = 0;
       m.frustumCulled = false;
       m.castShadow = true;
       scene.add(m);
-      this.shelfMeshes.set(sct.id, { mesh: m, bid: sct.bid, product: '' });
+      this.shelfMeshes.set(sct.id, { mesh: m, bid: sct.bid, product: '', base, side: sides, mess: 0 });
+    }
+    for (const [bid, S] of Object.entries(SHOPS)) {
+      if (!S.baler) continue;
+      const g = new THREE.Group();
+      g.userData.it = S.baler;
+      scene.add(g);
+      this.cartons.set(bid, { group: g, n: 0 });
     }
     // store-room case stacks per pallet (count = cases of that product in the store room)
     const pallets = [
@@ -408,6 +449,7 @@ export class Views {
       scene.add(bm);
       this.bayMeshes.set(bid, bm);
     }
+    scene.add(this.home);
     this.van = buildCar('#f2f2f2', 0, 0, 0, true);
     scene.add(this.van);
     this.queueMarker = new THREE.Mesh(new THREE.RingGeometry(0.35, 0.45, 24), new THREE.MeshBasicMaterial({ color: '#2e8b57', transparent: true, opacity: 0.5 }));
@@ -441,6 +483,44 @@ export class Views {
       if (!k) { v.mesh.count = 0; continue; }
       if (k !== v.product) { v.mesh.geometry = productGeometry(k); v.product = k; }
       v.mesh.count = Math.min(SHELF_CAPACITY, count(state.containers[id], k));
+      // untidy facings: packs pushed back, turned and out of line until someone faces the shelf up
+      const mess = Math.round((b.messy?.[id] ?? 0) / 10);
+      if (mess !== v.mess) {
+        v.mess = mess;
+        const dummy = new THREE.Object3D();
+        const amt = mess / 10;
+        for (let i = 0; i < SHELF_CAPACITY; i++) {
+          const h = Math.sin(i * 12.9898 + id.length * 78.233) * 43758.5453;
+          const r1 = h - Math.floor(h), r2 = (h * 7.13) - Math.floor(h * 7.13), r3 = (h * 3.71) - Math.floor(h * 3.71);
+          const bp = v.base[i];
+          dummy.position.set(bp.x - v.side[i] * amt * r1 * 0.22, bp.y, bp.z + (r2 - 0.5) * amt * 0.25);
+          dummy.rotation.set(0, (r3 - 0.5) * amt * 1.4, r1 > 0.93 && amt > 0.5 ? Math.PI / 2 : 0);
+          dummy.updateMatrix();
+          v.mesh.setMatrixAt(i, dummy.matrix);
+        }
+        v.mesh.instanceMatrix.needsUpdate = true;
+      }
+    }
+    this.updateHome(state, dt);
+    // empty cases piled beside the baler
+    for (const [bid, c] of this.cartons) {
+      const n = Math.min(12, state.businesses[bid]?.cardboard ?? 0);
+      if (n === c.n) continue;
+      const it = getWorld().interactables[c.group.userData.it];
+      while (c.group.children.length > n) c.group.remove(c.group.children[c.group.children.length - 1]);
+      while (c.group.children.length < n && it) {
+        const k = c.group.children.length;
+        const m = modelInstance('carton') ?? new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.26, 0.3), new THREE.MeshStandardMaterial({ color: '#a8804f', roughness: 0.9 }));
+        // stacked in a loose column of three, nested at odd angles, to the side of the baler
+        const dx = it.obj.x - it.pos.x, dz = it.obj.z - it.pos.z, l = Math.hypot(dx, dz) || 1;
+        const sx = -dz / l, sz = dx / l;
+        const col = Math.floor(k / 3), lvl = k % 3;
+        const off = 1.15 + col * 0.45;
+        m.position.set(it.obj.x + sx * off - (dx / l) * 0.1, lvl * 0.2, it.obj.z + sz * off - (dz / l) * 0.1);
+        m.rotation.set(lvl ? 0.12 : 0, Math.atan2(dx, dz) + ((k * 37) % 9 - 4) * 0.08, 0);
+        c.group.add(m);
+      }
+      c.n = n;
     }
     for (const v of this.palletMeshes.values()) {
       const b = state.businesses[v.bid];
@@ -467,4 +547,92 @@ export class Views {
   }
 
   playerView(state: GameState) { return this.people.get(state.playerId); }
+
+  /** dirty dishes stacked by the sink, clutter on the furniture, washing tumbling in the machine */
+  private updateHome(state: GameState, dt: number) {
+    const p = state.people[state.playerId];
+    const c = p?.chores;
+    const w = getWorld();
+    const running = !!c?.washer && state.minute < c.washer.until;
+    const key = c ? `${Math.min(c.dishes, 12)}|${Math.floor(c.mess / 12)}|${c.washer ? (running ? 'run' : 'done') : 'off'}` : '';
+    if (this.drum) this.drum.rotation.z += dt * (running ? 9 : 0);
+    if (key === this.homeKey && this.homeWorld === w) return;
+    this.homeKey = key;
+    this.homeWorld = w;
+    while (this.home.children.length) this.home.remove(this.home.children[0]);
+    this.drum = null;
+    if (!c) return;
+    const plate = new THREE.MeshStandardMaterial({ color: '#f4f2ec', roughness: 0.25 });
+    const grime = new THREE.MeshStandardMaterial({ color: '#b98f5a', roughness: 0.8 });
+    const mugMat = new THREE.MeshStandardMaterial({ color: '#3d6e8f', roughness: 0.35 });
+    const add = (m: THREE.Object3D) => { m.traverse((o) => { o.castShadow = true; }); this.home.add(m); };
+    // dishes: a stack of plates beside the sink, then mugs, then a pan left on the hob
+    const top = 0.93;
+    for (let k = 0; k < Math.min(c.dishes, 12); k++) {
+      if (k < 6) {
+        const pl = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.1, 0.018, 20), plate);
+        pl.position.set(16.35 + (k % 2) * 0.01, top + 0.01 + k * 0.02, 25.45);
+        add(pl);
+        if (k % 2 === 0) { const g = new THREE.Mesh(new THREE.CircleGeometry(0.05, 10), grime); g.rotation.x = -Math.PI / 2; g.position.set(16.33, top + 0.021 + k * 0.02, 25.44); this.home.add(g); }
+      } else if (k < 10) {
+        const mug = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.035, 0.1, 14), mugMat);
+        mug.position.set(16.75 + ((k - 6) % 2) * 0.1, top + 0.05, 25.35 + Math.floor((k - 6) / 2) * 0.12);
+        add(mug);
+      } else {
+        const pan = new THREE.Group();
+        const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.11, 0.08, 20, 1, true), new THREE.MeshStandardMaterial({ color: '#2a2a2c', roughness: 0.4, metalness: 0.6, side: THREE.DoubleSide }));
+        const handle = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.02, 0.03), new THREE.MeshStandardMaterial({ color: '#111', roughness: 0.5 }));
+        handle.position.set(0.22, 0.02, 0);
+        pan.add(bowl, handle);
+        pan.position.set(17.85 + (k - 10) * 0.05, top + 0.04, 25.5 - (k - 10) * 0.1);
+        add(pan);
+      }
+    }
+    // clutter: things left lying about on the furniture the designer placed
+    const spots: { kind: string; at: THREE.Vector3; rot: number }[] = [];
+    const center = (r: { x0: number; z0: number; x1: number; z1: number }) => new THREE.Vector3((r.x0 + r.x1) / 2, 0, (r.z0 + r.z1) / 2);
+    const find = (k: string) => w.obstacles.filter((o) => o.kind === k && o.rect.x0 > 12 && o.rect.x1 < 30 && o.rect.z0 > 13 && o.rect.z1 < 26);
+    for (const o of find('coffee_table')) { const m = center(o.rect); spots.push({ kind: 'mug', at: m.clone().setY(0.47), rot: 0 }, { kind: 'magazine', at: m.clone().add(new THREE.Vector3(0.18, 0.46, 0.05)), rot: 0.4 }); }
+    for (const o of find('bed')) { const m = center(o.rect); spots.push({ kind: 'clothes', at: m.clone().setY(0.62), rot: 0.7 }, { kind: 'clothes', at: new THREE.Vector3(o.rect.x0 - 0.25, 0.04, m.z + 0.4), rot: 2.1 }); }
+    for (const o of find('sofa')) { const m = center(o.rect); spots.push({ kind: 'clothes', at: m.clone().setY(0.62), rot: 1.2 }); }
+    for (const o of find('dining_table')) { const m = center(o.rect); spots.push({ kind: 'mug', at: m.clone().setY(0.77), rot: 0 }, { kind: 'box', at: m.clone().add(new THREE.Vector3(-0.2, 0.8, 0.1)), rot: 0.3 }); }
+    for (const o of find('desk')) { const m = center(o.rect); spots.push({ kind: 'magazine', at: m.clone().setY(0.77), rot: -0.3 }); }
+    const n = Math.min(spots.length, Math.floor(c.mess / 12));
+    const cloth = ['#7a2f2f', '#2f4f7a', '#3d3d3d', '#c9b27a'];
+    for (let k = 0; k < n; k++) {
+      const s = spots[k];
+      let m: THREE.Object3D;
+      if (s.kind === 'mug') m = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.035, 0.1, 14), mugMat);
+      else if (s.kind === 'magazine') m = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.012, 0.3), new THREE.MeshStandardMaterial({ color: k % 2 ? '#d14b3c' : '#e8d04a', roughness: 0.6 }));
+      else if (s.kind === 'box') m = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.05, 0.24), new THREE.MeshStandardMaterial({ color: '#c9a36a', roughness: 0.9 }));
+      else {
+        // a crumpled garment: a squashed, lumpy sphere
+        const g = new THREE.SphereGeometry(0.22, 10, 6);
+        const pos = g.getAttribute('position');
+        for (let i = 0; i < pos.count; i++) { const y = pos.getY(i) * 0.18; const f = 1 + Math.sin(i * 1.7) * 0.15; pos.setXYZ(i, pos.getX(i) * f * 1.3, y, pos.getZ(i) * f); }
+        g.computeVertexNormals();
+        m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: cloth[k % cloth.length], roughness: 0.95 }));
+      }
+      m.position.copy(s.at);
+      m.rotation.y = s.rot;
+      add(m);
+    }
+    // washing machine: clothes tumbling behind the door while it runs, a full drum when done
+    const wo = w.obstacles.find((o) => o.kind === 'washer');
+    if (wo && c.washer) {
+      const cv = document.createElement('canvas');
+      cv.width = cv.height = 64;
+      const g = cv.getContext('2d')!;
+      g.fillStyle = '#d9dde0'; g.fillRect(0, 0, 64, 64);
+      for (let i = 0; i < 9; i++) { g.fillStyle = cloth[i % cloth.length]; g.beginPath(); g.ellipse(10 + (i * 23) % 50, 12 + ((i * 37) % 44), 12, 7, i, 0, Math.PI * 2); g.fill(); }
+      if (running) { g.fillStyle = 'rgba(255,255,255,0.35)'; for (let i = 0; i < 14; i++) { g.beginPath(); g.arc((i * 29) % 64, (i * 17) % 64, 3, 0, Math.PI * 2); g.fill(); } }
+      const t = new THREE.CanvasTexture(cv);
+      t.colorSpace = THREE.SRGBColorSpace;
+      const disc = new THREE.Mesh(new THREE.CircleGeometry(0.16, 24), new THREE.MeshStandardMaterial({ map: t, roughness: 0.6 }));
+      disc.position.set((wo.rect.x0 + wo.rect.x1) / 2, 0.42, wo.rect.z0 - 0.022);
+      disc.rotation.y = Math.PI;
+      this.home.add(disc);
+      this.drum = disc;
+    }
+  }
 }

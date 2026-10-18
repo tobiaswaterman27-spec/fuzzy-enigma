@@ -9,6 +9,7 @@ import { lifeEvent, news } from './events';
 import { skillLevel } from './needs';
 import { CLOTHING, itemName } from './items';
 import { fmtMoney } from './core';
+import { isDirty } from './home';
 
 export interface ShiftSlot {
   day: number;
@@ -171,9 +172,10 @@ export function clockIn(state: GameState, personId: Id): { ok: boolean; msg: str
   state.attendance[key] = {
     key, contractId: c.id, day: s.day, scheduledStart: s.start, scheduledEnd: s.end,
     clockIn: state.minute, clockOut: null, minutesWorked: 0, late, tasks: 0, served: 0, waitPenalty: 0,
-    uniformOk, paid: false, closed: false, absent: false, score: null, groomed: (p.needs.hygiene ?? 80) >= 30,
+    uniformOk, paid: false, closed: false, absent: false, score: null, groomed: (p.needs.hygiene ?? 80) >= 30 && !isDirty(p),
   };
   if (p.isPlayer) state.flags.clockedInOnce = true;
+  if (p.isPlayer && isDirty(p)) news(state, 'bad', 'Grubby uniform', `Your ${itemName(p.appearance.outfit)} needs a wash (-10 on this shift's score). Use the washing machine at home.`, true);
   if (p.isPlayer) news(state, late > 0 ? 'bad' : 'good', late > 0 ? `Clocked in ${late} min late` : 'Clocked in on time', `Shift until ${fmtClock(s.end)}.`, true);
   return { ok: true, msg: late > 0 ? `Clocked in (${late} min late).` : 'Clocked in. Have a good shift!' };
 }
@@ -512,6 +514,7 @@ export function attendInterview(state: GameState, appId: Id, answers: number[]):
   score += formality * dressW;
   fb.push(formality >= 2 ? `You were smartly dressed (+${Math.round(formality * dressW)}).` : formality === 1 ? `Neatly dressed (+${Math.round(dressW)}).` : T.conscientiousness > 0.7 ? `${who} noticed you had not dressed up for it.` : 'Casual clothes made no impression either way.');
   if (T.conscientiousness > 0.7 && formality === 0) score -= 4;
+  if (isDirty(p)) { const pen = Math.round(3 + 7 * T.conscientiousness); score -= pen; fb.push(`Your clothes were stained and creased (-${pen}).`); }
   // hygiene: the threshold and the penalty depend on the interviewer
   const hyg = p.needs.hygiene ?? 80;
   const hygLimit = 25 + 20 * T.conscientiousness;

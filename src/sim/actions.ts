@@ -6,7 +6,7 @@ import { dist, fmtMoney, clamp } from './core';
 import { count, firstItem, isEmpty, moveAll, moveItems, removeItems, spaceFor, total } from './inventory';
 import { CLOTHING, ITEMS, isFood, itemName } from './items';
 import { clockIn, clockOut, hostingInterview, interviewOpen, isOnShift, openAttendance } from './employment';
-import { basketValue, completeSale, completeTask, isOpen, isStaff, leaveQueue, priceOf, productAt, queueSlot, RESTOCK_DONE } from './retail';
+import { basketValue, BIN_CAPACITY, completeSale, completeTask, isOpen, isStaff, leaveQueue, priceOf, productAt, queueSlot, RESTOCK_DONE } from './retail';
 import { checkInDeliveries } from './logistics';
 import { hasHomeAccess } from './housing';
 import { addXp, capability, skillLevel } from './needs';
@@ -14,7 +14,8 @@ import { getWorld, locationOf, SHOPS, type Interactable } from './world/layout';
 import { clearLine } from './world/nav';
 import { transfer } from './ledger';
 import { news } from './events';
-import { minuteOfDay } from './clock';
+import { fmtClock, minuteOfDay } from './clock';
+import { choresOf, DISHES_BLOCK, homeMess, inWash, messLabel, wearOf, WASH_MINUTES } from './home';
 
 export interface ActionOption {
   type: ActionType | 'ui';
@@ -97,7 +98,7 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
   const b = bid ? state.businesses[bid] ?? null : null;
   const onShift = bid ? isStaff(state, actorId, bid) : false;
   const product = productAt(state, it);
-  const shopKinds = ['shelf', 'pallet', 'till', 'cupboard', 'spill', 'bay', 'terminal'];
+  const shopKinds = ['shelf', 'pallet', 'till', 'cupboard', 'spill', 'bay', 'terminal', 'baler', 'shopbin', 'dumpster'];
   if (bid && !b && shopKinds.includes(it.kind)) return [opt('stock_shelf', 'Vacant unit', 'Lease this unit and start a business from Phone > Business')];
   switch (it.kind) {
     case 'shelf': {
@@ -108,6 +109,8 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
         if (carrying === product) out.push(opt('stock_shelf', `Stock shelf with ${itemName(product)} (${count(h, product)} in case)`, spaceFor(shelf, product) === 0 ? 'Shelf is full' : undefined));
         else if (onShift) out.push(opt('stock_shelf', `Restock ${itemName(product)} (${n}/${shelf.capacity})`, carrying ? `You are carrying ${itemName(carrying)}` : p.equipment ? 'Put the mop away first' : `Fetch a case of ${itemName(product)} from the store room`));
       }
+      const mess = Math.round(b?.messy?.[it.id] ?? 0);
+      if (onShift && !carrying && mess >= 8) out.push(opt('face_shelf', `Face up ${itemName(product)} (${mess >= 60 ? 'a mess' : mess >= 30 ? 'untidy' : 'a bit untidy'})`, p.equipment ? `Put the ${p.equipment === 'mop' ? 'mop' : 'bin bag'} down first` : undefined));
       if (b && !onShift) {
         const price = priceOf(b, product);
         out.push(opt('pick_item', `Take 1 ${itemName(product)} - ${fmtMoney(price)}`, n === 0 ? 'Out of stock' : !isOpen(b, state.minute) ? 'Shop is closed' : !handsFree(state, p) ? 'Your hands are full' : undefined));
@@ -147,6 +150,19 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
       if (p.equipment === 'mop') out.push(opt('return_mop', 'Put mop away'));
       else out.push(opt('take_mop', 'Take mop & bucket', !onShift ? 'Staff only' : !handsFree(state, p) ? 'Your hands are full' : undefined));
       break;
+    case 'baler': {
+      const n = b?.cardboard ?? 0;
+      out.push(opt('bale_cardboard', `Flatten and bale cardboard (${n} empty case${n === 1 ? '' : 's'})`, !onShift ? 'Staff only' : n === 0 ? 'No cardboard waiting' : !handsFree(state, p) ? 'Your hands are full' : undefined));
+      break;
+    }
+    case 'shopbin': {
+      const fill = b?.binFill ?? 0;
+      out.push(opt('empty_bin', `Empty the bin (${Math.round((fill / BIN_CAPACITY) * 100)}% full)`, !onShift ? 'Staff only' : fill === 0 ? 'The bin is empty' : !handsFree(state, p) ? 'Your hands are full' : undefined));
+      break;
+    }
+    case 'dumpster':
+      out.push(opt('dump_rubbish', 'Throw the bin bag in the dumpster', p.equipment !== 'rubbish' ? 'Nothing to throw away' : undefined));
+      break;
     case 'spill':
       out.push(opt('clean', 'Mop up spill', !onShift ? 'Staff only' : p.equipment !== 'mop' ? 'You need the mop from the cleaning cupboard' : undefined));
       break;
@@ -169,6 +185,10 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
       const foods = new Set<string>();
       for (const c of [pantry, bag]) if (c) for (const k of Object.keys(c.items)) if (isFood(k)) foods.add(k);
       if (!home) { out.push(opt('eat', 'Eat', 'This is no longer your home')); break; }
+      if (p.isPlayer) {
+        const d = choresOf(p).dishes;
+        out.push(opt('wash_up', d ? `Wash up (${d} dirty dish${d === 1 ? '' : 'es'})` : 'Wash up', d ? undefined : 'Nothing to wash'));
+      }
       if (pantry && Object.keys(bag.items).some(isFood)) out.push(opt('store_food', `Put shopping away (${total(bag)} items)`));
       if (!foods.size) out.push(opt('eat', 'Eat something', 'No food - buy groceries at Corner Market'));
       for (const f of [...foods].sort((a, b2) => ITEMS[b2].satiety - ITEMS[a].satiety).slice(0, 4)) out.push(opt('eat', `Eat ${itemName(f)} (+${ITEMS[f].satiety} food${ITEMS[f].energy ? `, +${ITEMS[f].energy} energy` : ''})`, undefined, f));
@@ -178,7 +198,10 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
       const home = hasHomeAccess(state, actorId, it.locationId);
       const wr = p.wardrobeId ? state.containers[p.wardrobeId] : null;
       const outfits = wr ? Object.keys(wr.items).filter((k) => ITEMS[k]?.category === 'clothing') : [];
-      for (const o of outfits) out.push(opt('change_outfit', `Wear ${itemName(o)} - ${CLOTHING[o]?.label ?? ''}`, !home ? 'This is no longer your home' : p.appearance.outfit === o ? 'Already wearing' : undefined, o));
+      for (const o of outfits) {
+        const w = p.isPlayer ? wearOf(p, o) : 0;
+        out.push(opt('change_outfit', `Wear ${itemName(o)} - ${CLOTHING[o]?.label ?? ''}${w >= 70 ? ' (dirty)' : ''}`, !home ? 'This is no longer your home' : p.appearance.outfit === o ? 'Already wearing' : inWash(p, o) ? 'In the wash' : undefined, o));
+      }
       break;
     }
     case 'chair':
@@ -202,7 +225,22 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
     case 'sofa':
       out.push(opt('watch_tv', 'Watch TV (raises mood)', hasHomeAccess(state, actorId, it.locationId) ? undefined : 'Not your home'));
       out.push(opt('sit', 'Sit and rest'));
+      if (p.isPlayer && hasHomeAccess(state, actorId, it.locationId)) {
+        const m = Math.round(choresOf(p).mess);
+        out.push(opt('tidy', `Tidy the flat (${messLabel(m)})`, m < 5 ? 'Already spotless' : undefined));
+      }
       break;
+    case 'washer': {
+      if (!hasHomeAccess(state, actorId, it.locationId)) { out.push(opt('laundry', 'Washing machine', 'Not your home')); break; }
+      const c = choresOf(p);
+      if (c.washer && state.minute < c.washer.until) { out.push(opt('laundry', `Washing ${c.washer.items.map(itemName).join(', ')}`, `Running - done at ${fmtClock(c.washer.until)}`)); break; }
+      if (c.washer) { out.push(opt('laundry', `Unload and hang up the washing (${c.washer.items.length})`, undefined, 'unload')); break; }
+      const wr = p.wardrobeId ? state.containers[p.wardrobeId] : null;
+      const worn = wr ? Object.keys(wr.items).filter((k) => ITEMS[k]?.category === 'clothing' && wearOf(p, k) >= 15) : [];
+      const load = worn.filter((k) => k !== p.appearance.outfit);
+      out.push(opt('laundry', load.length ? `Put a wash on: ${load.map(itemName).join(', ')}` : 'Put a wash on', !worn.length ? 'Nothing needs washing' : !load.length ? 'Change out of those clothes first (wardrobe)' : undefined, 'load'));
+      break;
+    }
     case 'shower':
       out.push(opt('shower', `Shower (hygiene ${Math.round(p.needs.hygiene ?? 0)})`, hasHomeAccess(state, actorId, it.locationId) ? undefined : 'Not your home'));
       break;
@@ -210,6 +248,7 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
       const pantry = p.pantryId ? state.containers[p.pantryId] : null;
       const has = (k: string) => count(pantry ?? undefined, k) + count(state.containers[p.bagId], k);
       const base = has('pasta') > 0 ? 'pasta' : has('soup') > 0 ? 'soup' : null;
+      if (p.isPlayer && choresOf(p).dishes >= DISHES_BLOCK) { out.push(opt('cook', 'Cook a meal', 'Every pan is dirty - wash up at the sink first')); break; }
       out.push(opt('cook', base === 'pasta' ? `Cook a pasta dinner (+50 food, +mood)${has('soup') || has('apples') ? ' with extras' : ''}` : base === 'soup' ? 'Heat soup (+40 food)' : 'Cook a meal', !hasHomeAccess(state, actorId, it.locationId) ? 'Not your home' : !base ? 'Needs pasta or soup - buy some at the shop' : undefined, base ?? undefined));
       break;
     }
@@ -283,6 +322,14 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
     }
     case 'clean':
       begin(p, type, itId, { unitTime: 0.15 / speed(p, 'cleaning') }, now); break;
+    case 'face_shelf':
+      begin(p, type, itId, { unitTime: 0.1 / sp }, now); break;
+    case 'bale_cardboard':
+      begin(p, type, itId, { unitTime: 0.3 / speed(p, 'warehouse') }, now); break;
+    case 'empty_bin':
+      begin(p, type, itId, { duration: 0.8 / speed(p, 'cleaning') }, now); break;
+    case 'dump_rubbish':
+      begin(p, type, itId, { duration: 0.4 }, now); break;
     case 'check_in_delivery': {
       const units = Object.values(state.shipments).filter((s) => s.buyerId === it.businessId && s.status === 'arrived').reduce((n, s) => n + Object.values(s.loaded).reduce((a, c) => a + c, 0), 0);
       begin(p, type, itId, { duration: (1 + units / 25) / speed(p, 'warehouse') }, now); break;
@@ -325,6 +372,12 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
       begin(p, type, itId, { duration: 8 }, now); break;
     case 'cook':
       begin(p, type, itId, { duration: 15, arg }, now); break;
+    case 'wash_up':
+      begin(p, type, itId, { unitTime: 0.6 }, now); break;
+    case 'laundry':
+      begin(p, type, itId, { duration: arg === 'unload' ? 2.5 : 1.5, arg }, now); break;
+    case 'tidy':
+      begin(p, type, itId, { duration: Math.max(3, Math.min(25, choresOf(p).mess * 0.3)) }, now); break;
     case 'talk': {
       begin(p, type, itId, { duration: 2 }, now);
       const o = state.people[itId.slice(7)];
@@ -408,6 +461,20 @@ export function tickAction(state: GameState, p: Person, dt: number): string | nu
       break;
     }
     case 'take_mop': p.equipment = 'mop'; msg = 'Mop & bucket ready.'; break;
+    case 'empty_bin': {
+      const b = state.businesses[it!.businessId!];
+      if (b) b.binFill = 0;
+      p.equipment = 'rubbish';
+      msg = 'Bag tied off - take it out to the dumpster by the loading bay.';
+      break;
+    }
+    case 'dump_rubbish':
+      p.equipment = null;
+      completeTask(state, it!.businessId!, 'rubbish', SHOPS[it!.businessId!]?.bin ?? '', p.id);
+      creditTask(state, p);
+      addXp(p, 'cleaning', 2);
+      msg = 'Rubbish out.';
+      break;
     case 'return_mop': p.equipment = null; msg = 'Mop put away.'; break;
     case 'check_in_delivery': {
       const r = checkInDeliveries(state, it!.businessId!, p.id);
@@ -431,17 +498,20 @@ export function tickAction(state: GameState, p: Person, dt: number): string | nu
         p.needs.satiety = clamp(p.needs.satiety + ITEMS[item].satiety, 0, 100);
         p.needs.energy = clamp(p.needs.energy + ITEMS[item].energy, 0, 100);
         msg = `Ate ${itemName(item)}.`;
+        if (it?.kind === 'kitchen') homeMess(p, 'eat');
         if (p.isPlayer && it?.kind === 'kitchen') state.flags.ateHome = true;
       } else msg = 'That food is gone.';
       break;
     }
     case 'store_food': {
       const n = p.pantryId ? moveAll(state, p.bagId, p.pantryId) : 0;
+      homeMess(p, 'shopping');
       msg = `Put away ${n} items.`;
       break;
     }
     case 'change_outfit':
       if (a.arg) p.appearance.outfit = a.arg;
+      homeMess(p, 'change');
       msg = `Now wearing ${itemName(a.arg!)}.`;
       break;
     case 'buy_meal':
@@ -466,7 +536,27 @@ export function tickAction(state: GameState, p: Person, dt: number): string | nu
       p.needs.satiety = clamp(p.needs.satiety + food, 0, 100);
       p.needs.mood = clamp((p.needs.mood ?? 60) + 8 + extras * 3, 0, 100);
       if (p.isPlayer) state.flags.ateHome = true;
+      homeMess(p, 'cook');
       msg = a.arg === 'pasta' ? `Home-cooked pasta${extras ? ' with extras' : ''}. Delicious (+${food} food).` : `Hot soup (+${food} food).`;
+      break;
+    }
+    case 'laundry': {
+      const c = choresOf(p);
+      if (a.arg === 'unload' && c.washer) {
+        for (const k of c.washer.items) c.wear[k] = 0;
+        msg = `Hung up ${c.washer.items.map(itemName).join(', ')} - clean and dry.`;
+        c.washer = null;
+      } else {
+        const wr = p.wardrobeId ? state.containers[p.wardrobeId] : null;
+        const items = wr ? Object.keys(wr.items).filter((k) => ITEMS[k]?.category === 'clothing' && wearOf(p, k) >= 15 && k !== p.appearance.outfit) : [];
+        if (items.length) { c.washer = { items, until: state.minute + WASH_MINUTES }; msg = `Washing machine on - ready at ${fmtClock(c.washer.until)}.`; } else msg = 'Nothing to wash.';
+      }
+      break;
+    }
+    case 'tidy': {
+      const c = choresOf(p);
+      c.mess = 0;
+      msg = 'The flat looks tidy again.';
       break;
     }
     case 'talk': {
@@ -498,6 +588,11 @@ function doUnit(state: GameState, p: Person, a: ActionState, it: Interactable, h
       const moved = moveItems(state, p.handsId, it.container!, prod, 1);
       if (moved) { a.units++; addXp(p, 'retail', 1); }
       const shelf = state.containers[it.container!];
+      if (moved && count(h, prod) === 0) {
+        // the empty case goes on the cardboard pile in the store room
+        const b = state.businesses[it.businessId!];
+        if (b && SHOPS[b.id]?.baler) b.cardboard = (b.cardboard ?? 0) + 1;
+      }
       if (!moved || count(h, prod) === 0 || spaceFor(shelf, prod) === 0) {
         if (a.units >= 3) creditTask(state, p);
         if (count(shelf, prod) >= RESTOCK_DONE) completeTask(state, it.businessId!, 'restock', shelf.id, p.id);
@@ -543,16 +638,52 @@ function doUnit(state: GameState, p: Person, a: ActionState, it: Interactable, h
       }
       return null;
     }
+    case 'face_shelf': {
+      const b = state.businesses[it.businessId!];
+      const m = b.messy ?? (b.messy = {});
+      m[it.id] = Math.max(0, (m[it.id] ?? 0) - 9);
+      a.units++;
+      if (a.units % 3 === 0) addXp(p, 'retail', 1);
+      if (m[it.id] <= 0) {
+        completeTask(state, b.id, 'face', it.id, p.id);
+        if (a.units >= 3) creditTask(state, p);
+        finish(state, p);
+        return `${itemName(productAt(state, it) ?? '')} faced up - labels forward, rows pulled to the front.`;
+      }
+      return null;
+    }
+    case 'bale_cardboard': {
+      const b = state.businesses[it.businessId!];
+      if ((b.cardboard ?? 0) > 0) { b.cardboard = (b.cardboard ?? 0) - 1; a.units++; addXp(p, 'warehouse', 1); }
+      if (!b.cardboard) {
+        completeTask(state, b.id, 'cardboard', it.id, p.id);
+        creditTask(state, p);
+        finish(state, p);
+        return `Flattened ${a.units} box${a.units === 1 ? '' : 'es'} into the baler.`;
+      }
+      return null;
+    }
     case 'pick_item': {
       const want = Number(a.arg ?? 1);
       const prod = productAt(state, it)!;
       const moved = moveItems(state, it.container!, p.basketId, prod, 1);
-      if (moved) a.units++;
+      if (moved) {
+        a.units++;
+        // shoppers reaching in pull the facings out of line
+        const b = it.businessId ? state.businesses[it.businessId] : null;
+        if (b) { const m = b.messy ?? (b.messy = {}); m[it.id] = Math.min(100, (m[it.id] ?? 0) + 3); }
+      }
       if (!moved || a.units >= want) {
         finish(state, p);
         if (!moved && a.units === 0) return `${itemName(prod)} is out of stock.`;
         return `Added ${a.units} ${itemName(prod)} to your basket.`;
       }
+      return null;
+    }
+    case 'wash_up': {
+      const c = choresOf(p);
+      if (c.dishes > 0) { c.dishes--; a.units++; }
+      if (c.dishes <= 0) { finish(state, p); return `Washed and dried ${a.units} dish${a.units === 1 ? '' : 'es'}.`; }
       return null;
     }
     case 'self_checkout': {
@@ -593,6 +724,8 @@ export function enforceLocationRules(state: GameState, p: Person) {
       if (p.isPlayer) news(state, 'info', 'Stock stays in the shop', 'The case you were carrying was returned to the store room.', true);
     }
     if (p.equipment === 'mop') p.equipment = null;
+    // the bin bag goes out through the goods door to the dumpster; anywhere else it is left by the door
+    if (p.equipment === 'rubbish' && !viaGoodsDoor) { p.equipment = null; b.binFill = Math.min(BIN_CAPACITY, (b.binFill ?? 0) + 20); }
     const till = state.tills[S.till];
     if (till && till.queue.includes(p.id)) leaveQueue(state, till.id, p.id);
   }

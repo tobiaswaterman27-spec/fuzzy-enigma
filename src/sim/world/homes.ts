@@ -6,7 +6,7 @@ import type { Vec2 } from '../types';
 
 export interface Rect { x0: number; z0: number; x1: number; z1: number }
 
-export type RoomKind = 'living' | 'kitchen' | 'bedroom' | 'bathroom' | 'hall';
+export type RoomKind = 'living' | 'kitchen' | 'bedroom' | 'bathroom' | 'hall' | 'dining' | 'spare' | 'utility';
 
 export interface RoomDef {
   id: string;
@@ -241,27 +241,26 @@ export function furnish(ctx: DesignContext, design: HomeDesign): Furnished {
         addUse({ id: 'sofa', kind: 'sofa', label: 'Sofa & TV', pos: standP, facing: rotOf({ x: -sofaFace.x, z: -sofaFace.z }), obj: sc }, room);
         break;
       }
-      // dining table with two chairs (the laptop lives here)
-      for (let attempt = 0; attempt < 60; attempt++) {
-        const cx = R.x0 + 1.2 + rnd() * (R.x1 - R.x0 - 2.4), cz = R.z0 + 1.4 + rnd() * (R.z1 - R.z0 - 2.8);
-        const along = rnd() < 0.5;
-        const t: Rect = along ? { x0: cx - 0.7, x1: cx + 0.7, z0: cz - 0.45, z1: cz + 0.45 } : { x0: cx - 0.45, x1: cx + 0.45, z0: cz - 0.7, z1: cz + 0.7 };
-        const foot = along ? { ...t, z0: t.z0 - 0.65, z1: t.z1 + 0.65 } : { ...t, x0: t.x0 - 0.65, x1: t.x1 + 0.65 };
-        if (!solidOK(foot, room)) continue;
-        items.push({ kind: 'dining_table', rect: t, height: 0.75, solid: true, rot: along ? 0 : Math.PI / 2, room: room.id });
-        const seat = along ? { x: cx, z: t.z0 - 0.35 } : { x: t.x0 - 0.35, z: cz };
-        const seat2 = along ? { x: cx, z: t.z1 + 0.35 } : { x: t.x1 + 0.35, z: cz };
-        items.push({ kind: 'dining_chair', rect: { x0: seat.x - 0.22, x1: seat.x + 0.22, z0: seat.z - 0.22, z1: seat.z + 0.22 }, height: 0.9, solid: false, rot: Math.atan2(cx - seat.x, cz - seat.z), room: room.id });
-        items.push({ kind: 'dining_chair', rect: { x0: seat2.x - 0.22, x1: seat2.x + 0.22, z0: seat2.z - 0.22, z1: seat2.z + 0.22 }, height: 0.9, solid: false, rot: Math.atan2(cx - seat2.x, cz - seat2.z), room: room.id });
-        items.push({ kind: 'laptop', rect: { x0: cx - 0.2, x1: cx + 0.2, z0: cz - 0.15, z1: cz + 0.15 }, height: 0.77, solid: false, rot: Math.atan2(seat.x - cx, seat.z - cz), room: room.id });
-        addUse({ id: 'chair', kind: 'chair', label: 'Chair', pos: seat, facing: Math.atan2(cx - seat.x, cz - seat.z), obj: seat }, room);
-        break;
+      if (!ctx.rooms.some((r) => r.kind === 'dining')) placeDining(room);
+      // side tables at the ends of the sofa, a lamp beside it
+      const sofa = items.find((it) => it.kind === 'sofa' && it.room === room.id);
+      if (sofa) {
+        const along = sofa.rect.x1 - sofa.rect.x0 > sofa.rect.z1 - sofa.rect.z0;
+        for (const sgn of [-1, 1]) {
+          const r = sofa.rect;
+          const st: Rect = along
+            ? { x0: sgn < 0 ? r.x0 - 0.5 : r.x1 + 0.05, x1: sgn < 0 ? r.x0 - 0.05 : r.x1 + 0.5, z0: (r.z0 + r.z1) / 2 - 0.22, z1: (r.z0 + r.z1) / 2 + 0.22 }
+            : { z0: sgn < 0 ? r.z0 - 0.5 : r.z1 + 0.05, z1: sgn < 0 ? r.z0 - 0.05 : r.z1 + 0.5, x0: (r.x0 + r.x1) / 2 - 0.22, x1: (r.x0 + r.x1) / 2 + 0.22 };
+          if (solidOK(st, room)) items.push({ kind: 'bedside', rect: st, height: 0.5, solid: true, rot: sofa.rot, room: room.id });
+        }
       }
-      if (has('armchair')) placeAgainst(room, 'armchair', 0.85, 0.85, 0.85, { color: FABRICS[design.sofa] ?? FABRICS.grey, front: 0.6 });
+      if (has('armchair')) for (let k = 0; k < 2; k++) placeAgainst(room, 'armchair', 0.85, 0.85, 0.85, { color: FABRICS[design.sofa] ?? FABRICS.grey, front: 0.6 });
+      placeAgainst(room, 'bookcase', 0.9, 0.32, 1.9, { tall: true });
       if (has('bookcase')) placeAgainst(room, 'bookcase', 0.9, 0.32, 1.9, { tall: true });
       if (has('sideboard')) placeAgainst(room, 'sideboard', 1.4, 0.45, 0.8, { front: 0.5 });
-      if (has('plant_big')) for (let k = 0; k < 2; k++) placeAgainst(room, 'plant', 0.5, 0.5, 1.3, {});
-      placeAgainst(room, 'lampstand', 0.4, 0.4, 1.6, {});
+      placeAgainst(room, 'drawers', 0.9, 0.45, 0.85, { front: 0.5 });
+      for (let k = 0; k < (has('plant_big') ? 3 : 1); k++) placeAgainst(room, 'plant', 0.5, 0.5, 1.3, {});
+      for (let k = 0; k < 2; k++) placeAgainst(room, 'lampstand', 0.4, 0.4, 1.6, {});
       if (has('art')) for (let k = 0; k < 3; k++) placeArt(room);
     } else if (room.kind === 'bedroom') {
       // bed with its head against a wall (not under a window if possible), bedside tables either side
@@ -289,14 +288,71 @@ export function furnish(ctx: DesignContext, design: HomeDesign): Furnished {
       if (wd) { const n = NORMAL[wd.side]; addUse({ id: 'wardrobe', kind: 'wardrobe', label: 'Wardrobe', pos: front(wd.rect, wd.side, 0.6), facing: rotOf({ x: -n.x, z: -n.z }), obj: center(wd.rect) }, room); }
       placeAgainst(room, 'drawers', 0.9, 0.48, 0.85, { front: 0.5 });
       if (has('desk')) placeAgainst(room, 'desk', 1.2, 0.6, 0.75, { front: 0.7 });
-      if (has('plant_bed')) placeAgainst(room, 'plant', 0.45, 0.45, 1.1, {});
+      // a reading corner and a chest of drawers fill the rest of a big bedroom
+      placeAgainst(room, 'armchair', 0.8, 0.8, 0.85, { color: FABRICS[design.bedding] ?? FABRICS.grey, front: 0.6 });
+      placeAgainst(room, 'lampstand', 0.4, 0.4, 1.6, {});
+      placeAgainst(room, 'bookcase', 0.9, 0.32, 1.9, { tall: true });
+      placeAgainst(room, 'sideboard', 1.2, 0.45, 0.8, { front: 0.5 });
+      for (let k = 0; k < (has('plant_bed') ? 2 : 1); k++) placeAgainst(room, 'plant', 0.45, 0.45, 1.1, {});
+      if (!design.rug.bedroom && bedC) {
+        // a runner at the foot of the bed
+        const f = front(bedC.rect, bedC.side, 0.55);
+        const horiz = bedC.side === 'z0' || bedC.side === 'z1';
+        items.push({ kind: 'rug', rect: horiz ? { x0: f.x - 1.0, x1: f.x + 1.0, z0: f.z - 0.4, z1: f.z + 0.4 } : { x0: f.x - 0.4, x1: f.x + 0.4, z0: f.z - 1.0, z1: f.z + 1.0 }, height: 0.01, solid: false, rot: 0, color: '#9c8a74', room: room.id });
+      }
       if (has('art')) placeArt(room);
     }
+    else if (room.kind === 'dining') {
+      placeDining(room);
+      placeAgainst(room, 'sideboard', 1.2, 0.45, 0.8, { front: 0.5 });
+      placeAgainst(room, 'plant', 0.45, 0.45, 1.2, {});
+      if (has('art')) placeArt(room);
+    } else if (room.kind === 'spare') {
+      // spare room / study: a single guest bed, a desk to work at, shelves and a comfy chair
+      placeAgainst(room, 'bed', 1.0, 2.0, 0.55, { color: FABRICS[design.bedding] ?? FABRICS.grey, front: 0.6, prefer: (_r, s) => (room.outside.includes(s) ? 0 : 1) });
+      placeAgainst(room, 'desk', 1.2, 0.6, 0.75, { front: 0.7, prefer: (_r, s) => (room.outside.includes(s) ? 1 : 0) });
+      placeAgainst(room, 'bookcase', 0.9, 0.32, 1.9, { tall: true });
+      placeAgainst(room, 'armchair', 0.8, 0.8, 0.85, { color: FABRICS[design.sofa] ?? FABRICS.grey, front: 0.5 });
+      placeAgainst(room, 'plant', 0.45, 0.45, 1.1, {});
+      placeAgainst(room, 'lampstand', 0.4, 0.4, 1.6, {});
+      const c = center(room.rect);
+      items.push({ kind: 'rug', rect: { x0: c.x - 0.9, x1: c.x + 0.9, z0: c.z - 0.6, z1: c.z + 0.6 }, height: 0.01, solid: false, rot: 0, color: RUGS[design.rug.bedroom ?? 'sand'] ?? '#c9b79c', room: room.id });
+      if (has('art')) placeArt(room);
+    } else if (room.kind === 'utility') {
+      // storage and laundry: shelving with boxes, an ironing board, the laundry basket, a drying rack and a bike
+      for (let k = 0; k < 2; k++) placeAgainst(room, 'storage_shelf', 1.0, 0.45, 1.85, { tall: true });
+      placeAgainst(room, 'bike', 1.75, 0.5, 1.0, {});
+      placeAgainst(room, 'ironing_board', 1.3, 0.4, 0.9, {});
+      placeAgainst(room, 'laundry_basket', 0.5, 0.38, 0.5, {});
+      placeAgainst(room, 'drying_rack', 1.2, 0.55, 1.0, { front: 0.4 });
+      placeAgainst(room, 'vacuum', 0.35, 0.35, 1.05, {});
+    }
     // finishes: floor and wallpaper for every room
-    const fl = design.floor[room.kind] ?? design.floor[room.id];
+    const fk = room.kind === 'dining' ? 'living' : room.kind === 'spare' ? 'bedroom' : room.kind;
+    const fl = room.kind === 'utility' ? 'grey' : design.floor[fk] ?? design.floor[room.id];
     if (fl) items.push({ kind: 'floorfinish', rect: R, height: 0.01, solid: false, rot: 0, color: fl, room: room.id });
-    const wp = design.wallpaper[room.kind] ?? design.wallpaper[room.id];
+    const wp = room.kind === 'utility' ? 'white' : design.wallpaper[fk] ?? design.wallpaper[room.id];
     if (wp) items.push({ kind: 'wallfinish', rect: R, height: 3.2, solid: false, rot: 0, color: wp, room: room.id });
+  }
+
+  /** dining table with two chairs (the laptop lives here) */
+  function placeDining(room: RoomDef) {
+    const R = room.rect;
+    for (let attempt = 0; attempt < 60; attempt++) {
+      const cx = R.x0 + 1.2 + rnd() * (R.x1 - R.x0 - 2.4), cz = R.z0 + 1.4 + rnd() * (R.z1 - R.z0 - 2.8);
+      const along = rnd() < 0.5;
+      const t: Rect = along ? { x0: cx - 0.7, x1: cx + 0.7, z0: cz - 0.45, z1: cz + 0.45 } : { x0: cx - 0.45, x1: cx + 0.45, z0: cz - 0.7, z1: cz + 0.7 };
+      const foot = along ? { ...t, z0: t.z0 - 0.65, z1: t.z1 + 0.65 } : { ...t, x0: t.x0 - 0.65, x1: t.x1 + 0.65 };
+      if (!solidOK(foot, room)) continue;
+      items.push({ kind: 'dining_table', rect: t, height: 0.75, solid: true, rot: along ? 0 : Math.PI / 2, room: room.id });
+      const seat = along ? { x: cx, z: t.z0 - 0.35 } : { x: t.x0 - 0.35, z: cz };
+      const seat2 = along ? { x: cx, z: t.z1 + 0.35 } : { x: t.x1 + 0.35, z: cz };
+      items.push({ kind: 'dining_chair', rect: { x0: seat.x - 0.22, x1: seat.x + 0.22, z0: seat.z - 0.22, z1: seat.z + 0.22 }, height: 0.9, solid: false, rot: Math.atan2(cx - seat.x, cz - seat.z), room: room.id });
+      items.push({ kind: 'dining_chair', rect: { x0: seat2.x - 0.22, x1: seat2.x + 0.22, z0: seat2.z - 0.22, z1: seat2.z + 0.22 }, height: 0.9, solid: false, rot: Math.atan2(cx - seat2.x, cz - seat2.z), room: room.id });
+      items.push({ kind: 'laptop', rect: { x0: cx - 0.2, x1: cx + 0.2, z0: cz - 0.15, z1: cz + 0.15 }, height: 0.77, solid: false, rot: Math.atan2(seat.x - cx, seat.z - cz), room: room.id });
+      addUse({ id: 'chair', kind: 'chair', label: 'Chair', pos: seat, facing: Math.atan2(cx - seat.x, cz - seat.z), obj: seat }, room);
+      return;
+    }
   }
 
   function placeArt(room: RoomDef) {
@@ -307,6 +363,8 @@ export function furnish(ctx: DesignContext, design: HomeDesign): Furnished {
       if (room.outside.includes(s)) continue;
       const r = againstWall(R, s, 0.8, 0.04, 0.15 + rnd() * 0.7, 0.0);
       if (!r) continue;
+      // open-plan edges have no wall to hang it on
+      if (room.open?.some((o) => o.side === s && (s === 'z0' || s === 'z1' ? r.x0 < o.to + 0.3 && r.x1 > o.from - 0.3 : r.z0 < o.to + 0.3 && r.z1 > o.from - 0.3))) continue;
       if (items.some((it) => it.solid && it.height > 1.2 && overlap(it.rect, r, 0.3))) continue;
       if (items.some((it) => it.kind === 'art' && overlap(it.rect, r, 0.6))) continue;
       if (ctx.rooms.some((rm) => rm.doors.some((d) => Math.hypot(d.x - (r.x0 + r.x1) / 2, d.z - (r.z0 + r.z1) / 2) < 1.0))) continue;

@@ -421,6 +421,7 @@ function workChoose(state: GameState, p: Person) {
       if (pal) plan.push({ kind: 'move', to: I[pal].pos, label: 'store room' }, { kind: 'act', it: pal, type: 'return_case' });
     }
     if (p.equipment === 'mop') plan.push({ kind: 'move', to: I[S.cupboard].pos, label: 'cupboard' }, { kind: 'act', it: S.cupboard, type: 'return_mop' });
+    if (p.equipment === 'rubbish' && S.dumpster) plan.push({ kind: 'move', to: I[S.dumpster].pos, label: 'dumpster' }, { kind: 'act', it: S.dumpster, type: 'dump_rubbish' });
     plan.push({ kind: 'move', to: I[S.terminal].pos, label: 'terminal' }, { kind: 'act', it: S.terminal, type: 'clock_out' }, { kind: 'call', fn: 'leaveWork' });
     releaseClaim(state, p);
     n.plan = plan;
@@ -438,6 +439,7 @@ function workChoose(state: GameState, p: Person) {
   const till = state.tills[S.till];
   const cupboardPlan = (type: 'take_mop' | 'return_mop'): PlanStep[] => [{ kind: 'move', to: I[S.cupboard].pos, label: 'cupboard' }, { kind: 'act', it: S.cupboard, type }];
   // carrying something: finish that first
+  if (p.equipment === 'rubbish' && S.dumpster) { n.plan = [{ kind: 'move', to: I[S.dumpster].pos, label: 'dumpster' }, { kind: 'act', it: S.dumpster, type: 'dump_rubbish' }]; return; }
   if (total(hands) > 0) {
     const item = Object.keys(hands.items)[0];
     const sh = shelfFor(state, bid, item);
@@ -508,14 +510,38 @@ function workChoose(state: GameState, p: Person) {
     n.plan = restockPlan(low[1], low[0]);
     return true;
   };
+  // chores; the mop goes back first so both hands are free
+  const freeHands = (): PlanStep[] => (p.equipment === 'mop' ? cupboardPlan('return_mop') : []);
+  const tryFace = (): boolean => {
+    if (queueLen && role !== 'cleaner') return false;
+    const face = tasks.filter((t) => t.kind === 'face' && claimable(t, p)).sort((x, y) => (b.messy?.[y.target] ?? 0) - (b.messy?.[x.target] ?? 0))[0];
+    if (!face || !I[face.target]) return false;
+    claim(state, p, face);
+    n.plan = [...freeHands(), { kind: 'move', to: I[face.target].pos, label: 'shelf' }, { kind: 'act', it: face.target, type: 'face_shelf' }];
+    return true;
+  };
+  const tryCardboard = (): boolean => {
+    const t = tasks.find((x) => x.kind === 'cardboard' && claimable(x, p));
+    if (!t || !S.baler) return false;
+    claim(state, p, t);
+    n.plan = [...freeHands(), { kind: 'move', to: I[S.baler].pos, label: 'baler' }, { kind: 'act', it: S.baler, type: 'bale_cardboard' }];
+    return true;
+  };
+  const tryRubbish = (): boolean => {
+    const t = tasks.find((x) => x.kind === 'rubbish' && claimable(x, p));
+    if (!t || !S.bin || !S.dumpster || !(b.binFill ?? 0)) return false;
+    claim(state, p, t);
+    n.plan = [...freeHands(), { kind: 'move', to: I[S.bin].pos, label: 'bin' }, { kind: 'act', it: S.bin, type: 'empty_bin' }, { kind: 'move', to: I[S.dumpster].pos, label: 'dumpster' }, { kind: 'act', it: S.dumpster, type: 'dump_rubbish' }];
+    return true;
+  };
   const noCashier = !rolesOnDuty.has('cashier') && !rolesOnDuty.has('general');
   const desperate = queueLen >= 3 && !(till?.staffId && till.staffId !== p.id);
   const order: (() => boolean)[] = {
-    cashier: [tryServe, () => tryTopUp(0.75), tryRestock, () => !rolesOnDuty.has('cleaner') && tryClean(), () => !rolesOnDuty.has('stocker') && tryReceive()],
-    stocker: [tryReceive, tryRestock, () => tryTopUp(0.9), () => !rolesOnDuty.has('cleaner') && tryClean(), () => (desperate || noCashier && queueLen > 0) && tryServe()],
-    cleaner: [tryClean, () => (desperate || (noCashier && !rolesOnDuty.has('manager') && queueLen > 0)) && tryServe()],
-    manager: [() => (queueLen >= 2 || noCashier) && tryServe(), tryReceive, () => !rolesOnDuty.has('stocker') && tryRestock(), () => onDuty.length === 0 && tryClean(), () => onDuty.length === 0 && tryTopUp(0.6)],
-    general: [tryServe, tryReceive, tryClean, tryRestock, () => tryTopUp(0.75)],
+    cashier: [tryServe, () => tryTopUp(0.75), tryRestock, () => !rolesOnDuty.has('cleaner') && tryClean(), () => !rolesOnDuty.has('stocker') && tryReceive(), tryFace, () => !rolesOnDuty.has('cleaner') && tryRubbish()],
+    stocker: [tryReceive, tryRestock, () => tryTopUp(0.9), tryCardboard, () => !rolesOnDuty.has('cleaner') && tryClean(), () => (desperate || noCashier && queueLen > 0) && tryServe(), tryFace],
+    cleaner: [tryClean, tryRubbish, () => (desperate || (noCashier && !rolesOnDuty.has('manager') && queueLen > 0)) && tryServe(), tryFace, () => !rolesOnDuty.has('stocker') && tryCardboard()],
+    manager: [() => (queueLen >= 2 || noCashier) && tryServe(), tryReceive, () => !rolesOnDuty.has('stocker') && tryRestock(), () => onDuty.length === 0 && tryClean(), () => onDuty.length === 0 && tryTopUp(0.6), () => !rolesOnDuty.has('stocker') && tryCardboard(), () => onDuty.length === 0 && tryRubbish()],
+    general: [tryServe, tryReceive, tryClean, tryRestock, () => tryTopUp(0.75), tryRubbish, tryCardboard, tryFace],
   }[role];
   for (const f of order) if (f()) return;
   if (p.equipment === 'mop' && role !== 'cleaner') { n.plan = cupboardPlan('return_mop'); return; }

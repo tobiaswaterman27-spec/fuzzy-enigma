@@ -3,6 +3,7 @@
 import type { GameState, Person } from './types';
 import { CLOTHING } from './items';
 import { clamp } from './core';
+import { DIRTY_AT, homeMoodPenalty } from './home';
 
 export const ENERGY_DECAY = 0.075; // per awake minute (100 -> 0 in ~22h)
 export const WORK_EXTRA = 0.035; // extra drain while doing physical work
@@ -20,12 +21,13 @@ export function tickNeeds(_state: GameState, p: Person, dt: number) {
   if (p.isPlayer) {
     n.hygiene -= HYGIENE_DECAY * dt * (a0 === 'stock_shelf' || a0 === 'clean' || a0 === 'take_case' ? 2 : 1);
     // mood drifts toward a baseline set by how your basic needs are going
-    const base = 55 - (n.satiety < 20 ? 20 : 0) - (n.energy < 20 ? 15 : 0) - (n.hygiene < 25 ? 10 : 0);
+    const base = 55 - (n.satiety < 20 ? 20 : 0) - (n.energy < 20 ? 15 : 0) - (n.hygiene < 25 ? 10 : 0) - homeMoodPenalty(p);
     n.mood += (base - n.mood) * 0.002 * dt;
     if (a0 === 'watch_tv') n.mood += 0.45 * dt;
     if (a0 === 'sit') n.mood += 0.12 * dt;
     if (a0 === 'buy_meal') n.mood += 0.35 * dt;
     if (a0 === 'shower') { n.hygiene += 14 * dt; n.mood += 0.3 * dt; }
+    if (a0 === 'tidy') n.mood += 0.15 * dt;
   } else {
     if (!p.visible) n.hygiene = Math.min(100, n.hygiene + 0.2 * dt); else n.hygiene -= HYGIENE_DECAY * dt;
     n.mood += (60 - n.mood) * 0.003 * dt;
@@ -70,6 +72,7 @@ export function conditionLabel(p: Person): string[] {
   else if (p.needs.satiety < 25) out.push('Hungry');
   if ((p.needs.hygiene ?? 80) < 30) out.push('Smelly: -10 at interviews & work');
   if ((p.needs.mood ?? 60) < 25) out.push('Low mood: work 10% slower');
+  if (p.isPlayer && (p.chores?.wear[p.appearance.outfit] ?? 0) >= DIRTY_AT) out.push('Dirty clothes: -10 at work, worse at interviews');
   return out;
 }
 
