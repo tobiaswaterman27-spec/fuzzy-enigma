@@ -110,7 +110,11 @@ export type ObstacleKind =
   | 'forklift'
   | 'roller_door'
   | 'pallet_load'
-  | 'lane_marking';
+  | 'lane_marking'
+  | 'waiting_chairs'
+  | 'water_cooler'
+  | 'leaflet_stand'
+  | 'bistro_set';
 
 export interface Obstacle {
   kind: ObstacleKind;
@@ -589,10 +593,20 @@ function buildWorldData(homeDesign: HomeDesign): World {
   obstacles.push({ kind: 'desk', rect: { x0: -33, z0: -20, x1: -29, z1: -18.8 }, height: 0.9, solid: true });
   add({ id: 'advisor', kind: 'advisor', label: 'Employment advisor', pos: { x: -31, z: -17.6 }, facing: Math.PI, obj: { x: -31, z: -21 }, locationId: 'jobcentre', range: 2.0 });
 
+  // waiting area: rows of seats along the east wall and facing the board, water, leaflets, plants
+  obstacles.push({ kind: 'waiting_chairs', rect: { x0: -15.3, z0: -20.4, x1: -14.7, z1: -18.2 }, height: 0.9, solid: true, rot: -Math.PI / 2 });
+  obstacles.push({ kind: 'waiting_chairs', rect: { x0: -15.3, z0: -24.4, x1: -14.7, z1: -22.2 }, height: 0.9, solid: true, rot: -Math.PI / 2 });
+  obstacles.push({ kind: 'waiting_chairs', rect: { x0: -20.6, z0: -18.9, x1: -18.4, z1: -18.3 }, height: 0.9, solid: true, rot: Math.PI });
+  obstacles.push({ kind: 'water_cooler', rect: { x0: -15.2, z0: -12.2, x1: -14.85, z1: -11.85 }, height: 1.5, solid: true });
+  obstacles.push({ kind: 'leaflet_stand', rect: { x0: -20.5, z0: -11.4, x1: -20.0, z1: -11.1 }, height: 1.4, solid: true });
+  for (const [px, pz] of [[-33.3, -27.3], [-14.7, -27.3], [-33.3, -10.7]]) obstacles.push({ kind: 'plant', rect: box(px, pz, 0.5, 0.5), height: 1.3, solid: true });
+
   // ---- Cafe interior
   obstacles.push({ kind: 'counter', rect: { x0: -30, z0: 19.6, x1: -18, z1: 20.6 }, height: 1.0, solid: true, color: '#7b2d26' });
   add({ id: 'cafe_counter', kind: 'cafe_counter', label: 'Cafe counter', pos: { x: -24, z: 18.8 }, facing: 0, obj: { x: -24, z: 20.1 }, locationId: 'cafe', businessId: 'cafe', range: 1.8 });
   for (const [tx, tz] of [[-31, 14], [-17, 14]]) obstacles.push({ kind: 'table', rect: box(tx, tz, 1.4, 1.4), height: 0.75, solid: true });
+  for (const [tx, tz] of [[-28.5, 16.4], [-20.5, 16.8]]) obstacles.push({ kind: 'bistro_set', rect: box(tx, tz, 0.8, 1.6), height: 0.9, solid: true });
+  for (const [px, pz] of [[-33.3, 10.7], [-14.7, 10.7], [-14.7, 18.8]]) obstacles.push({ kind: 'plant', rect: box(px, pz, 0.5, 0.5), height: 1.2, solid: true });
   // job interviews happen over a coffee at the window table: candidate faces the counter, interviewer opposite
   add({ id: 'iv_chair', kind: 'iv_chair', label: 'Interview table', pos: { x: -17, z: 12.6 }, facing: 0, obj: { x: -17, z: 13.05 }, locationId: 'cafe', range: 1.6 });
   add({ id: 'iv_host', kind: 'iv_host', label: 'Interview table', pos: { x: -17, z: 15.75 }, facing: Math.PI, obj: { x: -17, z: 14.95 }, locationId: 'cafe', range: 1.6 });

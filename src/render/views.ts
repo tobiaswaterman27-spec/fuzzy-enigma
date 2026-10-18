@@ -49,8 +49,12 @@ class PersonView {
   carriedHeld = true;
   mop: THREE.Group | null = null;
   binbag: THREE.Object3D | null = null;
+  handItem: THREE.Mesh | null = null;
+  private handProd: string | null = null;
   label: THREE.Sprite | null = null;
   culled = false;
+  /** sideways offset so two people standing on the same spot are drawn side by side */
+  nudge = { x: 0, z: 0 };
   shadow = true;
 
   constructor(public p: Person, scene: THREE.Scene) {
@@ -87,7 +91,7 @@ class PersonView {
       } else dress(this.rig, p.appearance);
       this.outfitKey = key;
     }
-    const target = new THREE.Vector3(p.pos.x, 0, p.pos.z);
+    const target = new THREE.Vector3(p.pos.x + this.nudge.x, 0, p.pos.z + this.nudge.z);
     // smooth presentation, but snap on large jumps (teleports, loading)
     if (root.position.distanceTo(target) > 3) root.position.copy(target);
     else root.position.lerp(target, Math.min(1, dt * 20));
@@ -197,6 +201,24 @@ class PersonView {
       this.mop.parent?.remove(this.mop);
       this.mop = null;
     }
+    // a single item in the right hand while it moves between case/shelf/basket: taken in the first part
+    // of each unit, put down at the end (the stock change happens when the unit completes)
+    let handProd: string | null = null;
+    if (a && a.unitTime > 0 && (a.type === 'stock_shelf' || a.type === 'pick_item' || a.type === 'face_shelf')) {
+      const prod = it?.product ?? (it?.businessId ? state.businesses[it.businessId]?.sections[it.id] : undefined) ?? null;
+      const phase = a.progress / a.unitTime;
+      if (prod && phase > 0.15 && phase < 0.9) handProd = prod;
+    }
+    if (handProd !== this.handProd) {
+      if (this.handItem) { this.handItem.parent?.remove(this.handItem); this.handItem = null; }
+      if (handProd) {
+        const m = new THREE.Mesh(productUnitGeometry(handProd), productMaterial);
+        m.castShadow = true;
+        this.rig.root.parent!.add(m);
+        this.handItem = m;
+      }
+      this.handProd = handProd;
+    }
     // a tied bin bag carried out to the dumpster in the right hand
     if (p.equipment === 'rubbish' && !this.binbag) {
       this.binbag = modelInstance('binbag') ?? new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 10), new THREE.MeshStandardMaterial({ color: '#111', roughness: 0.3 }));
@@ -270,9 +292,17 @@ class PersonView {
   /** Props that follow the hands of the final pose: the mop runs through both hands to the floor,
    * a carried case sits between the hands. */
   private placeProps(action: string | null, facing: number) {
-    if (!this.mop && !this.carried && !this.binbag) return;
+    if (!this.mop && !this.carried && !this.binbag && !this.handItem) return;
     this.rig.root.updateMatrixWorld(true);
     const hl = this.rig.bones.handL.getWorldPosition(HAND_L), hr = this.rig.bones.handR.getWorldPosition(HAND_R);
+    if (this.handItem) {
+      // gripped in the palm: just inside the hand, upright
+      const root = this.rig.root.position;
+      const ox = hr.x - root.x, oz = hr.z - root.z, ol = Math.hypot(ox, oz) || 1;
+      this.handItem.position.set(hr.x + Math.sin(facing) * 0.04 - (ox / ol) * 0.02, hr.y - 0.06, hr.z + Math.cos(facing) * 0.04 - (oz / ol) * 0.02);
+      this.handItem.rotation.set(0, facing, 0);
+      this.handItem.visible = this.rig.root.visible;
+    }
     if (this.binbag) {
       // hangs from the knot in the fist, swinging slightly behind the hand as you walk
       const lag = Math.min(0.12, this.speed * 0.05);
@@ -363,7 +393,7 @@ class PersonView {
     }
   }
 
-  dispose(scene: THREE.Scene) { scene.remove(this.rig.root); this.mop?.parent?.remove(this.mop); this.binbag?.parent?.remove(this.binbag); }
+  dispose(scene: THREE.Scene) { scene.remove(this.rig.root); this.mop?.parent?.remove(this.mop); this.binbag?.parent?.remove(this.binbag); this.handItem?.parent?.remove(this.handItem); }
 }
 
 export class Views {
@@ -494,6 +524,27 @@ export class Views {
 
   update(state: GameState, dt: number, viewer?: { x: number; z: number }, viewerInside?: string | null, speech?: Map<string, { text: string; until: number }>) {
     buildBudget = 1;
+    // personal space: people closer than ~0.6 m are drawn shuffled apart (the player never moves)
+    const vis = Object.values(state.people).filter((p) => p.visible && (!viewer || Math.hypot(p.pos.x - viewer.x, p.pos.z - viewer.z) < 40));
+    const want = new Map<string, { x: number; z: number }>();
+    for (let i = 0; i < vis.length; i++) for (let j = i + 1; j < vis.length; j++) {
+      const a = vis[i], b = vis[j];
+      const fixed = (q: typeof a) => q.sleeping || q.action?.type === 'sit' || q.action?.type === 'watch_tv' || q.action?.type === 'shower';
+      if (fixed(a) || fixed(b)) continue;
+      const dx = b.pos.x - a.pos.x, dz = b.pos.z - a.pos.z, d = Math.hypot(dx, dz);
+      if (d > 0.6) continue;
+      // push apart along the line between them, or sideways to a's facing when exactly on top of each other
+      const ux = d > 0.02 ? dx / d : Math.cos(a.facing), uz = d > 0.02 ? dz / d : -Math.sin(a.facing);
+      const push = 0.6 - d;
+      const wa = a.isPlayer ? 0 : b.isPlayer ? 1 : 0.5, wb = 1 - wa;
+      const na = want.get(a.id) ?? { x: 0, z: 0 }, nb = want.get(b.id) ?? { x: 0, z: 0 };
+      na.x -= ux * push * wa; na.z -= uz * push * wa; nb.x += ux * push * wb; nb.z += uz * push * wb;
+      want.set(a.id, na); want.set(b.id, nb);
+    }
+    for (const p of Object.values(state.people)) {
+      const v0 = this.people.get(p.id);
+      if (v0) { const w0 = want.get(p.id) ?? { x: 0, z: 0 }; const k = Math.min(1, dt * 4); v0.nudge.x += (w0.x - v0.nudge.x) * k; v0.nudge.z += (w0.z - v0.nudge.z) * k; }
+    }
     for (const p of Object.values(state.people)) {
       let v = this.people.get(p.id);
       if (!v) { v = new PersonView(p, this.scene); this.people.set(p.id, v); }

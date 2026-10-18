@@ -68,8 +68,9 @@ export function focusInteractable(state: GameState, actor: Person): Interactable
     if (dObj < 0.9) diff = 0;
     let score = d + diff * 1.2;
     if (it.kind === 'person') {
-      // people you are facing come first; someone you have an appointment with comes before anything else
-      score -= 0.4;
+      // people you are facing come first, unless your hands are busy with work;
+      // someone you have an appointment with comes before anything else
+      score += handsFree(state, actor) ? -0.4 : 1.5;
       const pid = it.id.slice(7);
       if (Object.values(state.applications).some((a) => a.personId === actor.id && a.status === 'interview' && a.interviewerId === pid)) score -= 3;
     }

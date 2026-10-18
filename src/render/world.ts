@@ -652,18 +652,29 @@ function artTexture(color: string): THREE.Texture {
 /** per-frame animators for fixtures that respond to people using them (shower door, water, ...) */
 const fixtures: ((state: GameState, dt: number) => void)[] = [];
 
+/** rotation that turns a fixture's front (+z) towards the spot where people stand to use it */
+function userFacing(o: Obstacle): number {
+  const r = o.rect;
+  const its = Object.values(getWorld().interactables).filter((it) => it.obj.x >= r.x0 - 0.5 && it.obj.x <= r.x1 + 0.5 && it.obj.z >= r.z0 - 0.5 && it.obj.z <= r.z1 + 0.5);
+  const it = its[0];
+  return it ? Math.atan2(it.pos.x - it.obj.x, it.pos.z - it.obj.z) : o.rot ?? 0;
+}
+
 function buildObstacle(o: Obstacle): THREE.Object3D {
   const r = o.rect;
   const cx = (r.x0 + r.x1) / 2, cz = (r.z0 + r.z1) / 2, W = r.x1 - r.x0, D = r.z1 - r.z0;
   const grp = new THREE.Group();
   // Blender-modelled furniture where available (front of each model faces +z; rotate into place)
   const fit = (name: string, rr: Rect, rot: number, paint?: string, h?: number) => { const m = fitModel(name, rr, rot, paint, h); if (m) grp.add(m); return !!m; };
+  // natural-size model centred on the footprint (trees, shelters: the collider is smaller than the model)
+  const place = (name: string, rot: number, paint?: string, scale = 1) => { const m = modelInstance(name, paint); if (!m) return false; m.position.set(cx, 0, cz); m.rotation.y = rot; m.scale.setScalar(scale); grp.add(m); return true; };
   switch (o.kind) {
     case 'sofa': if (fit('sofa', r, o.rot ?? Math.PI / 2, o.color ?? '#4f6d60')) return grp; break;
     case 'armchair': if (fit('armchair', r, o.rot ?? 0, o.color ?? '#6b6e73')) return grp; break;
     case 'bed': if (fit('bed', r, o.rot ?? -Math.PI / 2, o.color ?? '#4e6e9e')) return grp; break;
     case 'bedside': if (fit('bedside', r, o.rot ?? 0)) return grp; break;
     case 'desk':
+      if (W > 2.5 && fit('office_desk', r, o.rot ?? 0)) return grp;
       if (fit('desk', r, o.rot ?? 0)) {
         // desk chair pulled up in front
         const rot = o.rot ?? 0, fx = Math.sin(rot), fz = Math.cos(rot);
@@ -695,6 +706,18 @@ function buildObstacle(o: Obstacle): THREE.Object3D {
     case 'forklift': if (fit('forklift', r, o.rot ?? 0, '#f2a516')) return grp; break;
     case 'pallet_load': if (fit('pallet_load', r, o.rot ?? 0)) return grp; break;
     case 'roller_door': if (fit('roller_door', r, o.rot ?? 0)) return grp; break;
+    case 'waiting_chairs': case 'water_cooler': case 'leaflet_stand': case 'bistro_set':
+      if (fit(o.kind, r, o.rot ?? 0)) return grp; break;
+    case 'terminal': { const f = userFacing(o); if (fit('terminal', Math.abs(Math.sin(f)) > 0.5 ? { x0: cx - 0.06, x1: cx + 0.06, z0: cz - 0.25, z1: cz + 0.25 } : { x0: cx - 0.25, x1: cx + 0.25, z0: cz - 0.06, z1: cz + 0.06 }, f)) return grp; break; }
+    case 'cupboard': if (fit('locker', r, userFacing(o))) return grp; break;
+    case 'kiosk': if (fit('kiosk', r, userFacing(o))) return grp; break;
+    case 'board': if (fit('notice_board', r, 0)) return grp; break;
+    case 'tree': if (place('tree', ((cx * 7 + cz * 3) % 6.28), undefined, 0.85 + (Math.abs(cx * 13 + cz) % 10) / 30)) return grp; break;
+    case 'bench': if (fit('park_bench', r, o.rot ?? 0)) return grp; break;
+    case 'bin': if (place('street_bin', cz > 0 ? Math.PI : 0, '#2f5d3a')) return grp; break;
+    case 'busstop': if (place('bus_shelter', cz < 0 ? 0 : Math.PI)) return grp; break;
+    case 'plant': if (fit('house_plant', r, 0, undefined, o.height)) return grp; break;
+    case 'lampstand': if (fit('floor_lamp', r, 0)) return grp; break;
     case 'storage_shelf': case 'ironing_board': case 'laundry_basket': case 'drying_rack': case 'bike': case 'vacuum':
       if (fit(o.kind, r, o.rot ?? 0, o.kind === 'bike' ? '#2f6d8f' : undefined)) return grp;
       grp.add(box(W, o.height, D, M('#9aa0a6', 0.6), cx, o.height / 2, cz)); return grp;
@@ -828,6 +851,7 @@ function buildObstacle(o: Obstacle): THREE.Object3D {
       break;
     }
     case 'counter': {
+      if (o.color && fit('cafe_counter', r, Math.PI)) return grp;
       if (!o.color && hasModel('checkout')) {
         // the cashier stands where the till's interaction point is; customers face them across the belt
         const till = Object.values(getWorld().interactables).find((it) => it.kind === 'till' && it.obj.x >= r.x0 && it.obj.x <= r.x1 && Math.abs(it.obj.z - cz) < 2);
