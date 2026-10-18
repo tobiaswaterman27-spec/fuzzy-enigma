@@ -23,6 +23,7 @@ import numpy as np
 CACHE, BODY, OUT = sys.argv[1], sys.argv[2], sys.argv[3]
 SRC = 'https://raw.githubusercontent.com/una-dinosauria/cmu-mocap/master/data'
 FPS = 30
+FEET = None
 
 # our bone -> (capture joint, capture child joint used for the bone's direction)
 MAP = {
@@ -46,7 +47,7 @@ OUR_CHILD = {'hips': 'spine', 'spine': 'chest', 'chest': 'neck', 'neck': 'head',
 CLIPS = {
     'walk': ('08_01', None, True, 'cycle', (0.9, 1.4)),
     'run': ('09_01', None, True, 'cycle', (0.55, 0.85)),
-    'idle': ('40_10', (6.0, 20.0), True, 'free', (5.0, 9.0)),
+    'idle': ('40_11', None, True, 'still', (6.0, 0)),
     'carry_walk': ('69_69', None, True, 'cycle', (0.9, 1.5)),
     'pickup': ('69_70', None, True, 'pick', None),
     'place': ('80_08', None, True, 'free', (2.0, 4.0)),
@@ -232,6 +233,8 @@ def retarget(path, body):
     floor = float(np.percentile(feet[1:], 3)) if nf > 2 else float(feet[0])
     hips[:, 1] -= floor
     hips[0, 1] = P['Hips'][0, 1] - feet[0]  # T-pose: standing hip height over the feet
+    global FEET
+    FEET = (P['LeftFoot'].copy(), P['RightFoot'].copy())
     return world, hips, 1.0 / ft, nf
 
 
@@ -285,7 +288,24 @@ def build_clip(name, spec, body):
     hips = face_forward(world, hips, travel)
     L = locals_from_world(world)
     stand_y = hips[0, 1]  # T-pose hip height = standing
-    if kind in ('down', 'up'):
+    if kind == 'still':
+        # the calmest stretch: feet planted, body not turning; length cyc[0] seconds
+        win = int(cyc[0] * fps)
+        fl, fr = FEET
+        step = max(1, int(fps / 10))
+        def yaw(f):
+            v = world['hips'][f] @ np.array([0, 0, 1.0])
+            return math.atan2(v[0], v[2])
+        best, a = None, lo
+        for f in range(lo, hi - win, step):
+            g = f + win
+            feet = np.abs(np.diff(fl[f:g], axis=0)).sum() + np.abs(np.diff(fr[f:g], axis=0)).sum()
+            dyaw = abs(((yaw(g) - yaw(f)) + math.pi) % (2 * math.pi) - math.pi)
+            score = feet + dyaw * 40
+            if best is None or score < best:
+                best, a = score, f
+        b = a + win
+    elif kind in ('down', 'up'):
         # the strongest 1.6 s drop (sitting down) or rise (standing up) of the hips
         win = int(1.6 * fps)
         best, a = None, lo
@@ -346,6 +366,13 @@ def build_clip(name, spec, body):
                 if d < best_d:
                     best_d, pair = d, (i, j)
         a, b = pair
+    if not travel:
+        # face +Z over the chosen window (the take as a whole may face anywhere)
+        mid = (a + b) // 2
+        fwd = L['hips'][mid] @ np.array([0, 0, 1.0])
+        R = rot('Y', -math.degrees(math.atan2(fwd[0], fwd[2])))
+        L['hips'] = np.einsum('ij,fjk->fik', R, L['hips'])
+        hips = (R @ hips.T).T
     t0, t1 = a / fps, b / fps
     quats = {}
     for bn in MAP:

@@ -53,6 +53,8 @@ export class Game {
   overview = false;
   /** debug/screenshot scripts can pin the camera; players cannot move it */
   camLocked = false;
+  private vel = { x: 0, z: 0 };
+  private stillFor = 0;
   /** debug/photo mode: the camera is positioned externally */
   freeCam = false;
   private raycaster = new THREE.Raycaster();
@@ -241,22 +243,37 @@ export class Game {
   private updatePlayer(dt: number) {
     const p = this.player;
     if (this.uiOpen || p.sleeping) return;
-    // W/S walk forwards/backwards along the way you face, A/D turn; the camera follows behind
+    // movement is relative to the camera: W away from the camera, S towards it, A/D to the sides.
+    // The body accelerates, decelerates and turns smoothly towards where it is going.
     const k = this.keys;
-    let fwd = 0, turn = 0;
-    if (k.has('KeyW') || k.has('ArrowUp')) fwd += 1;
-    if (k.has('KeyS') || k.has('ArrowDown')) fwd -= 1;
-    if (k.has('KeyA') || k.has('ArrowLeft')) turn += 1;
-    if (k.has('KeyD') || k.has('ArrowRight')) turn -= 1;
-    if (fwd === 0 && turn === 0) return;
-    if (p.action) cancelAction(this.state, p, 'moved');
+    let ix = 0, iz = 0;
+    if (k.has('KeyW') || k.has('ArrowUp')) iz += 1;
+    if (k.has('KeyS') || k.has('ArrowDown')) iz -= 1;
+    if (k.has('KeyA') || k.has('ArrowLeft')) ix -= 1;
+    if (k.has('KeyD') || k.has('ArrowRight')) ix += 1;
     const run = k.has('ShiftLeft') || k.has('ShiftRight');
-    p.facing += turn * (fwd === 0 ? 2.6 : 2.2) * dt;
-    if (fwd !== 0) {
-      const sp = (run && fwd > 0 ? RUN_SPEED : fwd > 0 ? WALK_SPEED : WALK_SPEED * 0.6) * capability(p).move;
-      const dx = Math.sin(p.facing) * fwd, dz = Math.cos(p.facing) * fwd;
-      p.pos = resolveCircle({ x: p.pos.x + dx * sp * dt, z: p.pos.z + dz * sp * dt }, 0.3);
+    const len = Math.hypot(ix, iz);
+    const fwd = { x: -Math.sin(this.camYaw), z: -Math.cos(this.camYaw) };
+    const right = { x: -fwd.z, z: fwd.x };
+    let tx = 0, tz = 0;
+    if (len > 0) {
+      if (p.action) cancelAction(this.state, p, 'moved');
+      const sp = (run ? RUN_SPEED : WALK_SPEED) * capability(p).move;
+      tx = ((fwd.x * iz + right.x * ix) / len) * sp;
+      tz = ((fwd.z * iz + right.z * ix) / len) * sp;
     }
+    // acceleration: quick to start, a little slower to stop
+    const acc = len > 0 ? 7 : 9;
+    this.vel.x += (tx - this.vel.x) * Math.min(1, dt * acc);
+    this.vel.z += (tz - this.vel.z) * Math.min(1, dt * acc);
+    const speed = Math.hypot(this.vel.x, this.vel.z);
+    if (speed < 0.03 && len === 0) { this.vel.x = this.vel.z = 0; return; }
+    if (len > 0) {
+      const want = Math.atan2(tx, tz);
+      let d = ((want - p.facing + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+      p.facing += d * Math.min(1, dt * 9);
+    }
+    p.pos = resolveCircle({ x: p.pos.x + this.vel.x * dt, z: p.pos.z + this.vel.z * dt }, 0.3);
     enforceLocationRules(this.state, p);
   }
 
@@ -284,8 +301,13 @@ export class Game {
       // automatic camera: settles behind the player; closer and higher indoors so rooms read clearly
       const behind = p.facing + Math.PI;
       let dYaw = ((behind - this.camYaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
-      const moving = this.keys.has('KeyW') || this.keys.has('KeyS') || this.keys.has('ArrowUp') || this.keys.has('ArrowDown') || this.keys.has('KeyA') || this.keys.has('KeyD');
-      const rate = moving ? 3.2 : p.action ? 0.8 : 1.6;
+      // only walking forward (W) swings the view round behind you; strafing or walking towards the camera
+      // keeps it still so directions stay stable. After standing still for a moment it recentres gently.
+      const spd = Math.hypot(this.vel.x, this.vel.z);
+      const fwdKey = this.keys.has('KeyW') || this.keys.has('ArrowUp');
+      const backKey = this.keys.has('KeyS') || this.keys.has('ArrowDown');
+      if (spd > 0.3 || p.action) this.stillFor = 0; else this.stillFor += dt;
+      const rate = spd > 0.3 ? (fwdKey && !backKey ? 0.8 + 0.4 * Math.min(1, spd / 4) : 0) : p.action ? 0.6 : this.stillFor > 1.5 ? 0.5 : 0;
       this.camYaw += dYaw * Math.min(1, dt * rate);
       const wantPitch = p.sleeping ? 0.75 : inside ? 0.42 : 0.24;
       const wantDist = p.sleeping ? 3.4 : inside ? 3.3 : 4.4;

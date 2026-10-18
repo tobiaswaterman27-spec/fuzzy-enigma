@@ -476,7 +476,7 @@ export class UI {
       <button data-m="loadauto">Load autosave <span class="muted">(${esc(sum(auto))})</span></button>
       <button data-m="new">New game</button>
       <button data-m="gfx">Graphics: ${this.game.quality === 'high' ? 'High (ambient occlusion, bloom, anti-aliasing)' : 'Low (faster)'} - click to switch</button>
-      <h3>Controls</h3><p class="muted">W/S or arrows: walk · A/D: turn · Shift: run · E: use · 1-6: other options · Tab or P: phone · Esc: pause. The camera follows you automatically.</p>
+      <h3>Controls</h3><p class="muted">WASD or arrows: walk in that direction (relative to the camera) · Shift: run · E: use · 1-6: other options · Tab or P: phone · Esc: pause. The camera follows you automatically.</p>
       <p class="muted">Day ${dayIndex(this.s.minute) + 1}. Time passes at ${this.game.speedMult}× (1× = 20 game minutes per real minute). Sleeping fast-forwards.</p>`;
   }
   onMenuClick(e: Event) {
