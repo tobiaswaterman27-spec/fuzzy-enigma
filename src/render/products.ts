@@ -211,10 +211,14 @@ const ITEM: Record<string, Maker> = {
   soap: () => carton(0.06, 0.045, 0.09, 'soap', '#ffffff'),
   // loaf in a printed bag with a twist at the end
   bread: () => {
-    const loaf = new THREE.CapsuleGeometry(0.055, 0.14, 4, 12);
+    // a golden loaf with a domed top in a clear bag, a printed band round the middle, twisted end
+    const loaf = new THREE.CapsuleGeometry(0.05, 0.05, 4, 14);
     loaf.rotateX(Math.PI / 2);
-    loaf.scale(1, 0.95, 1);
-    return [part(loaf, L('bread'), 0, 0.06, 0), part(new THREE.CylinderGeometry(0.008, 0.02, 0.03, 8), S('#e9d9b6'), 0, 0.06, -0.135, Math.PI / 2)];
+    loaf.scale(1.05, 1.15, 1);
+    const band = new THREE.CylinderGeometry(0.0545, 0.0545, 0.05, 16, 1, true);
+    band.rotateX(Math.PI / 2);
+    band.scale(1.05, 1.15, 1);
+    return [part(loaf, S('#c98b4a'), 0, 0.058, 0), part(band, L('bread'), 0, 0.058, 0), part(new THREE.CylinderGeometry(0.006, 0.016, 0.022, 8), S('#e8e2d0'), 0, 0.058, -0.083, Math.PI / 2)];
   },
   // a net bag of six apples
   apples: () => {
