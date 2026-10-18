@@ -227,6 +227,43 @@ function wallOutwardFace(r: Rect, b: BuildingDef): number {
   return (r.x0 + r.x1) / 2 < cx ? 1 : 0;
 }
 
+/** Glass for windows you cannot walk behind: a hint of the room inside (curtains, blinds, a lamp)
+ * under a sky reflection. Several variants so a street of windows never repeats; they glow at night. */
+let roomGlass: THREE.MeshStandardMaterial[] | null = null;
+function roomGlasses(windowsMat: THREE.MeshStandardMaterial[]): THREE.MeshStandardMaterial[] {
+  if (!roomGlass) {
+    const palettes = [['#c9b18a', '#8a6f4f'], ['#7f95b5', '#4e6585'], ['#d8d2c4', '#a59d8c'], ['#a35b4c', '#6e3a30'], ['#9fb58c', '#617550'], ['#e7e2d7', '#bdb6a6']];
+    roomGlass = palettes.map(([a, b], k) => {
+      const cv = document.createElement('canvas');
+      cv.width = 128; cv.height = 128;
+      const c = cv.getContext('2d')!;
+      // dim room interior with a ceiling light and the far wall
+      const g = c.createLinearGradient(0, 0, 0, 128); g.addColorStop(0, '#3b3f44'); g.addColorStop(1, '#1d2024'); c.fillStyle = g; c.fillRect(0, 0, 128, 128);
+      c.fillStyle = 'rgba(255,230,190,0.18)'; c.fillRect(30 + (k * 17) % 50, 70, 40, 30);
+      if (k % 3 === 2) {
+        // venetian blinds
+        for (let y = 0; y < 128; y += 6) { c.fillStyle = a; c.fillRect(0, y, 128, 4); c.fillStyle = b; c.fillRect(0, y + 4, 128, 1); }
+      } else {
+        // curtains drawn to the sides with soft folds
+        for (const [x0, w] of [[0, 30 + (k * 7) % 14], [128 - 30 - (k * 5) % 14, 30 + (k * 5) % 14]] as const) {
+          for (let x = 0; x < w; x++) { const f = 0.75 + 0.25 * Math.sin(x * 0.7); c.fillStyle = a; c.globalAlpha = f; c.fillRect(x0 + x, 0, 1, 128); }
+          c.globalAlpha = 1;
+        }
+        c.fillStyle = b; c.fillRect(0, 0, 128, 6);
+      }
+      // sky reflection across the glass
+      const r = c.createLinearGradient(0, 0, 128, 128); r.addColorStop(0, 'rgba(200,225,245,0.45)'); r.addColorStop(0.5, 'rgba(200,225,245,0.08)'); r.addColorStop(1, 'rgba(200,225,245,0.25)');
+      c.fillStyle = r; c.fillRect(0, 0, 128, 128);
+      const t = new THREE.CanvasTexture(cv);
+      t.colorSpace = THREE.SRGBColorSpace;
+      const m = new THREE.MeshStandardMaterial({ map: t, emissiveMap: t, emissive: new THREE.Color('#000000'), emissiveIntensity: 3.5, roughness: 0.1, metalness: 0.2 });
+      return m;
+    });
+  }
+  for (const m of roomGlass) if (!windowsMat.includes(m)) windowsMat.push(m);
+  return roomGlass;
+}
+
 function windowMesh(w: number, h: number, frameCol: string, lit: THREE.MeshStandardMaterial, inner = false) {
   const grp = new THREE.Group();
   const fm = M(frameCol, 0.5);
@@ -305,15 +342,47 @@ function buildBuilding(g: THREE.Group, b: BuildingDef, cutaway: WorldView['cutaw
         g.add(band);
       }
       if (b.floors > 1) {
-        for (const s of ['zmin', 'zmax'] as const) {
-          const n = Math.floor((W - 2) / 3.2);
-          for (let i = 0; i < n; i++) {
-            const along = x0 + 1 + 3.2 * (i + 0.5) + ((W - 2) - n * 3.2) / 2;
-            const win = windowMesh(1.4, 1.4, b.trim, litGlass);
-            win.position.set(along, 3.2 + upH / 2, s === 'zmin' ? z0 - WALL_T / 2 - 0.03 : z1 + WALL_T / 2 + 0.03);
-            if (s === 'zmin') win.rotation.y = Math.PI;
-            roofs.push(win);
-            g.add(win);
+        // every upper floor: a string course, windows on all four sides; flats get balconies on the street side
+        const residential = b.id === 'flat';
+        const railM = glassM();
+        const metalM = metal('#3b4045', 0.4);
+        for (let f = 1; f < b.floors; f++) {
+          const fy = 3.2 * f;
+          const course = box(W + WALL_T + 0.1, 0.14, D + WALL_T + 0.1, trimM, cx, fy, cz);
+          roofs.push(course); g.add(course);
+          for (const [side, len] of [['zmin', W], ['zmax', W], ['xmin', D], ['xmax', D]] as const) {
+            const n = Math.floor((len - 2) / 3.2);
+            const start = side === 'zmin' || side === 'zmax' ? x0 : z0;
+            for (let i = 0; i < n; i++) {
+              const along = start + 1 + 3.2 * (i + 0.5) + ((len - 2) - n * 3.2) / 2;
+              const balcony = residential && side === 'zmin' && i % 2 === 1;
+              const wh = balcony ? 2.1 : 1.4;
+              const wy = balcony ? fy + 0.12 + wh / 2 : fy + 1.65;
+              const rg = roomGlasses(windowsMat);
+              const win = windowMesh(balcony ? 1.6 : 1.4, wh, b.trim, rg[Math.abs(Math.floor(along * 7 + f * 13)) % rg.length]);
+              const off = WALL_T / 2 + 0.03;
+              if (side === 'zmin') { win.position.set(along, wy, z0 - off); win.rotation.y = Math.PI; }
+              if (side === 'zmax') win.position.set(along, wy, z1 + off);
+              if (side === 'xmin') { win.position.set(x0 - off, wy, along); win.rotation.y = -Math.PI / 2; }
+              if (side === 'xmax') { win.position.set(x1 + off, wy, along); win.rotation.y = Math.PI / 2; }
+              roofs.push(win); g.add(win);
+              if (balcony) {
+                const bz = z0 - WALL_T / 2 - 0.55;
+                const parts: THREE.Mesh[] = [
+                  box(2.1, 0.14, 1.1, M('#cfcac0', 0.7), along, fy + 0.07, bz),
+                  box(2.1, 0.95, 0.02, railM, along, fy + 0.62, bz - 0.54, false),
+                  box(0.02, 0.95, 1.1, railM, along - 1.04, fy + 0.62, bz, false),
+                  box(0.02, 0.95, 1.1, railM, along + 1.04, fy + 0.62, bz, false),
+                  box(2.12, 0.05, 0.05, metalM, along, fy + 1.12, bz - 0.54),
+                  box(0.05, 0.05, 1.1, metalM, along - 1.04, fy + 1.12, bz),
+                  box(0.05, 0.05, 1.1, metalM, along + 1.04, fy + 1.12, bz),
+                ];
+                // a few lived-in touches: a plant pot or a folding chair on some balconies
+                if ((f + i) % 3 === 0) parts.push(cyl(0.16, 0.12, 0.3, M('#9a5b3a', 0.8), along + 0.7, fy + 0.29, bz + 0.2, 10), cyl(0.2, 0.05, 0.35, M('#3f7f45', 0.9), along + 0.7, fy + 0.6, bz + 0.2, 8));
+                if ((f + i) % 3 === 1) parts.push(box(0.45, 0.04, 0.45, metalM, along - 0.5, fy + 0.6, bz + 0.15), box(0.45, 0.5, 0.04, metalM, along - 0.5, fy + 0.85, bz + 0.37));
+                for (const pt of parts) { roofs.push(pt); g.add(pt); }
+              }
+            }
           }
         }
       }
@@ -342,6 +411,20 @@ function buildBuilding(g: THREE.Group, b: BuildingDef, cutaway: WorldView['cutaw
       g.add(pl);
     }
     for (const d of b.doors) addDoor(g, b, d.side, d.a, d.b, d.open, doors);
+    if (b.id === 'flat') {
+      // entrance canopy, intercom panel and flat numbers by the communal door
+      const main = b.doors[0];
+      const mx = (main.a + main.b) / 2;
+      g.add(box(main.b - main.a + 1.4, 0.12, 1.3, M('#2f3337', 0.4), mx, 2.75, z0 - 0.7));
+      for (const sx of [-1, 1]) g.add(box(0.03, 0.5, 0.03, metal('#2f3337', 0.4), mx + sx * ((main.b - main.a) / 2 + 0.55), 3.0, z0 - 1.25));
+      g.add(box(0.22, 0.38, 0.04, metal('#9aa1a8', 0.3), main.b + 0.4, 1.35, z0 - WALL_T / 2 - 0.03));
+      for (let k = 0; k < 4; k++) g.add(box(0.05, 0.035, 0.02, M('#222', 0.4), main.b + 0.4, 1.47 - k * 0.07, z0 - WALL_T / 2 - 0.06, false));
+      const tag = signTexture('FLATS 1-8', '#222222', '#e6e1d6');
+      const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.5 * tag.aspect * 0.35, 0.5 * 0.35), new THREE.MeshStandardMaterial({ map: tag.tex, roughness: 0.6 }));
+      plate.position.set(main.a - 0.55, 1.9, z0 - WALL_T / 2 - 0.02);
+      plate.rotation.y = Math.PI;
+      g.add(plate);
+    }
     cutaway.set(b.id, { roof: roofs, walls: wallsOut, fullH: 3.2 });
   } else {
     const isHouse = b.id.startsWith('house_');
@@ -356,7 +439,8 @@ function buildBuilding(g: THREE.Group, b: BuildingDef, cutaway: WorldView['cutaw
       for (let f = 0; f < b.floors; f++) for (let i = 0; i < n; i++) {
         const along = (side === 'zmin' || side === 'zmax' ? x0 : z0) + (len / n) * (i + 0.5);
         if (f === 0 && b.doors.some((d) => d.side === side && along > d.a - 1.2 && along < d.b + 1.2)) continue;
-        const win = windowMesh(isHouse ? 1.2 : 1.5, isHouse ? 1.25 : 1.5, b.trim, litGlass);
+        const rg = roomGlasses(windowsMat);
+        const win = windowMesh(isHouse ? 1.2 : 1.5, isHouse ? 1.25 : 1.5, b.trim, rg[Math.abs(Math.floor(along * 7 + f * 13 + x0)) % rg.length]);
         const y = f * storeyH + storeyH * 0.55;
         if (side === 'zmin') { win.position.set(along, y, z0 - 0.04); win.rotation.y = Math.PI; }
         if (side === 'zmax') win.position.set(along, y, z1 + 0.04);
@@ -660,6 +744,58 @@ function buildObstacle(o: Obstacle): THREE.Object3D {
       grp.add(box(0.5, 0.4, 0.4, M('#fafafa', 0.3), r.x1 - 0.25, 0.85, r.z1 + 0.6));
       grp.add(box(0.02, 0.7, 0.6, M('#cfe3ea', 0.05, { metalness: 0.8 }), r.x1 - 0.02, 1.5, r.z1 + 0.6, false));
       break;
+    case 'stairs': {
+      // dog-leg stair: first flight along the front wall, half landing, second flight back up to the next floor
+      const stepM = M('#b9b2a6', 0.8), noseM = M('#3a3a3a', 0.6), railM = metal('#2f3337', 0.4), wallM = M('#e6e0d6', 0.9);
+      const half = (r.z1 - r.z0) / 2, landW = 1.0, run = W - landW, n = 9, rise = 1.6 / n, go = run / n;
+      for (let k = 0; k < n; k++) {
+        const h1 = rise * (k + 1);
+        grp.add(box(go + 0.02, h1, half - 0.05, stepM, r.x1 - go * (k + 0.5), h1 / 2, r.z0 + half / 2));
+        grp.add(box(0.04, 0.02, half - 0.05, noseM, r.x1 - go * (k + 1) + 0.02, h1, r.z0 + half / 2, false));
+        const h2 = 1.6 + rise * (k + 1);
+        grp.add(box(go + 0.02, 0.18, half - 0.05, stepM, r.x0 + landW + go * (k + 0.5), h2 - 0.09, r.z1 - half / 2));
+        grp.add(box(0.04, 0.02, half - 0.05, noseM, r.x0 + landW + go * k + 0.02, h2, r.z1 - half / 2, false));
+      }
+      grp.add(box(landW, 1.6, D, stepM, r.x0 + landW / 2, 0.8, cz));
+      // spine wall between the flights, and a sloping soffit under the upper flight
+      grp.add(box(run, 1.2, 0.08, wallM, r.x0 + landW + run / 2, 0.6, cz));
+      const soffit = box(Math.hypot(run, 1.6), 0.1, half - 0.05, wallM, r.x0 + landW + run / 2, 2.35, r.z1 - half / 2);
+      soffit.rotation.z = Math.atan2(1.6, run);
+      grp.add(soffit);
+      // handrails on posts
+      for (const [zr, y0, dir] of [[r.z0 + half - 0.04, 0, -1], [r.z1 - half + 0.04, 1.6, 1]] as const) {
+        const rail = box(Math.hypot(run, 1.6), 0.05, 0.05, railM, r.x0 + landW + run / 2, y0 + 0.8 + 0.9, zr, false);
+        rail.rotation.z = dir * Math.atan2(1.6, run);
+        grp.add(rail);
+        for (let k = 0; k <= 3; k++) { const x = r.x0 + landW + (run * k) / 3, y = dir > 0 ? y0 + (1.6 * k) / 3 : 1.6 - (1.6 * k) / 3; grp.add(box(0.04, 0.9, 0.04, railM, x, y + 0.45, zr, false)); }
+      }
+      break;
+    }
+    case 'mailboxes': {
+      grp.add(box(W, 1.0, D, metal('#8d949b', 0.35), cx, 0.95, cz));
+      const doorM = metal('#a9b0b6', 0.3), slotM = M('#1b1d20', 0.5);
+      const face = r.x0 - 0.005;
+      for (let row = 0; row < 4; row++) for (let col = 0; col < 2; col++) {
+        const y = 0.6 + row * 0.24, z = cz - D / 4 + col * (D / 2);
+        grp.add(box(0.012, 0.21, D / 2 - 0.04, doorM, face, y, z, false));
+        grp.add(box(0.014, 0.025, D / 2 - 0.2, slotM, face - 0.002, y + 0.05, z, false));
+        grp.add(box(0.014, 0.03, 0.08, M('#f2f2f2', 0.5), face - 0.002, y - 0.05, z - D / 8, false));
+      }
+      break;
+    }
+    case 'flatdoor': {
+      // frame round the doorway and Flat 1's front door standing open into the hall
+      const frameM = M('#f3f0ea', 0.5), leafM = M('#2f4a5f', 0.45);
+      grp.add(box(0.08, 2.15, 0.34, frameM, r.x0 - 0.04, 1.075, cz), box(0.08, 2.15, 0.34, frameM, r.x1 + 0.04, 1.075, cz), box(W + 0.16, 0.1, 0.34, frameM, cx, 2.15, cz));
+      const leaf = new THREE.Group();
+      leaf.position.set(r.x0 + 0.02, 0, r.z1);
+      leaf.rotation.y = -1.35;
+      leaf.add(box(W - 0.04, 2.05, 0.045, leafM, (W - 0.04) / 2, 1.04, 0));
+      leaf.add(box(0.12, 0.04, 0.05, metal('#c9b26b', 0.25), W - 0.15, 1.02, -0.04));
+      leaf.add(box(0.1, 0.12, 0.01, metal('#c9b26b', 0.25), (W - 0.04) / 2, 1.6, -0.03));
+      grp.add(leaf);
+      break;
+    }
     case 'tilefloor': grp.add(box(W, 0.012, D, texMat(tex.tiles('#eef0f1', '#e2e6e8', 8), 0.35), cx, 0.087, cz, false, TILE['tiles#eef0f1#e2e6e8'] ?? 1.2)); break;
     case 'toilet': {
       const ceramic = M('#f7f7f5', 0.15);

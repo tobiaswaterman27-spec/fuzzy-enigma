@@ -47,6 +47,9 @@ export interface BuildingDef {
 export type ObstacleKind =
   | 'gondola'
   | 'toilet'
+  | 'stairs'
+  | 'mailboxes'
+  | 'flatdoor'
   | 'tilefloor'
   | 'drawers'
   | 'coffee_table'
@@ -186,8 +189,8 @@ const B: BuildingDef[] = [
     interior: true, floorColor: '#cfd3d6',
   },
   {
-    id: 'flat', name: 'Marlow Court', category: 'functional', role: 'Your rented studio flat (ground floor)',
-    rect: { x0: 12, z0: 10, x1: 30, z1: 26 }, height: 7, floors: 2, color: '#b5654a', trim: '#e6e1d6', roof: '#3d3f42',
+    id: 'flat', name: 'Marlow Court', category: 'functional', role: 'Block of flats - your Flat 1 is on the ground floor',
+    rect: { x0: 12, z0: 10, x1: 30, z1: 26 }, height: 12.8, floors: 4, color: '#b5654a', trim: '#e6e1d6', roof: '#3d3f42',
     sign: { text: 'MARLOW COURT', side: 'zmin', color: '#222222', bg: '#e6e1d6' },
     doors: [
       { side: 'zmin', a: 15, b: 17, open: true },
@@ -195,8 +198,12 @@ const B: BuildingDef[] = [
     ],
     interior: true, floorColor: '#a07850',
     // open-plan living/kitchen with a hall; bedroom and bathroom behind doorways;
-    // the communal stair lobby for the upstairs flat (closed street door) is walled off
+    // the bin store behind the service door (closed) is walled off
     internalWalls: [
+      // communal entrance lobby with the stairs; Flat 1's front door opens off it
+      { x0: 12, z0: 13.45, x1: 16.2, z1: 13.75 },
+      { x0: 17.2, z0: 13.45, x1: 18.15, z1: 13.75 },
+      { x0: 17.85, z0: 10, x1: 18.15, z1: 13.45 },
       { x0: 25.35, z0: 10, x1: 25.65, z1: 14.4 },
       { x0: 25.35, z0: 15.6, x1: 25.65, z1: 17.65 },
       { x0: 25.65, z0: 12.85, x1: 30, z1: 13.15 },
@@ -454,14 +461,18 @@ export function getWorld(): World {
   obstacles.push({ kind: 'tilefloor', rect: { x0: 25.65, z0: 13.15, x1: 29.85, z1: 17.35 }, height: 0.01, solid: false });
   obstacles.push({ kind: 'toilet', rect: { x0: 29.2, z0: 16.0, x1: 29.85, z1: 16.7 }, height: 0.8, solid: true });
   // living room
-  obstacles.push({ kind: 'sofa', rect: { x0: 12.2, z0: 14.0, x1: 13.15, z1: 16.2 }, height: 0.85, solid: true });
-  add({ id: 'sofa', kind: 'sofa', label: 'Sofa & TV', pos: { x: 13.8, z: 15.1 }, facing: Math.PI / 2, obj: { x: 12.7, z: 15.1 }, locationId: 'flat' });
-  obstacles.push({ kind: 'tv', rect: { x0: 16.4, z0: 14.3, x1: 16.85, z1: 15.9 }, height: 0.5, solid: true });
-  obstacles.push({ kind: 'rug', rect: { x0: 13.6, z0: 14.0, x1: 16.0, z1: 16.2 }, height: 0.01, solid: false });
-  obstacles.push({ kind: 'coffee_table', rect: { x0: 14.65, z0: 14.55, x1: 15.2, z1: 15.65 }, height: 0.45, solid: true });
-  obstacles.push({ kind: 'bookcase', rect: { x0: 12.2, z0: 11.8, x1: 12.52, z1: 12.7 }, height: 1.9, solid: true });
-  obstacles.push({ kind: 'plant', rect: { x0: 12.5, z0: 10.5, x1: 13.2, z1: 11.2 }, height: 1.2, solid: true });
-  obstacles.push({ kind: 'lampstand', rect: { x0: 12.3, z0: 16.6, x1: 12.8, z1: 17.1 }, height: 1.6, solid: true });
+  obstacles.push({ kind: 'sofa', rect: { x0: 12.2, z0: 15.4, x1: 13.15, z1: 17.6 }, height: 0.85, solid: true });
+  add({ id: 'sofa', kind: 'sofa', label: 'Sofa & TV', pos: { x: 13.8, z: 16.5 }, facing: Math.PI / 2, obj: { x: 12.7, z: 16.5 }, locationId: 'flat' });
+  obstacles.push({ kind: 'tv', rect: { x0: 16.9, z0: 15.7, x1: 17.35, z1: 17.3 }, height: 0.5, solid: true });
+  obstacles.push({ kind: 'rug', rect: { x0: 13.6, z0: 15.4, x1: 16.4, z1: 17.6 }, height: 0.01, solid: false });
+  obstacles.push({ kind: 'coffee_table', rect: { x0: 14.75, z0: 15.95, x1: 15.3, z1: 17.05 }, height: 0.45, solid: true });
+  obstacles.push({ kind: 'bookcase', rect: { x0: 12.2, z0: 19.8, x1: 12.52, z1: 20.7 }, height: 1.9, solid: true });
+  // communal lobby
+  obstacles.push({ kind: 'stairs', rect: { x0: 12.2, z0: 10.2, x1: 14.6, z1: 12.4 }, height: 3.2, solid: true });
+  obstacles.push({ kind: 'mailboxes', rect: { x0: 17.4, z0: 11.0, x1: 17.85, z1: 12.6 }, height: 1.5, solid: true });
+  obstacles.push({ kind: 'flatdoor', rect: { x0: 16.2, z0: 13.45, x1: 17.2, z1: 13.75 }, height: 2.1, solid: false });
+  obstacles.push({ kind: 'plant', rect: { x0: 14.9, z0: 12.8, x1: 15.4, z1: 13.3 }, height: 1.2, solid: true });
+  obstacles.push({ kind: 'lampstand', rect: { x0: 12.3, z0: 18.8, x1: 12.8, z1: 19.3 }, height: 1.6, solid: true });
   // dining table with the laptop
   obstacles.push({ kind: 'table', rect: { x0: 18.6, z0: 17.3, x1: 20.0, z1: 18.2 }, height: 0.75, solid: true });
   add({ id: 'chair', kind: 'chair', label: 'Chair', pos: { x: 19.3, z: 16.6 }, facing: 0, obj: { x: 19.3, z: 16.6 }, locationId: 'flat' });
@@ -688,8 +699,10 @@ export function getWorld(): World {
   N('fl_out', 16, 8.6); N('fl_in', 16, 11.6, 'flat');
   L('se_16', 'fl_out', 'fl_in');
   N('fl_c', 23.5, 14.5, 'flat'); N('fl_k', 15.5, 20, 'flat'); N('fl_bed', 23.5, 19.5, 'flat'); N('fl_bath', 27.2, 15.0, 'flat');
-  L('fl_in', 'fl_c', 'fl_bed'); L('fl_in', 'fl_k'); L('fl_c', 'fl_bath');
-  N('door_upper', 27, 9.3, 'flat_upper'); L('se_27', 'door_upper');
+  N('fl_door_o', 16.7, 12.9, 'flat'); N('fl_door_i', 16.7, 14.4, 'flat');
+  L('fl_in', 'fl_door_o', 'fl_door_i', 'fl_c', 'fl_bed'); L('fl_door_i', 'fl_k'); L('fl_c', 'fl_bath');
+  // upstairs residents use the communal entrance
+  N('door_upper', 16.6, 9.3, 'flat_upper'); L('se_16', 'door_upper');
   // Wholesale staff door
   N('door_wholesale', -43, 13.3, 'wholesale'); L('sw_-43', 'door_wholesale');
   // Park

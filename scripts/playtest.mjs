@@ -12,6 +12,7 @@ page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
 await page.goto('http://localhost:4173/?skipcreator');
 await page.waitForTimeout(2000);
 const ev = (f, a) => page.evaluate(f, a);
+await ev(() => { window.__bigshot.game.camLocked = true; });
 const tp = (x, z, facing) => ev(([x, z, f]) => { const g = window.__bigshot.game; const p = g.player; p.pos = { x, z }; if (f !== undefined) p.facing = f; }, [x, z, facing]);
 const waitIdle = async () => { await ev(() => { window.__bigshot.game.speedMult = 20; }); try { await waitIdle0(); } finally { await ev(() => { window.__bigshot.game.speedMult = 1; }); } };
 const waitIdle0 = async () => { for (let i = 0; i < 12 && !(await ev(() => !!window.__bigshot.game.player.action)); i++) await page.waitForTimeout(250); for (let i = 0; i < 160; i++) { if (!(await ev(() => !!window.__bigshot.game.player.action))) return; await page.waitForTimeout(250); } };

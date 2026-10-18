@@ -51,6 +51,8 @@ export class Game {
   camPitch = 0.22;
   camDist = 4.2;
   overview = false;
+  /** debug/screenshot scripts can pin the camera; players cannot move it */
+  camLocked = false;
   /** debug/photo mode: the camera is positioned externally */
   freeCam = false;
   private raycaster = new THREE.Raycaster();
@@ -62,8 +64,6 @@ export class Game {
   onToast: (msg: string) => void = () => {};
   onFrame: () => void = () => {};
   private last = performance.now();
-  private dragging = false;
-  private lastMouse = { x: 0, y: 0 };
   private autosaveAt = performance.now() + 120000;
   insideId: string | null = null;
   sky!: Sky;
@@ -174,29 +174,10 @@ export class Game {
       if (this.uiOpen) return;
       if (e.code === 'KeyE') this.interact(0);
       if (/^Digit[1-6]$/.test(e.code)) this.interact(Number(e.code.slice(5)) - 1);
-      if (e.code === 'BracketLeft') this.camYaw += 0.3;
-      if (e.code === 'BracketRight') this.camYaw -= 0.3;
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
     window.addEventListener('blur', () => this.keys.clear());
-    // GTA-style: click to capture the mouse, move the mouse to look around
-    this.canvas.addEventListener('click', () => { if (!this.uiOpen && document.pointerLockElement !== this.canvas) this.canvas.requestPointerLock?.()?.catch?.(() => {}); });
-    document.addEventListener('mousemove', (e) => {
-      if (document.pointerLockElement === this.canvas) this.look(e.movementX, e.movementY);
-      else if (this.dragging) { this.look(e.clientX - this.lastMouse.x, e.clientY - this.lastMouse.y); this.lastMouse = { x: e.clientX, y: e.clientY }; }
-    });
-    // fallback for touch / no pointer lock: drag to look
-    this.canvas.addEventListener('pointerdown', (e) => { if (document.pointerLockElement !== this.canvas) { this.dragging = true; this.lastMouse = { x: e.clientX, y: e.clientY }; } });
-    window.addEventListener('pointerup', () => { this.dragging = false; });
-    this.canvas.addEventListener('wheel', (e) => { this.camDist = Math.min(this.overview ? 30 : 9, Math.max(1.6, this.camDist + e.deltaY * 0.004)); e.preventDefault(); }, { passive: false });
-    window.addEventListener('keydown', (e) => {
-      if (e.code === 'KeyV' && !this.uiOpen) { this.overview = !this.overview; this.camDist = this.overview ? 16 : 4.2; this.camPitch = this.overview ? 0.9 : 0.22; }
-    });
-  }
-
-  private look(dx: number, dy: number) {
-    this.camYaw -= dx * 0.0032;
-    this.camPitch = Math.min(this.overview ? 1.4 : 1.05, Math.max(-0.35, this.camPitch + dy * 0.0028));
+    // the camera is fully automatic: no mouse look, zoom or camera keys
   }
 
   releaseMouse() { if (document.pointerLockElement) document.exitPointerLock(); }
@@ -260,27 +241,22 @@ export class Game {
   private updatePlayer(dt: number) {
     const p = this.player;
     if (this.uiOpen || p.sleeping) return;
-    let fx = 0, fz = 0;
+    // W/S walk forwards/backwards along the way you face, A/D turn; the camera follows behind
     const k = this.keys;
-    if (k.has('KeyW') || k.has('ArrowUp')) fz -= 1;
-    if (k.has('KeyS') || k.has('ArrowDown')) fz += 1;
-    if (k.has('KeyA') || k.has('ArrowLeft')) fx -= 1;
-    if (k.has('KeyD') || k.has('ArrowRight')) fx += 1;
-    if (fx === 0 && fz === 0) return;
+    let fwd = 0, turn = 0;
+    if (k.has('KeyW') || k.has('ArrowUp')) fwd += 1;
+    if (k.has('KeyS') || k.has('ArrowDown')) fwd -= 1;
+    if (k.has('KeyA') || k.has('ArrowLeft')) turn += 1;
+    if (k.has('KeyD') || k.has('ArrowRight')) turn -= 1;
+    if (fwd === 0 && turn === 0) return;
     if (p.action) cancelAction(this.state, p, 'moved');
-    const len = Math.hypot(fx, fz);
-    fx /= len; fz /= len;
-    // camera-relative: "forward" is from camera towards player
-    const fwd = { x: -Math.sin(this.camYaw), z: -Math.cos(this.camYaw) };
-    const right = { x: -fwd.z, z: fwd.x };
-    const dx = right.x * fx + fwd.x * -fz;
-    const dz = right.z * fx + fwd.z * -fz;
     const run = k.has('ShiftLeft') || k.has('ShiftRight');
-    const sp = (run ? RUN_SPEED : WALK_SPEED) * capability(p).move;
-    const next = resolveCircle({ x: p.pos.x + dx * sp * dt, z: p.pos.z + dz * sp * dt }, 0.3);
-    p.pos = next;
-    const target = Math.atan2(dx, dz);
-    p.facing = target;
+    p.facing += turn * (fwd === 0 ? 2.6 : 2.2) * dt;
+    if (fwd !== 0) {
+      const sp = (run && fwd > 0 ? RUN_SPEED : fwd > 0 ? WALK_SPEED : WALK_SPEED * 0.6) * capability(p).move;
+      const dx = Math.sin(p.facing) * fwd, dz = Math.cos(p.facing) * fwd;
+      p.pos = resolveCircle({ x: p.pos.x + dx * sp * dt, z: p.pos.z + dz * sp * dt }, 0.3);
+    }
     enforceLocationRules(this.state, p);
   }
 
@@ -303,6 +279,19 @@ export class Game {
       }
       this.insideId = inside;
       this.cutawayOn = this.overview;
+    }
+    if (!this.camLocked) {
+      // automatic camera: settles behind the player; closer and higher indoors so rooms read clearly
+      const behind = p.facing + Math.PI;
+      let dYaw = ((behind - this.camYaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+      const moving = this.keys.has('KeyW') || this.keys.has('KeyS') || this.keys.has('ArrowUp') || this.keys.has('ArrowDown') || this.keys.has('KeyA') || this.keys.has('KeyD');
+      const rate = moving ? 3.2 : p.action ? 0.8 : 1.6;
+      this.camYaw += dYaw * Math.min(1, dt * rate);
+      const wantPitch = p.sleeping ? 0.75 : inside ? 0.42 : 0.24;
+      const wantDist = p.sleeping ? 3.4 : inside ? 3.3 : 4.4;
+      this.camPitch += (wantPitch - this.camPitch) * Math.min(1, dt * 2);
+      this.camDist += (wantDist - this.camDist) * Math.min(1, dt * 2);
+      void dYaw;
     }
     const pivot = new THREE.Vector3(p.pos.x, p.sleeping ? 1.0 : 1.62, p.pos.z);
     const pitch = this.camPitch;
