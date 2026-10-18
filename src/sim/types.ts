@@ -268,7 +268,11 @@ export interface Position {
   playable: boolean;
   description: string;
   duties: string[];
+  /** what the job-holder prioritises on shift (shops): defaults to doing everything */
+  role?: StaffRole;
 }
+
+export type StaffRole = 'manager' | 'cashier' | 'stocker' | 'cleaner' | 'general';
 
 export interface DayStats {
   day: number;

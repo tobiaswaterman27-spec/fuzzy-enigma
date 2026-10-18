@@ -7,7 +7,7 @@ import { fmtMoney } from '../sim/core';
 import { accountTxns } from '../sim/ledger';
 import { acceptOffer, acceptPromotion, applyForJob, attendInterview, canApply, currentShift, declineOffer, hoursPerWeek, INTERVIEW, nextShift, openAttendance, positionOf, promotionEligible, resign, shiftLabel, scoreShift } from '../sim/employment';
 import { conditionLabel, skillLevel } from '../sim/needs';
-import { currentObjective } from '../sim/objectives';
+import { agenda, currentObjective } from '../sim/objectives';
 import { activeLease, reRent } from '../sim/housing';
 import { openTasks, inventoryValue, stockPosition } from '../sim/retail';
 import { demandFactors } from '../sim/economy';
@@ -79,10 +79,16 @@ export class UI {
     $('#sleep-ind').hidden = !p.sleeping;
     setBar('#bar-energy', p.needs.energy);
     setBar('#bar-food', p.needs.satiety);
+    setBar('#bar-hygiene', p.needs.hygiene);
+    setBar('#bar-mood', p.needs.mood);
     $('#cond').textContent = conditionLabel(p).join(' · ');
+    // a time-critical reminder (only shown when it is nearly time to set off) outranks the general goal
+    const rem = agenda(s);
     const obj = currentObjective(s);
-    $('#objective').hidden = !obj;
-    if (obj) $('#objective-text').textContent = obj.text;
+    $('#objective').hidden = !obj && !rem;
+    $('#objective').classList.toggle('urgent', !!rem?.urgent);
+    if (rem) $('#objective-text').textContent = rem.text;
+    else if (obj) $('#objective-text').textContent = obj.text;
     // shift card
     const att = openAttendance(s, p.id);
     const shiftCard = $('#shift');
@@ -93,7 +99,8 @@ export class UI {
       const by: Record<string, number> = {};
       for (const t of tasks) by[t.kind] = (by[t.kind] ?? 0) + 1;
       const preview = scoreShift({ ...att, clockOut: null });
-      shiftCard.innerHTML = `<b>On shift</b> · ${left > 0 ? `${fmtDuration(left)} left` : '<span class="warn">Shift over: clock out</span>'}<br>
+      const role = positionOf(s, s.contracts[att.contractId])?.role;
+      shiftCard.innerHTML = `<b>On shift</b>${role && role !== 'general' ? ` · ${ROLE_LABEL[role]}` : ''} · ${left > 0 ? `${fmtDuration(left)} left` : '<span class="warn">Shift over: clock out</span>'}<br>
         Tasks done: ${att.tasks} · Served: ${att.served}${att.late ? ` · <span class="warn">${att.late}m late</span>` : ''}<br>
         <span class="muted">Waiting work:</span> ${Object.entries(by).map(([k, n]) => `${n} ${k}`).join(', ') || 'none'}${(() => { const q = Object.values(s.tills).find((t) => t.businessId === s.contracts[att.contractId].businessId)?.queue.length ?? 0; return q ? ` · <span class="warn">${q} at till</span>` : ''; })()}<br>
         <span class="muted">Score so far ~${preview}</span>`;
@@ -225,7 +232,7 @@ export class UI {
     const bag = s.containers[p.bagId];
     const pantry = p.pantryId ? s.containers[p.pantryId] : null;
     const inv = (c: typeof bag | null) => c && total(c) ? Object.entries(c.items).map(([k, n]) => `${n}× ${itemName(k)}`).join(', ') : 'empty';
-    return `<div class="card"><b>${esc(p.name)}</b><br>Energy ${p.needs.energy.toFixed(0)} · Food ${p.needs.satiety.toFixed(0)}<br><span class="muted">${conditionLabel(p).join(' · ') || 'Feeling fine'}</span><br>Professional reputation ${p.reputation.toFixed(0)}/100</div>
+    return `<div class="card"><b>${esc(p.name)}</b><br>Energy ${p.needs.energy.toFixed(0)} · Food ${p.needs.satiety.toFixed(0)} · Hygiene ${p.needs.hygiene.toFixed(0)} · Mood ${p.needs.mood.toFixed(0)}<br><span class="muted">${conditionLabel(p).join(' · ') || 'Feeling fine'}</span><br>Professional reputation ${p.reputation.toFixed(0)}/100</div>
       <h3>Effects</h3><p class="muted">Below 25 energy you move and work 20% slower (36% below 10). Starving slows work. Sleep in your bed to recover. Eat food from your kitchen or a cafe meal.</p>
       <h3>Skills</h3>${['retail', 'cleaning', 'warehouse'].map((k) => `<div class="line"><span>${k}</span><span>level ${skillLevel(p.skills[k] ?? 0)} (${p.skills[k] ?? 0} xp)</span></div>`).join('')}
       <p class="muted">Each level makes related work 6% faster and improves job applications.</p>
@@ -476,6 +483,8 @@ export class UI {
 }
 
 function localStorageGet(k: string) { try { return localStorage.getItem(k); } catch { return null; } }
+
+const ROLE_LABEL: Record<string, string> = { manager: 'Manager', cashier: 'Cashier: till first', stocker: 'Stacker: stock room & shelves', cleaner: 'Cleaner: spills & floor rounds' };
 
 function setBar(sel: string, v: number) {
   const el = document.querySelector(sel) as HTMLElement;

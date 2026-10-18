@@ -114,15 +114,25 @@ export function createNewGame(seed: number, setup: PlayerSetup): GameState {
     id: 'market', name: 'Corner Market', kind: 'retail', ownerId: 'p_harlan', locationId: 'market',
     open: [sh(MON_SAT, 7, 21), sh([6], 10, 16)],
     positions: [
-      pos({ id: 'manager', title: 'Owner-Manager', wage: 1000, shifts: [sh(MON_SAT, 6.5, 15), sh([6], 9.5, 16)], uniform: 'uniform_market', description: 'Runs the shop and places stock orders.' }),
+      pos({ id: 'manager', title: 'Owner-Manager', wage: 1000, shifts: [sh(MON_SAT, 6.5, 15), sh([6], 9.5, 16)], uniform: 'uniform_market', role: 'manager', description: 'Runs the shop: orders stock, checks in deliveries, covers the till when a queue builds.' }),
       pos({
-        id: 'assistant_am', title: 'Retail Assistant (Mornings)', wage: 1250, shifts: [sh(MON_SAT, 8, 14)], uniform: 'uniform_market', playable: true,
-        description: 'Keep Corner Market running: serve customers at the till, keep the shelves full, receive deliveries and keep the floor clean.',
+        id: 'assistant_am', title: 'Retail Assistant (Mornings)', wage: 1250, shifts: [sh(MON_SAT, 8, 14)], uniform: 'uniform_market', playable: true, role: 'cashier',
+        description: 'Cashier first: keep the till covered and serve customers; when it is quiet, keep the shelves full, help with deliveries and spills.',
         duties: ['Serve customers at the checkout', 'Restock shelves from the store room', 'Check in deliveries at the loading bay', 'Mop up spills'],
       }),
       pos({
-        id: 'assistant_pm', title: 'Retail Assistant (Evenings)', wage: 1250, shifts: [sh(MON_SAT, 14, 21)], uniform: 'uniform_market', playable: true,
-        description: 'Evening cover at Corner Market: till, restocking and cleaning.', duties: ['Serve customers', 'Restock shelves', 'Clean'],
+        id: 'assistant_pm', title: 'Retail Assistant (Evenings)', wage: 1250, shifts: [sh(MON_SAT, 14, 21)], uniform: 'uniform_market', playable: true, role: 'cashier',
+        description: 'Evening cashier at Corner Market: till first, then restocking and tidying.', duties: ['Serve customers', 'Restock shelves', 'Clean'],
+      }),
+      pos({
+        id: 'stocker_am', title: 'Shelf Stacker (Mornings)', wage: 1180, shifts: [sh(MON_SAT, 6, 12)], uniform: 'uniform_market', playable: true, role: 'stocker',
+        description: 'Stock room and shelves: check in deliveries, bring stock out, keep every section full.',
+        duties: ['Check in deliveries at the loading bay', 'Restock shelves from the store room', 'Cover the till only when the queue is long'],
+      }),
+      pos({
+        id: 'cleaner', title: 'Cleaner (Afternoons)', wage: 1100, shifts: [sh(MON_SAT, 12, 18)], uniform: 'uniform_market', playable: true, role: 'cleaner',
+        description: 'Keep Corner Market clean and safe: spills, floor rounds and tidying.',
+        duties: ['Mop up spills', 'Walk the aisles keeping the floor clear'],
       }),
     ],
     prices: Object.fromEntries(PRODUCTS.map((k) => [k, ITEMS[k].retail])), reputation: 55, supplierId: 'wholesale',
@@ -212,6 +222,8 @@ export function createNewGame(seed: number, setup: PlayerSetup): GameState {
   const npcs: { id: string; name: string; home: string; cash: number; job?: [string, string]; rent?: number; retired?: boolean; traits?: Partial<Traits>; skills?: Record<string, number>; search?: number }[] = [
     { id: 'p_harlan', name: 'Harlan Price', home: 'house_1', cash: 250000, job: ['market', 'manager'], traits: { conscientiousness: 0.85 } },
     { id: 'p_dana', name: 'Dana Okafor', home: 'flat_upper', cash: 60000, job: ['market', 'assistant_pm'], rent: 12500, skills: { retail: 300 } },
+    { id: 'p_kofi', name: 'Kofi Mensah', home: 'house_2', cash: 35000, job: ['market', 'stocker_am'], skills: { retail: 120, warehouse: 140 } },
+    { id: 'p_lena', name: 'Lena Novak', home: 'flat_upper', cash: 28000, job: ['market', 'cleaner'], rent: 11500, skills: { cleaning: 200 } },
     { id: 'p_gail', name: 'Gail Fenwick', home: 'house_2', cash: 400000, retired: true },
     { id: 'p_marcus', name: 'Marcus Bell', home: 'house_3', cash: 80000, job: ['wholesale', 'driver'], rent: 15000 },
     { id: 'p_priya', name: 'Priya Nair', home: 'house_4', cash: 70000, job: ['wholesale', 'operative'], rent: 14500 },

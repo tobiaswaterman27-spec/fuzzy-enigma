@@ -427,36 +427,11 @@ function workChoose(state: GameState, p: Person) {
     else if (pal) n.plan = [{ kind: 'move', to: I[pal].pos, label: 'store room' }, { kind: 'act', it: pal, type: 'return_case' }];
     return;
   }
-  // 1. serve customers
-  const serve = tasks.find((t) => t.kind === 'serve' && claimable(t, p));
-  const someoneAtTill = till?.staffId && till.staffId !== p.id;
-  const colleagueServing = tasks.some((t) => t.kind === 'serve' && t.status === 'claimed' && t.claimedBy !== p.id);
-  if (till && serve && !someoneAtTill && !colleagueServing && b.equipment.till !== false) {
-    claim(state, p, serve);
-    const head = state.people[till.queue[0]];
-    if (head && dist(head.pos, queueSlot(bid, 0)) < 1.2) n.plan = [{ kind: 'move', to: I[S.till].pos, label: 'till' }, { kind: 'act', it: S.till, type: 'serve_customer' }];
-    else n.plan = [{ kind: 'move', to: I[S.till].pos, label: 'till' }, { kind: 'wait', until: state.minute + 1 }];
-    return;
-  }
-  // 2. receive deliveries
-  const recv = tasks.find((t) => t.kind === 'receive' && claimable(t, p));
-  if (recv && !p.equipment) {
-    claim(state, p, recv);
-    n.plan = [{ kind: 'move', to: I[S.bay].pos, label: 'loading bay' }, { kind: 'act', it: S.bay, type: 'check_in_delivery' }];
-    return;
-  }
-  // 3. cleaning
-  const clean = tasks.find((t) => t.kind === 'clean' && claimable(t, p));
-  if (clean) {
-    claim(state, p, clean);
-    const spot = state.dirt[clean.target];
-    const plan: PlanStep[] = [];
-    if (p.equipment !== 'mop') plan.push(...cupboardPlan('take_mop'));
-    plan.push({ kind: 'move', to: { x: spot.pos.x - 0.9, z: spot.pos.z }, label: 'spill' }, { kind: 'act', it: spot.id, type: 'clean' });
-    n.plan = plan;
-    return;
-  }
-  if (p.equipment === 'mop') { n.plan = cupboardPlan('return_mop'); return; }
+  // each role has its own priorities; anyone helps out when their speciality has nothing to do
+  const role = positionOf(state, c)?.role ?? 'general';
+  const onDuty = staffOnDuty(state, bid).filter((o) => o.id !== p.id);
+  const rolesOnDuty = new Set(onDuty.map((o) => (o.contractId ? positionOf(state, state.contracts[o.contractId])?.role : null) ?? (state.businesses[bid].ownerId === o.id ? 'manager' : 'general')));
+  const queueLen = till?.queue.length ?? 0;
   const back = state.containers[S.backroom];
   const restockPlan = (_item: string, sh: string): PlanStep[] => {
     const pal = S.pallets[sh];
@@ -467,20 +442,79 @@ function workChoose(state: GameState, p: Person) {
       { kind: 'act', it: sh, type: 'stock_shelf' },
     ];
   };
-  // 4. restock the emptiest shelf
-  const restock = tasks.filter((t) => t.kind === 'restock' && claimable(t, p)).sort((a, b2) => count(state.containers[a.target], a.product!) - count(state.containers[b2.target], b2.product!))[0];
-  if (restock && count(back, restock.product!) > 0) {
+  const tryServe = (): boolean => {
+    const serve = tasks.find((t) => t.kind === 'serve' && claimable(t, p));
+    const someoneAtTill = till?.staffId && till.staffId !== p.id;
+    const colleagueServing = tasks.some((t) => t.kind === 'serve' && t.status === 'claimed' && t.claimedBy !== p.id);
+    if (!(till && serve && !someoneAtTill && !colleagueServing && b.equipment.till !== false)) return false;
+    claim(state, p, serve);
+    const head = state.people[till.queue[0]];
+    if (head && dist(head.pos, queueSlot(bid, 0)) < 1.2) n.plan = [{ kind: 'move', to: I[S.till].pos, label: 'till' }, { kind: 'act', it: S.till, type: 'serve_customer' }];
+    else n.plan = [{ kind: 'move', to: I[S.till].pos, label: 'till' }, { kind: 'wait', until: state.minute + 1 }];
+    return true;
+  };
+  const tryReceive = (): boolean => {
+    const recv = tasks.find((t) => t.kind === 'receive' && claimable(t, p));
+    if (!recv || p.equipment) return false;
+    claim(state, p, recv);
+    n.plan = [{ kind: 'move', to: I[S.bay].pos, label: 'loading bay' }, { kind: 'act', it: S.bay, type: 'check_in_delivery' }];
+    return true;
+  };
+  const tryClean = (): boolean => {
+    const clean = tasks.find((t) => t.kind === 'clean' && claimable(t, p));
+    if (!clean) return false;
+    claim(state, p, clean);
+    const spot = state.dirt[clean.target];
+    const plan: PlanStep[] = [];
+    if (p.equipment !== 'mop') plan.push(...cupboardPlan('take_mop'));
+    plan.push({ kind: 'move', to: { x: spot.pos.x - 0.9, z: spot.pos.z }, label: 'spill' }, { kind: 'act', it: spot.id, type: 'clean' });
+    n.plan = plan;
+    return true;
+  };
+  const tryRestock = (): boolean => {
+    if (p.equipment === 'mop') return false;
+    const restock = tasks.filter((t) => t.kind === 'restock' && claimable(t, p)).sort((a, b2) => count(state.containers[a.target], a.product!) - count(state.containers[b2.target], b2.product!))[0];
+    if (!restock || count(back, restock.product!) <= 0) return false;
     claim(state, p, restock);
     n.plan = restockPlan(restock.product!, restock.target);
-    return;
-  }
-  // 5. nothing urgent: top up the emptiest shelf if the till is quiet
-  if (!till?.queue.length) {
+    return true;
+  };
+  const tryTopUp = (fill: number): boolean => {
+    if (p.equipment === 'mop' || queueLen) return false;
     const claimed = new Set(tasks.filter((t) => t.status === 'claimed').map((t) => t.product));
     const low = Object.entries(b.sections)
-      .filter(([sh, k]) => !claimed.has(k) && count(state.containers[sh], k) < state.containers[sh].capacity * 0.75 && count(back, k) > 0)
+      .filter(([sh, k]) => !claimed.has(k) && count(state.containers[sh], k) < state.containers[sh].capacity * fill && count(back, k) > 0)
       .sort((x, y) => count(state.containers[x[0]], x[1]) - count(state.containers[y[0]], y[1]))[0];
-    if (low) { n.plan = restockPlan(low[1], low[0]); return; }
+    if (!low) return false;
+    n.plan = restockPlan(low[1], low[0]);
+    return true;
+  };
+  const noCashier = !rolesOnDuty.has('cashier') && !rolesOnDuty.has('general');
+  const desperate = queueLen >= 3 && !(till?.staffId && till.staffId !== p.id);
+  const order: (() => boolean)[] = {
+    cashier: [tryServe, () => tryTopUp(0.75), tryRestock, () => !rolesOnDuty.has('cleaner') && tryClean(), () => !rolesOnDuty.has('stocker') && tryReceive()],
+    stocker: [tryReceive, tryRestock, () => tryTopUp(0.9), () => !rolesOnDuty.has('cleaner') && tryClean(), () => (desperate || noCashier && queueLen > 0) && tryServe()],
+    cleaner: [tryClean, () => (desperate || (noCashier && !rolesOnDuty.has('manager') && queueLen > 0)) && tryServe()],
+    manager: [() => (queueLen >= 2 || noCashier) && tryServe(), tryReceive, () => !rolesOnDuty.has('stocker') && tryRestock(), () => onDuty.length === 0 && tryClean(), () => onDuty.length === 0 && tryTopUp(0.6)],
+    general: [tryServe, tryReceive, tryClean, tryRestock, () => tryTopUp(0.75)],
+  }[role];
+  for (const f of order) if (f()) return;
+  if (p.equipment === 'mop' && role !== 'cleaner') { n.plan = cupboardPlan('return_mop'); return; }
+  if (role === 'cleaner') {
+    // floor rounds: walk the aisles with the mop, checking for spills
+    if (p.equipment !== 'mop') { n.plan = cupboardPlan('take_mop'); return; }
+    const spots = S.dirtSpots;
+    const next = spots[Math.floor(state.minute / 3) % spots.length];
+    n.plan = [{ kind: 'move', to: { x: next.x - 0.9, z: next.z }, label: 'floor round' }, { kind: 'wait', until: state.minute + 2 }];
+    return;
+  }
+  if (role === 'stocker') {
+    // nothing to bring out: wait in the store room by the pallets
+    const pal = Object.values(S.pallets)[0];
+    const spot = I[pal].pos;
+    if (dist(p.pos, spot) > 0.6) n.plan = [{ kind: 'move', to: spot, label: 'store room' }];
+    else n.plan = [{ kind: 'wait', until: state.minute + 1 }];
+    return;
   }
   // 6. stand by the till / shop floor
   const colleagues = staffOnDuty(state, bid).filter((o) => o.id !== p.id && !o.isPlayer);

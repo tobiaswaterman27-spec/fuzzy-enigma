@@ -14,6 +14,8 @@ fs.copyFileSync(`dist/assets/${js}`, `${out}/game.js`);
 fs.mkdirSync(`${out}/assets/human`, { recursive: true });
 for (const f of ['body.json', 'skin_masks.png']) fs.copyFileSync(`dist/assets/human/${f}`, `${out}/assets/human/${f}`);
 fs.writeFileSync(`${out}/assets/human/body.bin.txt`, fs.readFileSync('dist/assets/human/body.bin').toString('base64'));
+fs.mkdirSync(`${out}/assets/anim`, { recursive: true });
+fs.copyFileSync('dist/assets/anim/clips.json', `${out}/assets/anim/clips.json`);
 fs.mkdirSync(`${out}/assets/models`, { recursive: true });
 for (const f of fs.readdirSync('dist/assets/models')) if (f.endsWith('.glb')) fs.writeFileSync(`${out}/assets/models/${f}.txt`, fs.readFileSync(`dist/assets/models/${f}`).toString('base64'));
 console.log('ok', js);

@@ -220,9 +220,37 @@ export const CLIP_DEFS: Record<string, ClipDef> = {
   clipboard: { dur: 1.2, bones: { armL: still(-0.8, 0, 0.1), foreL: still(-0.9, 0.4, 0), armR: [[0, -0.7, 0, -0.1], [0.5, -0.85, 0.15, -0.1], [1, -0.7, 0, -0.1]], foreR: still(-1.0, -0.3, 0), head: [[0, 0.35, 0, 0], [0.5, 0.2, 0.2, 0], [1, 0.35, 0, 0]] } },
 };
 
+// ------------------------------------------------- motion capture
+// Real human motion (CMU motion capture, retargeted by tools/build_anims.py) replaces the
+// hand-keyed clips where available: walk, run, idle, carry_walk, pickup, sit, mop, talk, eat.
+interface MocapClip { dur: number; speed: number; times: number[]; bones: Record<string, number[]>; hips: number[] }
+let MOCAP: Record<string, MocapClip> = {};
+export async function loadMocap(url = 'assets/anim/clips.json'): Promise<boolean> {
+  try {
+    const r = await fetch(url);
+    if (!r.ok) return false;
+    MOCAP = (await r.json()).clips ?? {};
+    const walk = MOCAP.walk?.speed, run = MOCAP.run?.speed;
+    if (walk) WALK_SPEED_REF = walk;
+    if (run) RUN_SPEED_REF = run;
+    if (MOCAP.carry_walk?.speed) CARRY_SPEED_REF = MOCAP.carry_walk.speed;
+    for (const k of Object.keys(CLIPS)) delete CLIPS[k];
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function mocapClip(name: string, m: MocapClip): THREE.AnimationClip {
+  const tracks: THREE.KeyframeTrack[] = [];
+  for (const [bone, vals] of Object.entries(m.bones)) tracks.push(new THREE.QuaternionKeyframeTrack(`${bone}.quaternion`, m.times, vals));
+  tracks.push(new THREE.VectorKeyframeTrack('hips.position', m.times, m.hips));
+  return new THREE.AnimationClip(name, m.dur, tracks);
+}
+
 const CLIPS: Record<string, THREE.AnimationClip> = {};
 export function getClip(name: string): THREE.AnimationClip {
-  if (!CLIPS[name]) CLIPS[name] = makeClip(name, full(CLIP_DEFS[name]));
+  if (!CLIPS[name]) CLIPS[name] = MOCAP[name] ? mocapClip(name, MOCAP[name]) : makeClip(name, full(CLIP_DEFS[name]));
   return CLIPS[name];
 }
 
@@ -235,8 +263,10 @@ export const ACTION_CLIP: Record<string, string> = {
   change_outfit: 'pickup', buy_meal: 'eat', sit: 'sit', talk: 'talk',
 };
 
-export const WALK_SPEED_REF = 1.5; // m/s the walk clip is authored for
-export const RUN_SPEED_REF = 4.2;
+/** ground speeds (m/s) the locomotion clips were captured at; playback rate scales with real speed */
+export let WALK_SPEED_REF = 1.5;
+export let RUN_SPEED_REF = 4.2;
+export let CARRY_SPEED_REF = 1.2;
 
 export class AnimationController {
   readonly mixer: THREE.AnimationMixer;
@@ -269,7 +299,7 @@ export class AnimationController {
       rate = speed / RUN_SPEED_REF;
     } else if (speed > 0.15) {
       clip = carrying ? 'carry_walk' : 'walk';
-      rate = Math.max(0.5, speed / WALK_SPEED_REF);
+      rate = Math.max(0.5, Math.min(2.2, speed / (carrying ? CARRY_SPEED_REF : WALK_SPEED_REF)));
     } else {
       clip = carrying ? 'carry_idle' : 'idle';
     }
@@ -280,7 +310,11 @@ export class AnimationController {
       next.setEffectiveWeight(1);
       next.play();
       const prev = this.current ? this.actions.get(this.current) : null;
-      if (prev) next.crossFadeFrom(prev, clip === 'lie' || this.current === 'lie' ? 0.05 : 0.22, false);
+      // locomotion to locomotion keeps the stride phase so the feet never skip
+      const loco = ['walk', 'run', 'carry_walk'];
+      if (prev && loco.includes(clip) && loco.includes(this.current)) next.time = (prev.time / prev.getClip().duration) * next.getClip().duration;
+      const fade = clip === 'lie' || this.current === 'lie' ? 0.08 : loco.includes(clip) && loco.includes(this.current) ? 0.3 : 0.35;
+      if (prev) next.crossFadeFrom(prev, fade, true);
       this.current = clip;
     }
     this.get(clip).timeScale = rate;
