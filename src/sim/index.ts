@@ -28,3 +28,4 @@ export * from './property';
 export * from './social';
 export * from './invest';
 export * from './inspections';
+export * from './cars';

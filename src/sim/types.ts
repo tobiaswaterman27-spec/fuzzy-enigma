@@ -152,6 +152,7 @@ export type ActionType =
   | 'talk'
   | 'sit'
   | 'drive_van'
+  | 'drive_car'
   | 'take_order'
   | 'cook_meal'
   | 'take_tool'
@@ -500,7 +501,15 @@ export interface Vehicle {
   id: Id;
   name: string;
   ownerId: Id;
-  kind: 'van';
+  kind: 'van' | 'car';
+  /** cars: model id, paint colour and what was paid */
+  model?: string;
+  color?: string;
+  price?: number;
+  /** cars: odometer reading fuel was last paid up to, next insurance date, off the road when unpaid */
+  billedOdo?: number;
+  nextCharge?: number;
+  uninsured?: boolean;
   pos: Vec2;
   heading: number;
   route: Vec2[];

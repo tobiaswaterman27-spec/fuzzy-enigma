@@ -163,6 +163,7 @@ function collectAtDepot(state: GameState, s: Shipment) {
 export function logisticsTick(state: GameState, dt: number) {
   const w = getWorld();
   for (const v of Object.values(state.vehicles)) {
+    if (v.kind === 'car') continue;
     if (v.state === 'parked') {
       const due = Object.values(state.shipments)
         .filter((s) => s.supplierId === v.ownerId && s.status === 'ordered' && s.dispatchAt <= state.minute)
@@ -285,7 +286,7 @@ function parkAtDepot(state: GameState, v: GameState['vehicles'][string]) {
     v.driverId = null;
   }
   // NPC drivers go back to work at the depot
-  for (const p of Object.values(state.people)) if (p.where === 'vehicle') { p.where = 'wholesale'; }
+  for (const p of Object.values(state.people)) if (p.where === 'vehicle' && !p.isPlayer) { p.where = 'wholesale'; }
 }
 
 function isStaffPlayer(state: GameState, bid: Id) {

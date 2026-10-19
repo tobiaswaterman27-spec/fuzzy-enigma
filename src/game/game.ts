@@ -25,6 +25,7 @@ import { Sites } from '../render/sites';
 import { raining } from '../sim/weather';
 import { safeWrite, loadSlot, type KV } from '../sim/save';
 import { news } from '../sim/events';
+import { CAR_MODELS, exitCar } from '../sim/cars';
 import { fmtDate, fmtClock } from '../sim/clock';
 
 export const BASE_TIME_SCALE = 1 / 3; // game minutes per real second at 1x
@@ -209,6 +210,11 @@ export class Game {
       if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
       this.keys.add(e.code);
       if (this.uiOpen) return;
+      if (e.code === 'KeyE' && this.drivingVan()?.kind === 'car') {
+        if (Math.abs(this.vanSpeed) > 1.5) { this.onToast('Slow down to park.'); return; }
+        this.onToast(exitCar(this.state, this.player.id).msg);
+        return;
+      }
       if (e.code === 'KeyE') this.interact(0);
       if (/^Digit[1-6]$/.test(e.code)) this.interact(Number(e.code.slice(5)) - 1);
     });
@@ -282,6 +288,18 @@ export class Game {
     this.onFrame();
   }
 
+  /** the static colliders plus any privately owned parked cars (they move, so they are not in the layout) */
+  private collidersWithCars() {
+    const base = getWorld().colliders;
+    const cars = Object.values(this.state.vehicles).filter((v) => v.kind === 'car' && v.state === 'parked');
+    if (!cars.length) return base;
+    return [...base, ...cars.map((v) => {
+      const ew = Math.abs(Math.sin(v.heading)) > 0.7;
+      const hx = ew ? 2.1 : 0.95, hz = ew ? 0.95 : 2.1;
+      return { x0: v.pos.x - hx, z0: v.pos.z - hz, x1: v.pos.x + hx, z1: v.pos.z + hz };
+    })];
+  }
+
   /** the van the player is driving, if any */
   drivingVan() {
     const p = this.player;
@@ -298,9 +316,10 @@ export class Game {
     const p = this.player;
     const k = this.keys;
     const canDrive = !this.uiOpen && (v.state === 'manual_out' || v.state === 'manual_back');
+    const car = v.kind === 'car' ? CAR_MODELS.find((m) => m.id === v.model) : undefined;
     const thr = canDrive ? (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0) : 0;
     const steer = canDrive ? (k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0) - (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) : 0;
-    const MAX = 11, REV = 3;
+    const MAX = car?.topSpeed ?? 11, REV = 3;
     if (thr > 0) this.vanSpeed += (this.vanSpeed < 0 ? 9 : 3.5) * dt;
     else if (thr < 0) this.vanSpeed -= (this.vanSpeed > 0 ? 9 : 2.5) * dt;
     else this.vanSpeed -= Math.sign(this.vanSpeed) * Math.min(Math.abs(this.vanSpeed), 2.2 * dt);
@@ -351,7 +370,7 @@ export class Game {
       let d = ((want - p.facing + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
       p.facing += d * Math.min(1, dt * 9);
     }
-    p.pos = resolveCircle({ x: p.pos.x + this.vel.x * dt, z: p.pos.z + this.vel.z * dt }, 0.3);
+    p.pos = resolveCircle({ x: p.pos.x + this.vel.x * dt, z: p.pos.z + this.vel.z * dt }, 0.3, this.collidersWithCars());
     enforceLocationRules(this.state, p);
   }
 

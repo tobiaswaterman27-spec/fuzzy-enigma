@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createNewGame, step, startAction, optionsFor, getWorld, choresOf, isDirty, retailTick, openTasks, addItems, auditLedger, hire, at, homeQueueSlot, creditLimit, takeLoan, transfer, loansTick, canBuyHome, mortgageTerms, HOME_PRICES, buyProperty, activeLease, hasHomeAccess, ownedHome, propertyTick, sellHome, inviteForCoffee, plannedMeetup, blockPrice, buyStake, sellStake, stakeOf, dividendsReceived, BLOCK, dailyEconomy, buyOut, holdings, inspect, hygieneOf, isOpen, inspectionsTick, type GameState } from '../src/sim/index';
+import { createNewGame, step, startAction, optionsFor, getWorld, choresOf, isDirty, retailTick, openTasks, addItems, auditLedger, hire, at, homeQueueSlot, creditLimit, takeLoan, transfer, loansTick, canBuyHome, mortgageTerms, HOME_PRICES, buyProperty, activeLease, hasHomeAccess, ownedHome, propertyTick, sellHome, inviteForCoffee, plannedMeetup, blockPrice, buyStake, sellStake, stakeOf, dividendsReceived, BLOCK, dailyEconomy, buyOut, holdings, inspect, hygieneOf, isOpen, inspectionsTick, buyCar, playerCar, enterCar, exitCar, carsTick, sellCar, FUEL_PER_KM, CAR_WEEKLY, allInteractables, type GameState } from '../src/sim/index';
 import { buyHome, ONLINE_DELIVERY, quoteHome } from '../src/sim/homestore';
 
 const setup = { name: 'Tester', appearance: { skin: '#e3b48f', hair: 'short' as const, hairColor: '#3b2416', build: 'average' as const } };
@@ -255,6 +255,35 @@ describe('Town events', () => {
     m.outage = { from: at(21, 11, 0), until: at(21, 12, 0) };
     expect(isOpen(m, at(21, 11, 30))).toBe(false);
     expect(isOpen(m, at(21, 12, 30))).toBe(true);
+    expect(auditLedger(s)).toEqual([]);
+  });
+});
+
+describe('Cars', () => {
+  it('buys a car, drives and parks it (fuel paid), pays insurance weekly and sells it', () => {
+    const s = createNewGame(7, setup);
+    const p = s.people.player;
+    transfer(s, { from: s.externalId, to: p.accountId, amount: 400000, reason: 'transfer', memo: 'test funds', key: 'car_funds' });
+    expect(buyCar(s, 'player', 'new', '#c0392b').ok).toBe(false);
+    expect(buyCar(s, 'player', 'hatch', '#8a8f94').ok).toBe(true);
+    const car = playerCar(s, 'player')!;
+    expect(car.state).toBe('parked');
+    const it = allInteractables(s).find((x) => x.id === `car:${car.id}`)!;
+    expect(it).toBeTruthy();
+    expect(optionsFor(s, 'player', it.id).find((o) => o.type === 'drive_car')?.enabled).toBe(true);
+    expect(enterCar(s, 'player', car.id)).toMatch(/W\/S/);
+    expect(p.where).toBe('vehicle');
+    car.pos = { x: 22, z: -4 }; car.odometer += 4000;
+    const before = s.ledger.accounts[p.accountId].balance;
+    expect(exitCar(s, 'player').ok).toBe(true);
+    expect(p.visible).toBe(true);
+    expect(s.ledger.accounts[p.accountId].balance).toBe(before - 4 * FUEL_PER_KM);
+    s.minute = car.nextCharge!;
+    const b2 = s.ledger.accounts[p.accountId].balance;
+    carsTick(s);
+    expect(s.ledger.accounts[p.accountId].balance).toBe(b2 - CAR_WEEKLY);
+    expect(sellCar(s, 'player').ok).toBe(true);
+    expect(playerCar(s, 'player')).toBeNull();
     expect(auditLedger(s)).toEqual([]);
   });
 });

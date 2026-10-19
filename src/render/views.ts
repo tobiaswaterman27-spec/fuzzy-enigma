@@ -547,6 +547,8 @@ function hygieneSticker(rating: number | null): THREE.CanvasTexture {
 export class Views {
   people = new Map<string, PersonView>();
   stickers = new Map<string, { mesh: THREE.Mesh; rating: number | null }>();
+  /** privately owned cars */
+  cars = new Map<string, THREE.Object3D>();
   shelfMeshes = new Map<string, { mesh: THREE.InstancedMesh; bid: string; product: string; base: THREE.Vector3[]; side: number[]; mess: number }>();
   /** the player's home: dirty dishes, clutter and the washing machine */
   private home = new THREE.Group();
@@ -811,6 +813,14 @@ export class Views {
     const van = state.vehicles.van_1;
     this.van.position.set(van.pos.x, 0, van.pos.z);
     this.van.rotation.y = van.heading;
+    for (const [id, obj] of this.cars) if (!state.vehicles[id]) { this.scene.remove(obj); this.cars.delete(id); }
+    for (const v of Object.values(state.vehicles)) {
+      if (v.kind !== 'car') continue;
+      let obj = this.cars.get(v.id);
+      if (!obj) { obj = buildCar(v.color ?? '#8a8f94', 0, 0, 0); this.scene.add(obj); this.cars.set(v.id, obj); }
+      obj.position.set(v.pos.x, 0, v.pos.z);
+      obj.rotation.y = v.heading;
+    }
     // spills
     this.updateStickers(state);
     for (const [id, m] of this.spills) if (!state.dirt[id]) { this.scene.remove(m); this.spills.delete(id); }

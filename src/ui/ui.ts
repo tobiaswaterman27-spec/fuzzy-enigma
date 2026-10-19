@@ -14,6 +14,7 @@ import { FRIEND_AT, inviteForCoffee, plannedMeetup, relationLabel } from '../sim
 import { buyProperty as buyHomeProperty, canBuyHome, mortgageTerms, ownedHome, ownershipLines, redemption, sellHome, SELL_SHARE, SERVICE_CHARGE } from '../sim/property';
 import { blockPrice, BLOCK, buyOut, buyOutPrice, holdings, TAKEOVER_AT, buyStake, canInvestIn, dividendsReceived, MAX_STAKE, sellStake, stakeOf, valuation, weeklyProfit } from '../sim/invest';
 import { hygieneOf, RATING_LABEL } from '../sim/inspections';
+import { buyCar, CAR_MODELS, CAR_WEEKLY, FUEL_PER_KM, playerCar, RESALE, sellCar } from '../sim/cars';
 import { creditLimit, LOAN_APR_FLAT, LOAN_SIZES, LOAN_WEEKS, repayLoan, takeLoan } from '../sim/bank';
 import { buyHome, ONLINE_DELIVERY, quoteHome, storeStaffed } from '../sim/homestore';
 import { agenda, currentObjective } from '../sim/objectives';
@@ -31,7 +32,7 @@ import { isOpen } from '../sim/retail';
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector(sel) as T;
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
 
-type Tab = 'jobs' | 'work' | 'bank' | 'status' | 'news' | 'map' | 'shop' | 'biz' | 'home' | 'people';
+type Tab = 'jobs' | 'work' | 'bank' | 'status' | 'news' | 'map' | 'shop' | 'biz' | 'home' | 'people' | 'car';
 
 export class UI {
   phoneOpen = false;
@@ -155,7 +156,7 @@ export class UI {
 
   renderPhone() {
     this.lastPhoneRender = performance.now();
-    const tabs: [Tab, string][] = [['jobs', 'Jobs'], ['work', 'Work'], ['bank', 'Bank'], ['biz', 'Business'], ['home', 'Home'], ['people', 'People'], ['status', 'Me'], ['news', 'News'], ['map', 'Map'], ['shop', 'Market']];
+    const tabs: [Tab, string][] = [['jobs', 'Jobs'], ['work', 'Work'], ['bank', 'Bank'], ['biz', 'Business'], ['home', 'Home'], ['people', 'People'], ['car', 'Car'], ['status', 'Me'], ['news', 'News'], ['map', 'Map'], ['shop', 'Market']];
     const unread = this.s.news.filter((n) => n.personal && !n.read).length;
     const tabsHtml = tabs.map(([t, l]) => `<button data-tab="${t}" class="${t === this.tab ? 'on' : ''}">${l}${t === 'news' && unread ? ` <i class="dot">${unread}</i>` : ''}</button>`).join('');
     if (tabsHtml !== this.lastTabs) { $('#phone-tabs').innerHTML = tabsHtml; this.lastTabs = tabsHtml; }
@@ -274,6 +275,25 @@ export class UI {
   }
 
   /** everyone you know: how well, when you last saw them, and invitations */
+  tab_car(): string {
+    const s = this.s, p = this.p;
+    const car = playerCar(s, p.id);
+    const bal = s.ledger.accounts[p.accountId].balance;
+    if (car) {
+      const back = Math.round((car.price ?? 0) * RESALE * (0.6 + 0.4 * car.condition / 100));
+      return `<div class="card good"><b>Your ${esc(car.name)}</b> <i class="sw" style="background:${car.color}"></i>
+        <div class="line"><span>Where</span><span>${car.state === 'parked' ? `parked ${Math.round(Math.hypot(car.pos.x - p.pos.x, car.pos.z - p.pos.z))} m from you` : 'you are driving it'}</span></div>
+        <div class="line"><span>Distance driven</span><span>${(car.odometer / 1000).toFixed(1)} km</span></div>
+        <div class="line"><span>Insurance & road tax</span><span>${fmtMoney(CAR_WEEKLY)} a week${car.nextCharge ? `, next ${fmtDate(car.nextCharge)}` : ''}</span></div>
+        ${car.uninsured ? '<p class="warn">Uninsured: the car stays parked until the insurance is paid.</p>' : ''}
+        <p class="muted">Walk up to the driver's door and press E to get in. While driving: W/S to drive, A/D to steer, E to park and get out. Fuel is paid when you park (${fmtMoney(FUEL_PER_KM)} per km).</p>
+        <div class="row"><button data-carsell="1" ${car.state === 'parked' ? '' : 'disabled'}>Sell to Harbour Motors (${fmtMoney(back)})</button></div></div>`;
+    }
+    return `<p class="muted">Harbour Motors delivers to the kerb outside Marlow Court. Running costs: insurance and road tax ${fmtMoney(CAR_WEEKLY)} a week, fuel ${fmtMoney(FUEL_PER_KM)} per km. You have ${fmtMoney(bal)}.</p>
+      ${CAR_MODELS.map((m) => `<div class="card"><b>${esc(m.name)}</b> · ${fmtMoney(m.price)}<br><span class="muted">${esc(m.blurb)} Top speed ${Math.round(m.topSpeed * 3.6)} km/h.</span>
+        <div class="row">${m.colors.map((c) => `<button data-carbuy="${m.id}|${c}" ${bal >= m.price ? '' : 'disabled'} title="Buy in this colour"><i class="sw" style="background:${c}"></i>Buy</button>`).join('')}</div></div>`).join('')}`;
+  }
+
   tab_people(): string {
     const s = this.s, p = this.p;
     const known = Object.entries(p.relations).filter(([id, v]) => v > 0 && s.people[id]).sort((a, b) => b[1] - a[1]);
@@ -473,6 +493,8 @@ export class UI {
     if (d.invite) { this.toast(inviteForCoffee(s, this.p.id, d.invite).msg); this.lastBody = ''; this.renderPhone(); return; }
     if (d.loan) { this.toast(takeLoan(s, this.p.id, Number(d.loan)).msg); this.lastBody = ''; this.renderPhone(); return; }
     if (d.stakebuy) { this.toast(buyStake(s, this.p.id, d.stakebuy).msg); this.lastBody = ''; this.renderPhone(); return; }
+    if (d.carbuy) { const [m, c] = d.carbuy.split('|'); this.toast(buyCar(s, this.p.id, m, c).msg); this.lastBody = ''; this.renderPhone(); return; }
+    if (d.carsell) { this.toast(sellCar(s, this.p.id).msg); this.lastBody = ''; this.renderPhone(); return; }
     if (d.buyout) { this.toast(buyOut(s, this.p.id, d.buyout).msg); this.lastBody = ''; this.renderPhone(); return; }
     if (d.stakesell) { this.toast(sellStake(s, this.p.id, d.stakesell).msg); this.lastBody = ''; this.renderPhone(); return; }
     if (d.loanrepay) { this.toast(repayLoan(s, d.loanrepay).msg); this.lastBody = ''; this.renderPhone(); return; }
@@ -638,7 +660,7 @@ const ACTION_LABELS: Record<string, string> = {
   change_outfit: 'Changing clothes…', buy_meal: 'Eating a cafe meal…', sit: 'Sitting (resting slowly)',
   shower: 'Showering…', cook: 'Cooking…', watch_tv: 'Watching TV', talk: 'Chatting…',
   face_shelf: 'Facing up: pulling packs forward, labels out…', bale_cardboard: 'Flattening boxes into the baler…', empty_bin: 'Tying off the bin bag…', dump_rubbish: 'Throwing the bag in…',
-  take_order: 'Talking the order through…', take_tool: 'Getting the tool…', return_tool: 'Putting the tool away…', take_bricks: 'Loading up with bricks…', site_work: 'Working on the house…', cook_meal: 'Cooking on the grill…', serve_meal: 'Handing over the meal…', drive_van: 'Getting in…', pick_case: 'Picking from the racking…', stage_case: 'Staging cases for dispatch…', wash_up: 'Washing up…', laundry: 'Doing the laundry…', tidy: 'Tidying up…',
+  take_order: 'Talking the order through…', take_tool: 'Getting the tool…', return_tool: 'Putting the tool away…', take_bricks: 'Loading up with bricks…', site_work: 'Working on the house…', cook_meal: 'Cooking on the grill…', serve_meal: 'Handing over the meal…', drive_van: 'Getting in…', drive_car: 'Getting in…', pick_case: 'Picking from the racking…', stage_case: 'Staging cases for dispatch…', wash_up: 'Washing up…', laundry: 'Doing the laundry…', tidy: 'Tidying up…',
 };
 const TASK_LABELS: Record<string, [string, string]> = {
   restock: ['restock', 'restocks'], serve: ['customer to serve', 'customers to serve'], clean: ['spill', 'spills'], receive: ['delivery', 'deliveries'],

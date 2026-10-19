@@ -1,6 +1,7 @@
 // InteractionSystem + TaskAndJobSystem execution.
 // Actions are timed, interruptible and validated. State changes happen in
 // unit callbacks or on completion - never because an animation finished.
+import { canDriveCar, enterCar } from './cars';
 import type { ActionState, ActionType, GameState, Id, Person } from './types';
 import { dist, fmtMoney, clamp } from './core';
 import { count, firstItem, isEmpty, moveAll, moveItems, removeItems, spaceFor, total } from './inventory';
@@ -43,6 +44,13 @@ export function interactable(state: GameState, id: Id): Interactable | null {
       return { id, kind: 'vehicle', label: v.name, pos: front, facing: v.heading - Math.PI / 2, obj: v.pos, locationId: 'outside', businessId: v.ownerId, range: 2.6 };
     }
   }
+  if (id.startsWith('car:')) {
+    const v = state.vehicles[id.slice(4)];
+    if (v && v.state === 'parked') {
+      const door = { x: v.pos.x + Math.sin(v.heading - Math.PI / 2) * 1.6, z: v.pos.z + Math.cos(v.heading - Math.PI / 2) * 1.6 };
+      return { id, kind: 'vehicle', label: `Your ${v.name}`, pos: door, facing: v.heading + Math.PI / 2, obj: v.pos, locationId: locationOf(door), range: 2.6 };
+    }
+  }
   if (id.startsWith('person:')) {
     const o = state.people[id.slice(7)];
     if (o && o.visible) return { id, kind: 'person', label: o.name, pos: o.pos, facing: 0, obj: o.pos, locationId: locationOf(o.pos), range: 1.9 };
@@ -54,7 +62,8 @@ export function allInteractables(state: GameState): Interactable[] {
   const out = Object.values(getWorld().interactables);
   for (const d of Object.values(state.dirt)) out.push(interactable(state, d.id)!);
   for (const o of Object.values(state.people)) if (!o.isPlayer && o.visible && !o.sleeping) out.push(interactable(state, `person:${o.id}`)!);
-  for (const v of Object.values(state.vehicles)) if (v.state === 'loaded') out.push(interactable(state, `van:${v.id}`)!);
+  for (const v of Object.values(state.vehicles)) if (v.kind === 'van' && v.state === 'loaded') out.push(interactable(state, `van:${v.id}`)!);
+  for (const v of Object.values(state.vehicles)) if (v.kind === 'car' && v.state === 'parked') out.push(interactable(state, `car:${v.id}`)!);
   return out;
 }
 
@@ -297,6 +306,11 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
       break;
     }
     case 'vehicle': {
+      if (it.id.startsWith('car:')) {
+        const car = state.vehicles[it.id.slice(4)];
+        out.push(opt('drive_car', `Get in and drive your ${car?.name ?? 'car'}`, !car || car.ownerId !== actorId ? 'Not your car' : canDriveCar(car)));
+        break;
+      }
       const v = state.vehicles[it.id.slice(4)];
       const s = v?.shipmentId ? state.shipments[v.shipmentId] : null;
       const buyer = s ? state.businesses[s.buyerId]?.name : '';
@@ -414,6 +428,7 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
     case 'pick_case':
       begin(p, type, itId, { duration: 0.6 / speed(p, 'warehouse') }, now); break;
     case 'drive_van':
+    case 'drive_car':
       begin(p, type, itId, { duration: 0.3 }, now); break;
     case 'take_order':
       begin(p, type, itId, { duration: 3 / sp }, now); break;
@@ -587,6 +602,10 @@ export function tickAction(state: GameState, p: Person, dt: number): string | nu
       const head = b?.queue?.[0];
       msg = head ? completeHomeOrder(state, head, p.id).msg : 'The customer has gone.';
       if (head) addXp(p, 'retail', 3);
+      break;
+    }
+    case 'drive_car': {
+      msg = enterCar(state, p.id, a.target.slice(4));
       break;
     }
     case 'drive_van': {

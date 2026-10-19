@@ -56,7 +56,9 @@ export function agenda(state: GameState): Reminder | null {
   const p = state.people[state.playerId];
   const now = state.minute;
   // driving a delivery: where to, and how far
-  const van = Object.values(state.vehicles).find((v) => v.driverId === p.id);
+  const car = Object.values(state.vehicles).find((v) => v.kind === 'car' && v.driverId === p.id);
+  if (car) return { text: 'Driving your car: W/S drive, A/D steer, E to park and get out.', urgent: false, leaveAt: now, startsAt: now };
+  const van = Object.values(state.vehicles).find((v) => v.kind === 'van' && v.driverId === p.id);
   if (van) {
     const sh = van.shipmentId ? state.shipments[van.shipmentId] : null;
     const shop = sh ? state.businesses[sh.buyerId]?.name : 'the shop';
