@@ -9,6 +9,7 @@ import { questionsFor } from '../sim/employment';
 import { acceptOffer, acceptPromotion, applyForJob, attendInterview, canApply, currentShift, declineOffer, hoursPerWeek, INTERVIEW, nextShift, openAttendance, positionOf, promotionEligible, resign, shiftLabel, scoreShift } from '../sim/employment';
 import { conditionLabel, skillLevel } from '../sim/needs';
 import { choreStatus } from '../sim/home';
+import { weatherLabel } from '../sim/weather';
 import { buyHome, ONLINE_DELIVERY, quoteHome, storeStaffed } from '../sim/homestore';
 import { agenda, currentObjective } from '../sim/objectives';
 import { defaultDesign, EXTRAS, FABRICS, FLOORS, RUGS, WALLPAPERS, type HomeDesign } from '../sim/world/homes';
@@ -87,7 +88,7 @@ export class UI {
   frame() {
     const s = this.s, p = this.p;
     $('#clock').textContent = fmtClock(s.minute);
-    $('#date').textContent = fmtDate(s.minute);
+    $('#date').textContent = `${fmtDate(s.minute)} · ${weatherLabel(s)}`;
     $('#money').textContent = fmtMoney(s.ledger.accounts[p.accountId].balance);
     document.querySelectorAll<HTMLButtonElement>('[data-speed]').forEach((b) => b.classList.toggle('on', Number(b.dataset.speed) === this.game.speedMult));
     $('#sleep-ind').hidden = !p.sleeping;
@@ -283,7 +284,7 @@ export class UI {
     const isStaff = this.p.contractId && s.contracts[this.p.contractId]?.businessId === 'market';
     return `<p class="muted">Public information about Corner Market${isStaff ? ' plus staff view' : ''}. Figures are actual records.</p>
       <div class="card">Reputation <b>${b.reputation.toFixed(0)}</b>/100 · cleanliness ${b.cleanliness.toFixed(0)}%<br>
-      Demand factors: reputation ×${f.rep.toFixed(2)}, cleanliness ×${f.clean.toFixed(2)}, prices ×${f.price.toFixed(2)}, stock availability ×${f.availability.toFixed(2)}</div>
+      Demand factors: reputation ×${f.rep.toFixed(2)}, cleanliness ×${f.clean.toFixed(2)}, prices ×${f.price.toFixed(2)}, stock availability ×${f.availability.toFixed(2)}, weather ×${f.weather.toFixed(2)}</div>
       ${isStaff ? `<h3>Stock (shelf / total incl. orders)</h3>${PRODUCTS.map((k) => `<div class="line"><span><i class="sw" style="background:${ITEMS[k].color}"></i>${itemName(k)}</span><span>${s.containers['shelf_' + k].items[k] ?? 0} / ${stockPosition(s, b, k)}</span></div>`).join('')}
       <div class="line"><span>Stock value at cost</span><span>${fmtMoney(inventoryValue(s, b))}</span></div>` : ''}
       <h3>Recent days</h3>${days.map(row).join('') || '<p class="muted">No trading recorded yet.</p>'}`;

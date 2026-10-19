@@ -19,6 +19,8 @@ import { daylight, hourOfDay } from '../sim/clock';
 import { buildWorld, type WorldView } from '../render/world';
 import { Views } from '../render/views';
 import { Traffic } from '../render/traffic';
+import { Rain } from '../render/rain';
+import { raining } from '../sim/weather';
 import { safeWrite, loadSlot, type KV } from '../sim/save';
 import { news } from '../sim/events';
 import { fmtDate, fmtClock } from '../sim/clock';
@@ -48,6 +50,7 @@ export class Game {
   world: WorldView;
   views: Views;
   traffic: Traffic;
+  rain: Rain;
   keys = new Set<string>();
   camYaw = Math.PI; // camera sits behind (south of) the player looking north
   camPitch = 0.22;
@@ -112,6 +115,7 @@ export class Game {
     this.world = buildWorld(this.scene);
     this.views = new Views(this.scene);
     this.traffic = new Traffic(this.scene);
+    this.rain = new Rain(this.scene);
     this.resize();
     window.addEventListener('resize', () => this.resize());
     this.bindInput();
@@ -244,7 +248,9 @@ export class Game {
     requestAnimationFrame(loop);
   }
 
+  private lastDt = 0;
   tick(dt: number) {
+    this.lastDt = dt;
     const s = this.state;
     if (!this.paused) {
       this.updatePlayer(dt);
@@ -417,7 +423,10 @@ export class Game {
     const ang = ((h - 6) / 12) * Math.PI;
     const p = this.player;
     this.sun.position.set(p.pos.x + Math.cos(ang) * 50, Math.max(8, Math.sin(ang) * 70), p.pos.z + 30);
-    this.sun.intensity = 0.15 + 2.1 * d;
+    // rain: overcast and dimmer, the fog closes in, streaks of rain around you
+    const r = raining(s);
+    this.rain.update(this.lastDt, buildingAt(this.player.pos) ? 0 : r, this.camera.position);
+    this.sun.intensity = (0.15 + 2.1 * d) * (1 - 0.72 * r);
     this.sun.color.set(d < 0.6 ? '#ffc58a' : '#fff3dd');
     // sun direction drives the sky shader; the horizon colour feeds the fog so distance blends naturally
     const sunDir = new THREE.Vector3(Math.cos(ang), Math.sin(ang), 0.45).normalize();
@@ -425,11 +434,18 @@ export class Game {
     this.sky.position.set(p.pos.x, 0, p.pos.z);
     const day = new THREE.Color('#b9cfdf'), dusk = new THREE.Color('#e8a878'), night = new THREE.Color('#0d1626');
     const horizon = d > 0.5 ? dusk.clone().lerp(day, (d - 0.5) * 2) : night.clone().lerp(dusk, d * 2);
+    if (r > 0) horizon.lerp(new THREE.Color(d > 0.3 ? '#8f979e' : '#1a1f26'), 0.75 * r);
     (this.scene.fog as THREE.Fog).color = horizon;
-    this.scene.background = d < 0.05 ? night : null;
-    this.sky.visible = d >= 0.05;
-    this.scene.environmentIntensity = (this.insideId ? 0.25 : 0.15 + 0.55 * d);
-    this.hemi.intensity = (0.25 + 0.75 * d) * (this.insideId ? 0.45 : 1);
+    (this.scene.fog as THREE.Fog).near = 110 - 80 * r;
+    (this.scene.fog as THREE.Fog).far = 380 - 230 * r;
+    const su = this.sky.material.uniforms;
+    su.turbidity.value = 4 + 14 * r; su.rayleigh.value = 1.2 + 1.5 * r;
+    // an overcast sky replaces the clear one as the rain sets in
+    const overcast = r > 0.25;
+    this.scene.background = d < 0.05 ? night : overcast ? horizon.clone() : null;
+    this.sky.visible = d >= 0.05 && !overcast;
+    this.scene.environmentIntensity = (this.insideId ? 0.25 : 0.15 + 0.55 * d) * (1 - 0.45 * r);
+    this.hemi.intensity = (0.25 + 0.75 * d) * (this.insideId ? 0.45 : 1) * (1 - 0.25 * r);
     const lit = d < 0.45;
     this.world.lampBulbs.emissiveIntensity = lit ? 1.6 : 0;
     const lamps = getWorld().lamps.slice().sort((a, b) => Math.hypot(a.x - p.pos.x, a.z - p.pos.z) - Math.hypot(b.x - p.pos.x, b.z - p.pos.z));

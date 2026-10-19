@@ -4,7 +4,7 @@ Status vocabulary: **planned → implemented → integrated → tested → playa
 
 | # | Milestone | Status | Evidence |
 |---|---|---|---|
-| 0 | Assessment & foundation | **tested** | Build, typecheck, Vitest (19 tests), browser playtest (`npm run e2e`), home-arrangement check (60 seeds) |
+| 0 | Assessment & foundation | **tested** | Build, typecheck, Vitest (20 tests), browser playtest (`npm run e2e`), home-arrangement check (60 seeds) |
 | 1 | Player & world | **playable** | Fully automatic follow camera, camera-relative movement with smooth acceleration, interiors with walls/ceilings, 30+ buildings, day/night, sky, character creator, save/load, autosave |
 | 2 | Functional workplace (Retail Assistant) | **playable** | Apply → seated, real-time interview at the café (spoken questions from a role question bank, experience checks, interviewer personality) → uniform → clock in → restock, serve, mop, check in deliveries, face up shelves, bale cardboard, empty bins to the dumpster; staff roles (cashier, stocker, cleaner, supervisor, manager) |
 | 3 | Personal economy & needs | **playable** | Wages with tax, rent, groceries, cooking, café; energy, food, hygiene, mood with real effects; clothes affect performance; home chores (washing up, laundry in a washing machine, tidying) with effects on mood, shift grooming and interviews |
@@ -52,5 +52,6 @@ Status vocabulary: **planned → implemented → integrated → tested → playa
 - **v5** — clothes hang naturally (bum fix), apron/long-hair rebuilt, render performance work.
 - **v6** — normal-mapped surfaces, consistent road markings, Blender cars/van/gondolas/checkout, more parked cars.
 - **v7–v10** — motion capture, automatic camera, Blender furniture, Marlow Court block of flats, seated real-time interviews with spoken questions, staff roles, AI-arranged homes with decoration, see-through windows.
+- **v13** — weather (deterministic rain spells: overcast sky, rain, fewer shoppers, wet and miserable outdoors, empty park), ambient traffic, Harbour Home furniture store with a playable Sales Assistant job, bread that looks like bread.
 - **v12** — playable Delivery Driver (drive the van yourself), real shoes (trainers, oxfords, boots), strand hair, Blender fixtures and street furniture everywhere, cooking/tidying/eating acted out step by step, fuller job centre and cafe.
 - **v11** — playable Warehouse Operative job at Harbour Wholesale (racking, pick lists, staging, dispatch). Flat rebuilt as a realistic 2-bed with spare room, dining area and utility room. Chores: facing up shelves, cardboard baler, litter bin and dumpster at work; washing up, laundry and tidying at home. New Blender models; messy shelves, cardboard piles, dirty dishes and clutter are visible.

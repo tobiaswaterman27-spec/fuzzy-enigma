@@ -4,6 +4,7 @@ import type { GameState, Person } from './types';
 import { CLOTHING } from './items';
 import { clamp } from './core';
 import { DIRTY_AT, homeMoodPenalty } from './home';
+import { rainAt } from './weather';
 
 export const ENERGY_DECAY = 0.075; // per awake minute (100 -> 0 in ~22h)
 export const WORK_EXTRA = 0.035; // extra drain while doing physical work
@@ -28,6 +29,9 @@ export function tickNeeds(_state: GameState, p: Person, dt: number) {
     if (a0 === 'buy_meal') n.mood += 0.35 * dt;
     if (a0 === 'shower') { n.hygiene += 14 * dt; n.mood += 0.3 * dt; }
     if (a0 === 'tidy') n.mood += 0.15 * dt;
+    // caught out in the rain: wet and miserable
+    const wet = p.where === 'outside' && p.visible ? rainAt(_state.seed, _state.minute) : 0;
+    if (wet > 0) { n.mood -= 0.08 * wet * dt; n.hygiene -= 0.02 * wet * dt; }
   } else {
     if (!p.visible) n.hygiene = Math.min(100, n.hygiene + 0.2 * dt); else n.hygiene -= HYGIENE_DECAY * dt;
     n.mood += (60 - n.mood) * 0.003 * dt;

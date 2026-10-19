@@ -15,6 +15,7 @@ import { pickNeed, pickQueue } from './logistics';
 import { planRoute, routeLength } from './world/nav';
 import { capability } from './needs';
 import { npcLog } from './events';
+import { raining } from './weather';
 
 export const WALK = 4.5; // metres per game minute (1.5 m/s real at the default 1/3 game-min per real second)
 
@@ -209,7 +210,8 @@ function decide(state: GameState, p: Person) {
     } else {
       const bench = pick(state, ['bench_1', 'bench_2']);
       const busy = Object.values(state.people).some((o) => o.action?.target === bench);
-      if (!busy) {
+      // nobody sits in the park in the rain
+      if (!busy && raining(state) < 0.05) {
         setGoal(state, p, 'leisure', [
           { kind: 'move', to: getWorld().interactables[bench].pos, label: 'park' },
           { kind: 'act', it: bench, type: 'sit' },

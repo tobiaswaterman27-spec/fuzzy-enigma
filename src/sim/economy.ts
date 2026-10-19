@@ -13,6 +13,7 @@ import { news } from './events';
 import { statsFor } from './employment';
 import { cleanliness, isOpen, productsOf, staffOnDuty } from './retail';
 import { groceryList, startHomeShopping, startShopping } from './npc';
+import { rainDemandFactor } from './weather';
 import { placeOrder } from './logistics';
 import { getWorld, SHOPS } from './world/layout';
 
@@ -44,7 +45,8 @@ export function demandFactors(state: GameState, b: Business) {
   const price = sections.length ? priceAcc / n : 1;
   const availability = 0.5 + 0.5 * (avail / n);
   const confidence = state.districts.harbourside.confidence;
-  return { rep, clean, price, availability, confidence, total: rep * clean * price * availability * confidence };
+  const weather = rainDemandFactor(state);
+  return { rep, clean, price, availability, confidence, weather, total: rep * clean * price * availability * confidence * weather };
 }
 
 /** how convenient a shop's location is for the district's households (fixed by geography) */
