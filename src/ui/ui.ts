@@ -10,6 +10,7 @@ import { acceptOffer, acceptPromotion, applyForJob, attendInterview, canApply, c
 import { conditionLabel, skillLevel } from '../sim/needs';
 import { choreStatus } from '../sim/home';
 import { weatherLabel } from '../sim/weather';
+import { buyProperty as buyHomeProperty, canBuyHome, mortgageTerms, ownedHome, ownershipLines, redemption, sellHome, SELL_SHARE, SERVICE_CHARGE } from '../sim/property';
 import { creditLimit, LOAN_APR_FLAT, LOAN_SIZES, LOAN_WEEKS, repayLoan, takeLoan } from '../sim/bank';
 import { buyHome, ONLINE_DELIVERY, quoteHome, storeStaffed } from '../sim/homestore';
 import { agenda, currentObjective } from '../sim/objectives';
@@ -235,10 +236,14 @@ export class UI {
     const s = this.s, p = this.p;
     const acc = s.ledger.accounts[p.accountId];
     const l = activeLease(s, p.id);
-    const ended = Object.values(s.leases).find((x) => x.tenantId === p.id && x.status === 'ended');
+    const ended = Object.values(s.leases).find((x) => x.tenantId === p.id && x.status === 'ended' && !x.bought) && !activeLease(s, p.id) && !ownedHome(s, p.id) ? Object.values(s.leases).find((x) => x.tenantId === p.id && x.status === 'ended' && !x.bought) : undefined;
+    const own = ownedHome(s, p.id);
+    const buy = canBuyHome(s, p.id);
     const txns = accountTxns(s, acc.id, 30);
     return `<div class="card"><span class="muted">Current account</span><div class="big">${fmtMoney(acc.balance)}</div></div>
       <h3>Obligations</h3>
+      ${own ? `<div class="card"><b>You own ${esc(own.label)}</b>${ownershipLines(s, p.id).slice(1).map((x) => `<div class="line"><span>${esc(x)}</span></div>`).join('')}<div class="line"><span>Service charge</span><span>${fmtMoney(SERVICE_CHARGE)} a week</span></div>${own.mortgage?.missed ? `<div class="line warn"><span>Missed payments</span><span>${own.mortgage.missed}/3</span></div>` : ''}<div class="line"><span>To pay it off now</span><span>${fmtMoney(redemption(own))}</span></div><div class="row"><button data-sellhome="1">Sell (to the landlord, ${fmtMoney(Math.round(own.price * SELL_SHARE))})</button></div></div>` : ''}
+      ${!own && l && buy.price ? (() => { const t = mortgageTerms(buy.price); return `<div class="card"><b>Buy ${esc(l.label)}</b> for ${fmtMoney(buy.price)}<div class="line"><span>Deposit (10%)</span><span>${fmtMoney(t.deposit)}</span></div><div class="line"><span>Mortgage</span><span>${fmtMoney(t.weekly)} a week for 10 years</span></div>${buy.ok ? '<div class="row"><button class="primary" data-buyhome="1">Buy it</button></div>' : `<p class="muted">${esc(buy.reason)}</p>`}</div>`; })() : ''}
       ${l ? `<div class="line"><span>Rent · ${esc(l.label)}</span><span>${fmtMoney(l.weeklyRent)} every Monday 09:00</span></div><div class="line"><span>Paid until</span><span>${fmtDate(l.paidThroughDay * 1440)}</span></div>${l.arrears ? `<div class="line warn"><span>Arrears (${l.missedPayments}/3 missed)</span><span>${fmtMoney(l.arrears)}</span></div>` : ''}` : '<p class="warn">You have no home.</p>'}
       ${ended ? `<div class="card"><b>${esc(ended.label)}</b> is available again for ${fmtMoney(ended.arrears + ended.weeklyRent)} (arrears + 1 week).<div class="row"><button data-rerent="${ended.id}" class="primary">Rent again</button></div></div>` : ''}
       ${(() => {
@@ -423,6 +428,8 @@ export class UI {
     if (d.order) this.toast(E.orderStock(s, { [d.order]: ITEMS[d.order].caseSize * Number(d.q) }).msg);
     if (d.invest) this.toast(E.invest(s, Number(d.invest)).msg);
     if (d.withdraw) this.toast(E.withdraw(s, Number(d.withdraw)).msg);
+    if (d.buyhome) { this.toast(buyHomeProperty(s, this.p.id).msg); this.lastBody = ''; this.renderPhone(); return; }
+    if (d.sellhome) { if (btn.dataset.confirm) { this.toast(sellHome(s, this.p.id).msg); this.lastBody = ''; this.renderPhone(); } else { btn.dataset.confirm = '1'; btn.textContent = 'Click again to confirm the sale'; } return; }
     if (d.loan) { this.toast(takeLoan(s, this.p.id, Number(d.loan)).msg); this.lastBody = ''; this.renderPhone(); return; }
     if (d.loanrepay) { this.toast(repayLoan(s, d.loanrepay).msg); this.lastBody = ''; this.renderPhone(); return; }
     if (d.homeBuy) {

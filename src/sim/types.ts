@@ -43,6 +43,7 @@ export type TxnReason =
   | 'services'
   | 'loan'
   | 'loan_repayment'
+  | 'property'
   | 'transfer';
 
 export interface Txn {
@@ -518,6 +519,8 @@ export interface Lease {
   arrears: Cents;
   missedPayments: number;
   status: 'active' | 'ended';
+  /** the tenant bought the property (the lease ended by sale, not eviction) */
+  bought?: boolean;
 }
 
 // --------------------------------------------------------------- news
@@ -563,6 +566,8 @@ export interface GameState {
   /** personal loans (bank.ts) */
   loans?: Record<Id, import('./bank').Loan>;
   creditBans?: Record<Id, boolean>;
+  /** homes owned outright or with a mortgage (property.ts), by location */
+  ownership?: Record<Id, import('./property').Ownership>;
   /** a Harbour Home order waiting to be delivered and fitted */
   pendingHome?: { design: HomeDesign; fitAt: number };
   version: number;

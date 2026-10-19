@@ -23,6 +23,7 @@ export function activeLease(state: GameState, personId: Id): Lease | undefined {
 }
 
 export function hasHomeAccess(state: GameState, personId: Id, locationId: Id) {
+  if (state.ownership?.[locationId]?.ownerId === personId) return true;
   const l = activeLease(state, personId);
   return !!l && l.locationId === locationId;
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createNewGame, step, startAction, optionsFor, getWorld, choresOf, isDirty, retailTick, openTasks, addItems, auditLedger, hire, at, homeQueueSlot, creditLimit, takeLoan, transfer, loansTick, type GameState } from '../src/sim/index';
+import { createNewGame, step, startAction, optionsFor, getWorld, choresOf, isDirty, retailTick, openTasks, addItems, auditLedger, hire, at, homeQueueSlot, creditLimit, takeLoan, transfer, loansTick, canBuyHome, mortgageTerms, HOME_PRICES, buyProperty, activeLease, hasHomeAccess, ownedHome, propertyTick, sellHome, type GameState } from '../src/sim/index';
 import { buyHome, ONLINE_DELIVERY, quoteHome } from '../src/sim/homestore';
 
 const setup = { name: 'Tester', appearance: { skin: '#e3b48f', hair: 'short' as const, hairColor: '#3b2416', build: 'average' as const } };
@@ -138,6 +138,30 @@ describe('Bank loans', () => {
     for (let k = 0; k < 3; k++) { s.minute = loan.nextDue; loansTick(s); }
     expect(loan.status).toBe('defaulted');
     expect(creditLimit(s, 'player').limit).toBe(0);
+    expect(auditLedger(s)).toEqual([]);
+  });
+});
+
+describe('Home ownership', () => {
+  it('buys the rented flat with a deposit and mortgage, pays weekly, and can sell', () => {
+    const s = createNewGame(7, setup);
+    const p = s.people.player;
+    expect(canBuyHome(s, 'player').ok).toBe(false); // no deposit, no income
+    transfer(s, { from: s.externalId, to: p.accountId, amount: 800000, reason: 'transfer', memo: 'savings' });
+    for (let k = 0; k < 4; k++) transfer(s, { from: s.businesses.market.accountId, to: p.accountId, amount: 60000, reason: 'wage', memo: 'test wage' });
+    expect(canBuyHome(s, 'player').reason).toBe('');
+    const t = mortgageTerms(HOME_PRICES.flat);
+    const bal = s.ledger.accounts[p.accountId].balance;
+    expect(buyProperty(s, 'player').ok).toBe(true);
+    expect(s.ledger.accounts[p.accountId].balance).toBe(bal - t.deposit);
+    expect(activeLease(s, 'player')).toBeUndefined();
+    expect(hasHomeAccess(s, 'player', 'flat')).toBe(true);
+    const o = ownedHome(s, 'player')!;
+    s.minute = o.mortgage!.nextDue; propertyTick(s);
+    expect(o.mortgage!.owed).toBe(t.owed - t.weekly);
+    expect(sellHome(s, 'player').ok).toBe(true);
+    expect(ownedHome(s, 'player')).toBeNull();
+    expect(activeLease(s, 'player')).toBeTruthy();
     expect(auditLedger(s)).toEqual([]);
   });
 });
