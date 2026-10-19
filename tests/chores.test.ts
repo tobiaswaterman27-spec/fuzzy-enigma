@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createNewGame, step, startAction, optionsFor, getWorld, choresOf, isDirty, retailTick, openTasks, addItems, auditLedger, hire, at, homeQueueSlot, creditLimit, takeLoan, transfer, loansTick, canBuyHome, mortgageTerms, HOME_PRICES, buyProperty, activeLease, hasHomeAccess, ownedHome, propertyTick, sellHome, inviteForCoffee, plannedMeetup, blockPrice, buyStake, sellStake, stakeOf, dividendsReceived, BLOCK, dailyEconomy, buyOut, holdings, type GameState } from '../src/sim/index';
+import { createNewGame, step, startAction, optionsFor, getWorld, choresOf, isDirty, retailTick, openTasks, addItems, auditLedger, hire, at, homeQueueSlot, creditLimit, takeLoan, transfer, loansTick, canBuyHome, mortgageTerms, HOME_PRICES, buyProperty, activeLease, hasHomeAccess, ownedHome, propertyTick, sellHome, inviteForCoffee, plannedMeetup, blockPrice, buyStake, sellStake, stakeOf, dividendsReceived, BLOCK, dailyEconomy, buyOut, holdings, inspect, hygieneOf, isOpen, inspectionsTick, type GameState } from '../src/sim/index';
 import { buyHome, ONLINE_DELIVERY, quoteHome } from '../src/sim/homestore';
 
 const setup = { name: 'Tester', appearance: { skin: '#e3b48f', hair: 'short' as const, hairColor: '#3b2416', build: 'average' as const } };
@@ -229,6 +229,32 @@ describe('Investing', () => {
     s.minute = at(6, 23, 30);
     dailyEconomy(s);
     expect(s.ledger.accounts[p.accountId].balance).toBeGreaterThan(before);
+    expect(auditLedger(s)).toEqual([]);
+  });
+});
+
+describe('Town events', () => {
+  it('inspectors rate the market and cafe; a filthy shop scores worse; a power cut closes the shop', () => {
+    const s = createNewGame(7, setup);
+    const m = s.businesses.market;
+    const clean = inspect(s, m);
+    m.cardboard = 10;
+    m.binFill = 30;
+    for (const k of Object.keys(m.messy ?? {})) m.messy![k] = 90;
+    const dirty = inspect(s, m);
+    expect(dirty.score).toBeLessThan(clean.score);
+    expect(dirty.notes.join(' ')).toMatch(/Cardboard/);
+    m.cardboard = 0; m.binFill = 0;
+    for (const k of Object.keys(m.messy ?? {})) m.messy![k] = 0;
+    while (s.minute < at(1, 11, 0)) step(s, 5);
+    inspectionsTick(s);
+    for (const r of Object.values(s.hygiene!)) r.nextAt = s.minute;
+    inspectionsTick(s);
+    expect(hygieneOf(s, 'market')?.rating).not.toBeNull();
+    expect(hygieneOf(s, 'cafe')?.rating).not.toBeNull();
+    m.outage = { from: at(21, 11, 0), until: at(21, 12, 0) };
+    expect(isOpen(m, at(21, 11, 30))).toBe(false);
+    expect(isOpen(m, at(21, 12, 30))).toBe(true);
     expect(auditLedger(s)).toEqual([]);
   });
 });

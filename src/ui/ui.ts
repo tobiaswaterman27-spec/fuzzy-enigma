@@ -13,6 +13,7 @@ import { weatherLabel } from '../sim/weather';
 import { FRIEND_AT, inviteForCoffee, plannedMeetup, relationLabel } from '../sim/social';
 import { buyProperty as buyHomeProperty, canBuyHome, mortgageTerms, ownedHome, ownershipLines, redemption, sellHome, SELL_SHARE, SERVICE_CHARGE } from '../sim/property';
 import { blockPrice, BLOCK, buyOut, buyOutPrice, holdings, TAKEOVER_AT, buyStake, canInvestIn, dividendsReceived, MAX_STAKE, sellStake, stakeOf, valuation, weeklyProfit } from '../sim/invest';
+import { hygieneOf, RATING_LABEL } from '../sim/inspections';
 import { creditLimit, LOAN_APR_FLAT, LOAN_SIZES, LOAN_WEEKS, repayLoan, takeLoan } from '../sim/bank';
 import { buyHome, ONLINE_DELIVERY, quoteHome, storeStaffed } from '../sim/homestore';
 import { agenda, currentObjective } from '../sim/objectives';
@@ -319,7 +320,8 @@ export class UI {
     const isStaff = this.p.contractId && s.contracts[this.p.contractId]?.businessId === 'market';
     return `<p class="muted">Public information about Corner Market${isStaff ? ' plus staff view' : ''}. Figures are actual records.</p>
       <div class="card">Reputation <b>${b.reputation.toFixed(0)}</b>/100 · cleanliness ${b.cleanliness.toFixed(0)}%<br>
-      Demand factors: reputation ×${f.rep.toFixed(2)}, cleanliness ×${f.clean.toFixed(2)}, prices ×${f.price.toFixed(2)}, stock availability ×${f.availability.toFixed(2)}, weather ×${f.weather.toFixed(2)}</div>
+      Demand factors: reputation ×${f.rep.toFixed(2)}, cleanliness ×${f.clean.toFixed(2)}, prices ×${f.price.toFixed(2)}, stock availability ×${f.availability.toFixed(2)}, weather ×${f.weather.toFixed(2)}, hygiene rating ×${f.hygiene.toFixed(2)}</div>
+      <h3>Food hygiene ratings</h3>${Object.values(s.businesses).filter((x) => x.kind === 'retail' || x.kind === 'cafe').map((x) => { const h = hygieneOf(s, x.id); const last = h?.history[h.history.length - 1]; return `<div class="line"><span>${esc(x.name)}${last ? `<br><span class="muted">${esc(last.notes.join('; '))} · ${fmtDate(last.day * 1440).split(',')[0]}</span>` : ''}</span><span>${h?.rating !== null && h?.rating !== undefined ? `<b class="${h.rating >= 4 ? 'pos' : h.rating <= 2 ? 'neg' : ''}">${h.rating}/5</b> ${esc(RATING_LABEL[h.rating])}` : '<span class="muted">awaiting inspection</span>'}</span></div>`; }).join('')}
       ${isStaff ? `<h3>Stock (shelf / total incl. orders)</h3>${PRODUCTS.map((k) => `<div class="line"><span><i class="sw" style="background:${ITEMS[k].color}"></i>${itemName(k)}</span><span>${s.containers['shelf_' + k].items[k] ?? 0} / ${stockPosition(s, b, k)}</span></div>`).join('')}
       <div class="line"><span>Stock value at cost</span><span>${fmtMoney(inventoryValue(s, b))}</span></div>` : ''}
       <h3>Recent days</h3>${days.map(row).join('') || '<p class="muted">No trading recorded yet.</p>'}`;
@@ -421,7 +423,8 @@ export class UI {
         ${k ? `<div class="row">Price <button data-price="${k}" data-d="-0.05">−5%</button><b>${fmtMoney(b.prices[k])}</b><button data-price="${k}" data-d="0.05">+5%</button><span class="muted">wholesale ${fmtMoney(s.businesses.wholesale.prices[k])} · usual ${fmtMoney(ITEMS[k].retail)}</span></div>
         <div class="row">Order <button data-order="${k}" data-q="1">1 case (${ITEMS[k].caseSize})</button><button data-order="${k}" data-q="3">3 cases</button></div>` : ''}</div>`;
     };
-    return `<div class="card"><b>${esc(b.name)}</b> · Dockside Unit 4 · <span class="${open ? 'pos' : 'warn'}">${open ? 'OPEN' : 'CLOSED'}</span><br>
+    const hyg = hygieneOf(s, b.id);
+    return `<div class="card"><b>${esc(b.name)}</b> · Dockside Unit 4 · <span class="${open ? 'pos' : 'warn'}">${open ? 'OPEN' : 'CLOSED'}</span>${b.outage && s.minute < b.outage.until ? ` <span class="warn">power cut ${fmtClock(b.outage.from)}–${fmtClock(b.outage.until)}</span>` : ''} · hygiene ${hyg?.rating !== null && hyg?.rating !== undefined ? `<b>${hyg.rating}/5</b>` : 'not yet rated'}<br>
       Business cash <b>${fmtMoney(acc.balance)}</b> · reputation ${b.reputation.toFixed(0)}
       <div class="row"><button data-invest="10000">Invest Cr 100</button><button data-invest="50000">Invest Cr 500</button><button data-withdraw="10000">Withdraw Cr 100</button><button data-closed="${b.manualClosed ? '0' : '1'}">${b.manualClosed ? 'Open doors' : 'Close doors'}</button><button data-nightfill="${b.nightFill ? '0' : '1'}">${b.nightFill ? 'Cancel night-fill crew' : 'Hire night-fill crew'}</button></div>
       <div class="row">${Object.entries(E.HOURS_PRESETS).map(([k, h]) => `<button data-hours="${k}" class="${JSON.stringify(b.open) === JSON.stringify(h.open) ? 'primary' : ''}">${h.label}</button>`).join('')}</div></div>

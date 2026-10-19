@@ -2,6 +2,7 @@
 // Fine-grained movement/actions run in sub-steps; economic and scheduled
 // systems run once per whole game minute so nothing is skipped when the
 // clock is accelerated (sleeping, fast-forward).
+import { inspectionsTick, powerCutTick } from './inspections';
 import type { GameState, Person } from './types';
 import { MIN_PER_DAY, minuteOfDay, dayIndex } from './clock';
 import { tickNeeds } from './needs';
@@ -79,6 +80,8 @@ export function minuteTick(state: GameState) {
   loansTick(state);
   propertyTick(state);
   socialMinute(state);
+  inspectionsTick(state);
+  powerCutTick(state);
   npcTick(state);
   for (const p of Object.values(state.people)) if (p.npc) npcPostAction(state, p);
   economyTick(state);

@@ -516,8 +516,37 @@ function stagePlan(type: string, it: Interactable, p: Person): StageStep[] | nul
   return null;
 }
 
+/** a food-hygiene rating sticker: the six scores 0..5 with the awarded one picked out */
+const stickerTex = new Map<string, THREE.CanvasTexture>();
+function hygieneSticker(rating: number | null): THREE.CanvasTexture {
+  const key = String(rating);
+  const hit = stickerTex.get(key);
+  if (hit) return hit;
+  const cv = document.createElement('canvas');
+  cv.width = 256; cv.height = 176;
+  const c = cv.getContext('2d')!;
+  c.fillStyle = '#111'; c.fillRect(0, 0, 256, 176);
+  c.fillStyle = '#fff'; c.fillRect(6, 6, 244, 164);
+  c.fillStyle = '#111'; c.font = 'bold 22px sans-serif'; c.textAlign = 'center';
+  c.fillText('FOOD HYGIENE RATING', 128, 36);
+  for (let i = 0; i <= 5; i++) {
+    const x = 28 + i * 40, on = rating === i;
+    c.beginPath(); c.arc(x, 96, on ? 22 : 15, 0, Math.PI * 2);
+    c.fillStyle = on ? '#3aa335' : '#ddd'; c.fill();
+    c.fillStyle = on ? '#fff' : '#666'; c.font = `bold ${on ? 28 : 18}px sans-serif`;
+    c.fillText(String(i), x, 96 + (on ? 10 : 6));
+  }
+  c.fillStyle = '#111'; c.font = 'bold 18px sans-serif';
+  c.fillText(rating === null ? 'AWAITING INSPECTION' : ['URGENT IMPROVEMENT', 'MAJOR IMPROVEMENT', 'IMPROVEMENT NEEDED', 'SATISFACTORY', 'GOOD', 'VERY GOOD'][rating], 128, 152);
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  stickerTex.set(key, t);
+  return t;
+}
+
 export class Views {
   people = new Map<string, PersonView>();
+  stickers = new Map<string, { mesh: THREE.Mesh; rating: number | null }>();
   shelfMeshes = new Map<string, { mesh: THREE.InstancedMesh; bid: string; product: string; base: THREE.Vector3[]; side: number[]; mess: number }>();
   /** the player's home: dirty dishes, clutter and the washing machine */
   private home = new THREE.Group();
@@ -643,6 +672,35 @@ export class Views {
     scene.add(this.queueMarker);
   }
 
+  /** hygiene rating stickers in the shop and cafe windows, by the entrance */
+  private updateStickers(state: GameState) {
+    for (const b of Object.values(state.businesses)) {
+      if (b.kind !== 'retail' && b.kind !== 'cafe') continue;
+      const rating = state.hygiene?.[b.id]?.rating ?? null;
+      let st = this.stickers.get(b.id);
+      if (!st) {
+        const bd = getWorld().buildings.find((x) => x.id === b.locationId);
+        const door = bd?.doors.find((d) => d.open && d.side === (bd.sign?.side ?? d.side)) ?? bd?.doors.find((d) => d.open);
+        if (!bd || !door) continue;
+        const mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.206), new THREE.MeshStandardMaterial({ map: hygieneSticker(rating), roughness: 0.4 }));
+        const { x0, z0, x1, z1 } = bd.rect;
+        const along = door.b + 0.35;
+        if (door.side === 'zmax') mesh.position.set(along, 1.45, z1 + 0.16);
+        else if (door.side === 'zmin') { mesh.position.set(door.a - 0.35, 1.45, z0 - 0.16); mesh.rotation.y = Math.PI; }
+        else if (door.side === 'xmax') { mesh.position.set(x1 + 0.16, 1.45, door.a - 0.35); mesh.rotation.y = Math.PI / 2; }
+        else { mesh.position.set(x0 - 0.16, 1.45, along); mesh.rotation.y = -Math.PI / 2; }
+        this.scene.add(mesh);
+        st = { mesh, rating };
+        this.stickers.set(b.id, st);
+      }
+      if (st.rating !== rating) {
+        (st.mesh.material as THREE.MeshStandardMaterial).map = hygieneSticker(rating);
+        (st.mesh.material as THREE.MeshStandardMaterial).needsUpdate = true;
+        st.rating = rating;
+      }
+    }
+  }
+
   update(state: GameState, dt: number, viewer?: { x: number; z: number }, viewerInside?: string | null, speech?: Map<string, { text: string; until: number }>) {
     buildBudget = 1;
     // personal space: people closer than ~0.6 m are drawn shuffled apart (the player never moves)
@@ -754,6 +812,7 @@ export class Views {
     this.van.position.set(van.pos.x, 0, van.pos.z);
     this.van.rotation.y = van.heading;
     // spills
+    this.updateStickers(state);
     for (const [id, m] of this.spills) if (!state.dirt[id]) { this.scene.remove(m); this.spills.delete(id); }
     for (const d of Object.values(state.dirt)) {
       let m = this.spills.get(d.id);

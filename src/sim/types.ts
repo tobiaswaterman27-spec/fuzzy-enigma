@@ -353,6 +353,8 @@ export interface Business {
   cardboard?: number;
   /** outside shareholders: person id -> percent held (invest.ts) */
   shares?: Record<Id, number>;
+  /** scheduled power cut: closed between these minutes */
+  outage?: { from: number; until: number };
   /** litter bin by the door (0..BIN_CAPACITY) */
   binFill?: number;
   /** small per-business daily flags (e.g. the counter was staffed today) */
@@ -577,6 +579,8 @@ export interface GameState {
   homeDesigns: Record<string, HomeDesign>;
   /** personal loans (bank.ts) */
   loans?: Record<Id, import('./bank').Loan>;
+  /** food-hygiene ratings and inspection history per business (inspections.ts) */
+  hygiene?: Record<Id, import('./inspections').HygieneRecord>;
   creditBans?: Record<Id, boolean>;
   /** homes owned outright or with a mortgage (property.ts), by location */
   ownership?: Record<Id, import('./property').Ownership>;

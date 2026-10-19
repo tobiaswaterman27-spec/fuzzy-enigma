@@ -4,6 +4,7 @@
 // are materialised as pooled "ambient" shoppers who physically walk in, pick
 // stock off shelves and pay at the till, so demand is never free money.
 import { payDividends } from './invest';
+import { hygieneFactor } from './inspections';
 import type { Business, GameState } from './types';
 import { dayIndex, fmtDate, hourOfDay } from './clock';
 import { fmtMoney, randInt } from './core';
@@ -48,7 +49,8 @@ export function demandFactors(state: GameState, b: Business) {
   const availability = 0.5 + 0.5 * (avail / n);
   const confidence = state.districts.harbourside.confidence;
   const weather = rainDemandFactor(state);
-  return { rep, clean, price, availability, confidence, weather, total: rep * clean * price * availability * confidence * weather };
+  const hygiene = hygieneFactor(state, b.id);
+  return { rep, clean, price, availability, confidence, weather, hygiene, total: rep * clean * price * availability * confidence * weather * hygiene };
 }
 
 /** how convenient a shop's location is for the district's households (fixed by geography) */
@@ -103,7 +105,7 @@ export function economyTick(state: GameState) {
     // two people in the kitchen get through the lunch rush faster, so more customers stay
     const rush = (h >= 11.5 && h < 14) || (h >= 17 && h < 19);
     const rate = rush ? (staffOnDuty(state, 'cafe').length >= 2 ? 6 : 4) : 1.5;
-    d.cafeAccumulator = (d.cafeAccumulator ?? 0) + (rate * d.confidence) / 60;
+    d.cafeAccumulator = (d.cafeAccumulator ?? 0) + (rate * d.confidence * hygieneFactor(state, 'cafe')) / 60;
     while (d.cafeAccumulator >= 1) {
       d.cafeAccumulator -= 1;
       if (playerCooking(state)) {

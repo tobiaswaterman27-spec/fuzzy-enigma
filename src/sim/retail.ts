@@ -56,6 +56,7 @@ export function isStaff(state: GameState, personId: Id, bid: Id): boolean {
 
 export function isOpen(b: Business, minute: number): boolean {
   if (b.manualClosed) return false;
+  if (b.outage && minute >= b.outage.from && minute < b.outage.until) return false;
   const dow = dayIndex(minute) % 7;
   const m = minuteOfDay(minute);
   return b.open.some((s) => s.days.includes(dow) && m >= s.start && m < s.end);
