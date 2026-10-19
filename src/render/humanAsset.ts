@@ -599,8 +599,20 @@ function poolGeometry(pool: Pool, indices: number[], offset: number, uvScale: nu
       ec.set(k, (ec.get(k) ?? 0) + 1);
     }
     const boundary = new Uint8Array(n);
-    for (const [k, c] of ec) if (c === 1) for (const v of k.split('_')) boundary[Number(v)] = 1;
+    const bnb: number[][] = Array.from({ length: n }, () => []);
+    for (const [k, c] of ec) if (c === 1) { const [a, b] = k.split('_').map(Number); boundary[a] = boundary[b] = 1; bnb[a].push(b); bnb[b].push(a); }
     const base = new Float32Array(P);
+    // the cut line itself: relax each edge vertex towards its two neighbours along the edge, so hems and
+    // necklines are smooth curves instead of following the triangle steps of the cut
+    for (let it = 0; it < 6; it++) {
+      const Q = new Float32Array(P);
+      for (let i = 0; i < n; i++) {
+        if (rep[i] !== i || bnb[i].length !== 2) continue;
+        const [a, b] = bnb[i];
+        for (let d = 0; d < 3; d++) Q[i * 3 + d] = P[i * 3 + d] * 0.4 + (P[a * 3 + d] + P[b * 3 + d]) * 0.3;
+      }
+      P.set(Q);
+    }
     for (let it = 0; it < smooth; it++) {
       const Q = new Float32Array(P);
       for (let i = 0; i < n; i++) {
@@ -829,7 +841,11 @@ function buildRealHumanUncached(a: Appearance): HumanBuild {
     };
     sk(poolGeometry(pool, visibleSkin, 0, 1, 0), skinMaterial(a.skin, a.hairColor, fem));
     const shirt = cutBody(pos, nrm, [fTopLong], A.index);
-    sk(poolGeometry(shirt.pool, shirt.buckets[0], 0.011, 6, 6, bridge), cloth(g.top.color, g.top.tex));
+    const shirtGeo = torsoOnly(poolGeometry(shirt.pool, shirt.buckets[0], 0.011, 6, 6, bridge), bi('neck'), bi('head'), bi('chest'));
+    sk(shirtGeo, cloth(g.top.color, g.top.tex));
+    // ribbed neckband along the neckline
+    const band = necklineBand(shirtGeo, neckBase - 0.12, 0.0075, bi('chest'));
+    if (band) sk(band, cloth(g.top.collar ?? g.top.color, g.top.tex, 0.9));
     void topTris;
     sk(poolGeometry(pool, botTris, 0.008, 6, 8, bridge, legHang), cloth(g.bottom.color, g.bottom.tex, 0.9));
     const style = SHOE_STYLE[a.outfit] ?? 'shoe_trainer';
@@ -846,7 +862,7 @@ function buildRealHumanUncached(a: Appearance): HumanBuild {
     } else if (ov) {
       const over = cutBody(pos, nrm, [fOver], A.index);
       const thick = ov.kind === 'vest' ? 0.018 : 0.017;
-      sk(poolGeometry(over.pool, over.buckets[0], thick, 6, 10, bridge), cloth(ov.color, ov.kind === 'vest' ? 'hivis' : 'suit', ov.kind === 'vest' ? 0.5 : 0.85));
+      sk(torsoOnly(poolGeometry(over.pool, over.buckets[0], thick, 6, 10, bridge), bi('neck'), bi('head'), bi('chest')), cloth(ov.color, ov.kind === 'vest' ? 'hivis' : 'suit', ov.kind === 'vest' ? 0.5 : 0.85));
     }
     if (g.tie) {
       const tieM = cached(`tie${g.tie}`, () => new THREE.MeshStandardMaterial({ color: g.tie!, roughness: 0.45, side: THREE.DoubleSide }));
@@ -962,6 +978,84 @@ function hairTexture(color: string, curly: boolean): THREE.Texture {
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   matCache.set(key, t as any);
   return t;
+}
+
+/** clothing does not turn with the head: neck and head bone weights move onto the chest */
+function torsoOnly(g: THREE.BufferGeometry, neck: number, head: number, chest: number): THREE.BufferGeometry {
+  const SI = g.getAttribute('skinIndex') as THREE.BufferAttribute;
+  for (let v = 0; v < SI.count; v++) for (let d = 0; d < 4; d++) { const b = SI.getComponent(v, d); if (b === neck || b === head) SI.setComponent(v, d, chest); }
+  return g;
+}
+
+/** A rounded band (tube) along the open edge of a garment above `minY` (the neckline), following a smoothed
+ * version of the edge and skinned like the nearest garment vertex. */
+function necklineBand(g: THREE.BufferGeometry, minY: number, radius: number, chest: number): THREE.BufferGeometry | null {
+  const P = g.getAttribute('position') as THREE.BufferAttribute;
+  const SI = g.getAttribute('skinIndex') as THREE.BufferAttribute, SW = g.getAttribute('skinWeight') as THREE.BufferAttribute;
+  const idx = g.getIndex()!;
+  // weld by position, find edges used by one triangle
+  const key = (i: number) => `${P.getX(i).toFixed(4)},${P.getY(i).toFixed(4)},${P.getZ(i).toFixed(4)}`;
+  const weld = new Map<string, number>();
+  const rep = new Int32Array(P.count);
+  for (let i = 0; i < P.count; i++) { const k = key(i); if (!weld.has(k)) weld.set(k, i); rep[i] = weld.get(k)!; }
+  const ec = new Map<string, number>();
+  for (let t = 0; t < idx.count; t += 3) for (let e = 0; e < 3; e++) {
+    const a = rep[idx.getX(t + e)], b = rep[idx.getX(t + (e + 1) % 3)];
+    const k = a < b ? `${a}_${b}` : `${b}_${a}`;
+    ec.set(k, (ec.get(k) ?? 0) + 1);
+  }
+  const nb = new Map<number, number[]>();
+  for (const [k, c] of ec) {
+    if (c !== 1) continue;
+    const [a, b] = k.split('_').map(Number);
+    if (P.getY(a) < minY || P.getY(b) < minY) continue;
+    nb.set(a, [...(nb.get(a) ?? []), b]); nb.set(b, [...(nb.get(b) ?? []), a]);
+  }
+  // walk the longest loop
+  let best: number[] = [];
+  const seen = new Set<number>();
+  for (const start of nb.keys()) {
+    if (seen.has(start)) continue;
+    const loop = [start]; seen.add(start);
+    let prev = -1, cur = start;
+    for (;;) {
+      const next = (nb.get(cur) ?? []).find((x) => x !== prev && !seen.has(x));
+      if (next === undefined) break;
+      loop.push(next); seen.add(next); prev = cur; cur = next;
+    }
+    // the neckline is the edge loop centred on the body (sleeve openings sit off to the sides)
+    const cx = loop.reduce((acc, i) => acc + P.getX(i), 0) / loop.length;
+    if (Math.abs(cx) < 0.05 && loop.length > best.length) best = loop;
+  }
+  if (best.length < 12) return null;
+  // fit a smooth closed curve: average radius and height in angular bins around the neck, low-pass filtered
+  const raw = best.map((i) => new THREE.Vector3(P.getX(i), P.getY(i), P.getZ(i)));
+  const cx = raw.reduce((a, p) => a + p.x, 0) / raw.length, cz = raw.reduce((a, p) => a + p.z, 0) / raw.length;
+  const NB = 48;
+  const sr = new Float64Array(NB), sy = new Float64Array(NB), cnt = new Float64Array(NB);
+  for (const p of raw) {
+    const ang = Math.atan2(p.x - cx, p.z - cz);
+    const k = ((Math.round(((ang + Math.PI) / (2 * Math.PI)) * NB) % NB) + NB) % NB;
+    sr[k] += Math.hypot(p.x - cx, p.z - cz); sy[k] += p.y; cnt[k]++;
+  }
+  let R = Array.from({ length: NB }, (_, k) => (cnt[k] ? sr[k] / cnt[k] : NaN)), Y = Array.from({ length: NB }, (_, k) => (cnt[k] ? sy[k] / cnt[k] : NaN));
+  const fill = (A: number[]) => A.map((v, k) => { if (!Number.isNaN(v)) return v; for (let d = 1; d < NB; d++) { const a = A[(k - d + NB) % NB], b = A[(k + d) % NB]; if (!Number.isNaN(a) && !Number.isNaN(b)) return (a + b) / 2; if (!Number.isNaN(a)) return a; if (!Number.isNaN(b)) return b; } return 0; });
+  R = fill(R); Y = fill(Y);
+  for (let it = 0; it < 4; it++) {
+    R = R.map((_, k) => (R[(k - 2 + NB) % NB] + R[(k - 1 + NB) % NB] + R[k] + R[(k + 1) % NB] + R[(k + 2) % NB]) / 5);
+    Y = Y.map((_, k) => (Y[(k - 2 + NB) % NB] + Y[(k - 1 + NB) % NB] + Y[k] + Y[(k + 1) % NB] + Y[(k + 2) % NB]) / 5);
+  }
+  const pts = R.map((r, k) => { const ang = (k / NB) * 2 * Math.PI - Math.PI; return new THREE.Vector3(cx + Math.sin(ang) * r, Y[k], cz + Math.cos(ang) * r); });
+  const curve = new THREE.CatmullRomCurve3(pts, true);
+  const tube = new THREE.TubeGeometry(curve, 96, radius, 6, true);
+  // the band is rigid with the chest so it stays a clean curve in every pose
+  const TP = tube.getAttribute('position') as THREE.BufferAttribute;
+  const tsi = new Uint16Array(TP.count * 4), tsw = new Float32Array(TP.count * 4);
+  for (let v = 0; v < TP.count; v++) { tsi[v * 4] = chest; tsw[v * 4] = 1; }
+  void SI; void SW;
+  tube.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(tsi, 4));
+  tube.setAttribute('skinWeight', new THREE.Float32BufferAttribute(tsw, 4));
+  return tube;
 }
 
 /** smooth minimum: no crease where the two cut surfaces meet (a hard min makes zigzag cut lines) */
