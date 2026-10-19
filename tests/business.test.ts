@@ -31,8 +31,11 @@ describe('Journey C/D - build and delegate a business', () => {
     expect(total(s.containers.unit4_backroom)).toBe(0);
     // hire an assistant from the labour pool
     expect(setStaffing(s, 'assistant', 1, 'am').ok).toBe(true);
-    advanceTo(s, at(4, 16, 0)); // job seekers search twice a day; give them a day to find the advert
-    const apps = Object.values(s.applications).filter((a) => s.vacancies[a.vacancyId].businessId === 'unit4' && a.status === 'pending');
+    // job seekers search twice a day; give them up to a few days to find the advert
+    const pending = () => Object.values(s.applications).filter((a) => s.vacancies[a.vacancyId].businessId === 'unit4' && a.status === 'pending');
+    advanceTo(s, at(4, 16, 0));
+    for (let d = 5; d < 9 && !pending().length; d++) advanceTo(s, at(d, 16, 0));
+    const apps = pending();
     expect(apps.length).toBeGreaterThan(0);
     const best = apps.sort((x, y) => y.score - x.score)[0];
     expect(hireApplicant(s, best.id).ok).toBe(true);

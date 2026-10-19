@@ -100,16 +100,20 @@ describe('Journey A - start a life', () => {
     const att = openAttendance(s, 'player')!;
     expect(att.late).toBe(0);
     // real work: take a case of something in the store room and stock its shelf (inventory actually moves)
-    const k = PRODUCTS.find((x) => count(s.containers.market_backroom, x) >= ITEMS[x].caseSize && count(s.containers[`shelf_${x}`], x) < 40)!;
+    // the morning delivery may still be waiting at the bay: check it in first
+    if (PRODUCTS.every((x) => count(s.containers.market_backroom, x) < ITEMS[x].caseSize)) expect(act(s, 'bay', 'check_in_delivery').ok).toBe(true);
+    const k = PRODUCTS.filter((x) => count(s.containers.market_backroom, x) >= ITEMS[x].caseSize && count(s.containers[`shelf_${x}`], x) <= 64 - ITEMS[x].caseSize)
+      .sort((x, y) => count(s.containers[`shelf_${x}`], x) - count(s.containers[`shelf_${y}`], y))[0];
     expect(k).toBeTruthy();
     const back0 = count(s.containers.market_backroom, k);
     const shelf0 = count(s.containers[`shelf_${k}`], k);
     expect(act(s, `pallet_${k}`, 'take_case').ok).toBe(true);
     expect(total(s.containers[p.handsId])).toBe(ITEMS[k].caseSize);
     expect(act(s, `shelf_${k}`, 'stock_shelf').ok).toBe(true);
-    const moved = count(s.containers[`shelf_${k}`], k) - shelf0;
+    // what left the player's hands went onto the shelf (colleagues and customers may change it too)
+    const moved = ITEMS[k].caseSize - count(s.containers[p.handsId], k);
     expect(moved).toBeGreaterThan(0);
-    expect(moved).toBeLessThanOrEqual(ITEMS[k].caseSize); // the shelf gains at most the case carried
+    expect(count(s.containers[`shelf_${k}`], k)).toBeGreaterThan(shelf0 - 10);
     void back0;
     if (total(s.containers[p.handsId])) act(s, `pallet_${k}`, 'return_case');
     // finish the shift

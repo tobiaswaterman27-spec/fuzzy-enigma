@@ -141,6 +141,11 @@ export function createNewGame(seed: number, setup: PlayerSetup): GameState {
         duties: ['Check in deliveries at the loading bay', 'Restock shelves from the store room', 'Cover the till only when the queue is long'],
       }),
       pos({
+        id: 'stocker_pm', title: 'Shelf Stacker (Evenings)', wage: 1180, shifts: [sh(MON_SAT, 15, 21)], uniform: 'uniform_market', playable: true, role: 'stocker',
+        description: 'Keeps the shelves full through the evening rush, bales the empty cases and faces up before close.',
+        duties: ['Restock shelves from the store room', 'Flatten cardboard into the baler', 'Face up the shelves'],
+      }),
+      pos({
         id: 'cleaner', title: 'Cleaner (Afternoons)', wage: 1100, shifts: [sh(MON_SAT, 12, 18)], uniform: 'uniform_market', playable: true, role: 'cleaner',
         description: 'Keep Corner Market clean and safe: spills, floor rounds and tidying.',
         duties: ['Mop up spills', 'Walk the aisles keeping the floor clear'],
@@ -259,7 +264,8 @@ export function createNewGame(seed: number, setup: PlayerSetup): GameState {
     { id: 'p_nadia', name: 'Nadia Haddad', home: 'flat_upper', cash: 40000, rent: 0, skills: { retail: 60, cleaning: 80 }, search: 3 },
     { id: 'p_ben', name: 'Ben Ashworth', home: 'house_1', cash: 15000, rent: 0, skills: {}, search: 4, traits: { conscientiousness: 0.4 } },
     { id: 'p_ivy', name: 'Ivy Marsh', home: 'house_5', cash: 55000, job: ['homestore', 'sales'], rent: 12500, traits: { sociability: 0.85 } },
-    { id: 'p_raj', name: 'Raj Patel', home: 'house_3', cash: 20000, rent: 0, skills: { retail: 90 }, search: 4 },
+    { id: 'p_raj', name: 'Raj Patel', home: 'house_3', cash: 20000, job: ['market', 'stocker_pm'], rent: 0, skills: { retail: 90, warehouse: 60 } },
+    { id: 'p_eve', name: 'Eve Doyle', home: 'house_6', cash: 18000, rent: 0, skills: { retail: 40 }, search: 4 },
   ];
   for (const n of npcs) {
     const p = makePerson(state, n.id, n.name, { homeId: n.home, cash: n.cash, traits: n.traits });

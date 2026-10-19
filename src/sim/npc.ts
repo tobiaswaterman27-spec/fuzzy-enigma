@@ -12,7 +12,7 @@ import { cancelAction, interactable, startAction } from './actions';
 import { isOpen, joinQueue, leaveQueue, openTasks, queueSlot, shelfFor, staffOnDuty, walkout, productsOf } from './retail';
 import { getWorld, SHOPS } from './world/layout';
 import { pickNeed, pickQueue } from './logistics';
-import { planRoute, routeLength } from './world/nav';
+import { planRoute, resolveCircle, routeLength } from './world/nav';
 import { capability } from './needs';
 import { npcLog } from './events';
 import { raining } from './weather';
@@ -79,6 +79,25 @@ export function tickMovement(state: GameState, p: Person, dt: number) {
   const m = p.move;
   if (!m) return;
   let step = WALK * capability(p).move * dt;
+  // personal space: someone just ahead slows you down and you step round them (keeping left)
+  const tgt0 = m.path[m.idx];
+  if (tgt0) {
+    const d0 = dist(p.pos, tgt0);
+    if (d0 > 0.3) {
+      const hx = (tgt0.x - p.pos.x) / d0, hz = (tgt0.z - p.pos.z) / d0;
+      for (const o of Object.values(state.people)) {
+        if (o === p || !o.visible || o.sleeping) continue;
+        const ox = o.pos.x - p.pos.x, oz = o.pos.z - p.pos.z;
+        const along = ox * hx + oz * hz, side = ox * -hz + oz * hx;
+        if (along <= 0 || along > 0.9 || Math.abs(side) > 0.5) continue;
+        step *= 0.45;
+        // sidestep away from them (to the left when dead ahead), without walking into walls
+        const away = side > 0.05 ? -1 : 1;
+        p.pos = resolveCircle({ x: p.pos.x - hz * away * 0.9 * dt, z: p.pos.z + hx * away * 0.9 * dt }, 0.25);
+        break;
+      }
+    }
+  }
   while (step > 0 && m.idx < m.path.length) {
     const tgt = m.path[m.idx];
     const d = dist(p.pos, tgt);
@@ -575,7 +594,7 @@ function workChoose(state: GameState, p: Person) {
   const order: (() => boolean)[] = {
     cashier: [tryServe, () => tryTopUp(0.75), tryRestock, () => !rolesOnDuty.has('cleaner') && tryClean(), () => !rolesOnDuty.has('stocker') && tryReceive(), tryFace, () => !rolesOnDuty.has('cleaner') && tryRubbish()],
     stocker: [tryReceive, tryRestock, () => tryTopUp(0.9), tryCardboard, () => !rolesOnDuty.has('cleaner') && tryClean(), () => (desperate || noCashier && queueLen > 0) && tryServe(), tryFace],
-    cleaner: [tryClean, tryRubbish, () => (desperate || (noCashier && !rolesOnDuty.has('manager') && queueLen > 0)) && tryServe(), tryFace, () => !rolesOnDuty.has('stocker') && tryCardboard()],
+    cleaner: [tryClean, tryRubbish, () => (desperate || (noCashier && !rolesOnDuty.has('manager') && queueLen > 0)) && tryServe(), tryFace, () => !rolesOnDuty.has('stocker') && tryCardboard(), () => !rolesOnDuty.has('stocker') && tryRestock()],
     manager: [() => (queueLen >= 2 || noCashier) && tryServe(), tryReceive, () => !rolesOnDuty.has('stocker') && tryRestock(), () => onDuty.length === 0 && tryClean(), () => onDuty.length === 0 && tryTopUp(0.6), () => !rolesOnDuty.has('stocker') && tryCardboard(), () => onDuty.length === 0 && tryRubbish()],
     general: [tryServe, tryReceive, tryClean, tryRestock, () => tryTopUp(0.75), tryRubbish, tryCardboard, tryFace],
   }[role];
