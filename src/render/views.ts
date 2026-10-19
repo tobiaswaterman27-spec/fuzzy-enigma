@@ -156,6 +156,11 @@ class PersonView {
         root.rotation.y = f > 0.88 ? inYaw + Math.PI : f < 0.12 ? inYaw : inYaw + Math.PI * 0.5;
         yaw = root.rotation.y;
         this.showerStep = f < 0.12 || f > 0.88;
+      } else if (a?.type === 'study' && it) {
+        // seated at the desk, facing it
+        root.position.set(it.obj.x, 0, it.obj.z);
+        root.rotation.y = Math.atan2(it.obj.x - it.pos.x, it.obj.z - it.pos.z);
+        yaw = root.rotation.y;
       } else if ((a?.type === 'sit' || a?.type === 'watch_tv') && it && (it.kind === 'sofa' || it.kind === 'chair' || it.kind === 'iv_chair' || it.kind === 'iv_host')) {
         // sit on the seat itself, facing out from the back rest
         const dx = it.pos.x - it.obj.x, dz = it.pos.z - it.obj.z, l = Math.hypot(dx, dz) || 1;

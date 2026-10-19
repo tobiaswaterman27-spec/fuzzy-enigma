@@ -14,6 +14,7 @@ import { FRIEND_AT, inviteForCoffee, plannedMeetup, relationLabel } from '../sim
 import { buyProperty as buyHomeProperty, canBuyHome, mortgageTerms, ownedHome, ownershipLines, redemption, sellHome, SELL_SHARE, SERVICE_CHARGE } from '../sim/property';
 import { blockPrice, BLOCK, buyOut, buyOutPrice, holdings, TAKEOVER_AT, buyStake, canInvestIn, dividendsReceived, MAX_STAKE, sellStake, stakeOf, valuation, weeklyProfit } from '../sim/invest';
 import { hygieneOf, RATING_LABEL } from '../sim/inspections';
+import { bookRetest, COURSES, enrol } from '../sim/training';
 import { buyCar, CAR_MODELS, CAR_WEEKLY, FUEL_PER_KM, playerCar, RESALE, sellCar } from '../sim/cars';
 import { creditLimit, LOAN_APR_FLAT, LOAN_SIZES, LOAN_WEEKS, repayLoan, takeLoan } from '../sim/bank';
 import { buyHome, ONLINE_DELIVERY, quoteHome, storeStaffed } from '../sim/homestore';
@@ -208,6 +209,17 @@ export class UI {
         h += `<div class="line"><span>${esc(pos.title)} · ${esc(s.businesses[v.businessId].name)}</span><span class="tag">${a.status}</span></div>`;
       }
     }
+    // training courses at the Job Centre
+    const e = p.course;
+    h += `<h3>Courses at the Job Centre</h3><p class="muted">Pay here, then attend each session at the training desk (Mon-Fri 09:00-17:00, one a day).${p.quals?.length ? ` Your qualifications: ${p.quals.map((q) => esc(COURSES[q]?.name ?? q)).join(', ')}.` : ''}</p>`;
+    if (e) {
+      const c = COURSES[e.courseId];
+      h += `<div class="card good"><b>${esc(c.name)}</b><div class="line"><span>Sessions attended</span><span>${e.done} / ${c.sessions}${c.test ? ' (the last is the test)' : ''}</span></div>${!e.paid && c.test ? `<p class="warn">You failed the test.</p><div class="row"><button data-retest="1" class="primary">Book a retest (${fmtMoney(c.test.retest)})</button></div>` : ''}</div>`;
+    }
+    for (const c of Object.values(COURSES)) {
+      if (p.quals?.includes(c.id) || e?.courseId === c.id) continue;
+      h += `<div class="card"><b>${esc(c.name)}</b> · ${fmtMoney(c.fee)}<br><span class="muted">${esc(c.blurb)} ${c.sessions} × ${c.minutes / 60} h.</span><div class="row"><button data-enrol="${c.id}" ${e ? 'disabled title="One course at a time"' : ''}>Enrol</button></div></div>`;
+    }
     return h;
   }
 
@@ -289,7 +301,7 @@ export class UI {
         <p class="muted">Walk up to the driver's door and press E to get in. While driving: W/S to drive, A/D to steer, E to park and get out. Fuel is paid when you park (${fmtMoney(FUEL_PER_KM)} per km).</p>
         <div class="row"><button data-carsell="1" ${car.state === 'parked' ? '' : 'disabled'}>Sell to Harbour Motors (${fmtMoney(back)})</button></div></div>`;
     }
-    return `<p class="muted">Harbour Motors delivers to the kerb outside Marlow Court. Running costs: insurance and road tax ${fmtMoney(CAR_WEEKLY)} a week, fuel ${fmtMoney(FUEL_PER_KM)} per km. You have ${fmtMoney(bal)}.</p>
+    return `${p.quals?.includes('driving') ? '' : '<p class="warn">You need a driving licence to drive (course and test at the Job Centre: Phone &gt; Jobs). You can still buy a car now.</p>'}<p class="muted">Harbour Motors delivers to the kerb outside Marlow Court. Running costs: insurance and road tax ${fmtMoney(CAR_WEEKLY)} a week, fuel ${fmtMoney(FUEL_PER_KM)} per km. You have ${fmtMoney(bal)}.</p>
       ${CAR_MODELS.map((m) => `<div class="card"><b>${esc(m.name)}</b> · ${fmtMoney(m.price)}<br><span class="muted">${esc(m.blurb)} Top speed ${Math.round(m.topSpeed * 3.6)} km/h.</span>
         <div class="row">${m.colors.map((c) => `<button data-carbuy="${m.id}|${c}" ${bal >= m.price ? '' : 'disabled'} title="Buy in this colour"><i class="sw" style="background:${c}"></i>Buy</button>`).join('')}</div></div>`).join('')}`;
   }
@@ -493,6 +505,8 @@ export class UI {
     if (d.invite) { this.toast(inviteForCoffee(s, this.p.id, d.invite).msg); this.lastBody = ''; this.renderPhone(); return; }
     if (d.loan) { this.toast(takeLoan(s, this.p.id, Number(d.loan)).msg); this.lastBody = ''; this.renderPhone(); return; }
     if (d.stakebuy) { this.toast(buyStake(s, this.p.id, d.stakebuy).msg); this.lastBody = ''; this.renderPhone(); return; }
+    if (d.enrol) { this.toast(enrol(s, this.p.id, d.enrol).msg); this.lastBody = ''; this.renderPhone(); return; }
+    if (d.retest) { this.toast(bookRetest(s, this.p.id).msg); this.lastBody = ''; this.renderPhone(); return; }
     if (d.carbuy) { const [m, c] = d.carbuy.split('|'); this.toast(buyCar(s, this.p.id, m, c).msg); this.lastBody = ''; this.renderPhone(); return; }
     if (d.carsell) { this.toast(sellCar(s, this.p.id).msg); this.lastBody = ''; this.renderPhone(); return; }
     if (d.buyout) { this.toast(buyOut(s, this.p.id, d.buyout).msg); this.lastBody = ''; this.renderPhone(); return; }
@@ -660,7 +674,7 @@ const ACTION_LABELS: Record<string, string> = {
   change_outfit: 'Changing clothes…', buy_meal: 'Eating a cafe meal…', sit: 'Sitting (resting slowly)',
   shower: 'Showering…', cook: 'Cooking…', watch_tv: 'Watching TV', talk: 'Chatting…',
   face_shelf: 'Facing up: pulling packs forward, labels out…', bale_cardboard: 'Flattening boxes into the baler…', empty_bin: 'Tying off the bin bag…', dump_rubbish: 'Throwing the bag in…',
-  take_order: 'Talking the order through…', take_tool: 'Getting the tool…', return_tool: 'Putting the tool away…', take_bricks: 'Loading up with bricks…', site_work: 'Working on the house…', cook_meal: 'Cooking on the grill…', serve_meal: 'Handing over the meal…', drive_van: 'Getting in…', drive_car: 'Getting in…', pick_case: 'Picking from the racking…', stage_case: 'Staging cases for dispatch…', wash_up: 'Washing up…', laundry: 'Doing the laundry…', tidy: 'Tidying up…',
+  take_order: 'Talking the order through…', take_tool: 'Getting the tool…', return_tool: 'Putting the tool away…', take_bricks: 'Loading up with bricks…', site_work: 'Working on the house…', cook_meal: 'Cooking on the grill…', serve_meal: 'Handing over the meal…', drive_van: 'Getting in…', drive_car: 'Getting in…', study: 'In class…', pick_case: 'Picking from the racking…', stage_case: 'Staging cases for dispatch…', wash_up: 'Washing up…', laundry: 'Doing the laundry…', tidy: 'Tidying up…',
 };
 const TASK_LABELS: Record<string, [string, string]> = {
   restock: ['restock', 'restocks'], serve: ['customer to serve', 'customers to serve'], clean: ['spill', 'spills'], receive: ['delivery', 'deliveries'],

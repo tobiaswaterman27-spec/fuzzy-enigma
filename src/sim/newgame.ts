@@ -1,5 +1,6 @@
 // Builds a brand-new, internally consistent world. Every opening balance is
 // a recorded transfer from the external economy so total money sums to zero.
+import { npcQuals } from './training';
 import type { Appearance, Business, GameState, Id, Person, Position, ShiftTemplate, Traits } from './types';
 import { at } from './clock';
 import { openAccount, transfer } from './ledger';
@@ -17,7 +18,7 @@ import { rand, randInt, pick } from './core';
 import { news } from './events';
 import { spawnDirt, SHELF_CAPACITY, shelfId } from './retail';
 
-export const SAVE_VERSION = 8;
+export const SAVE_VERSION = 9;
 
 export interface PlayerSetup {
   name: string;
@@ -88,6 +89,7 @@ function makePerson(state: GameState, id: Id, name: string, opts: { homeId: Id |
     where: opts.homeId ?? 'offsite', visible: false, needs: { energy: 80 + randInt(state, 0, 20), satiety: 60 + randInt(state, 0, 30), hygiene: 85, mood: 60 },
     skills: {}, traits, contractId: null, handsId: hands.id, bagId: bag.id, basketId: basket.id, pantryId: pantry?.id ?? null,
     wardrobeId: wardrobe?.id ?? null, action: null, move: null, history: [], reputation: 50, equipment: null, sleeping: false, relations: {},
+    quals: opts.isPlayer ? [] : npcQuals(id),
     npc: opts.isPlayer ? null : {
       goal: 'idle_home', goalSince: state.minute, nextDecision: state.minute + randInt(state, 0, 5), step: 'run', plan: [], log: [],
       homeOutfit, bedtime: 22 * 60 + randInt(state, 0, 90), wake: 6 * 60 + randInt(state, 0, 60),
@@ -160,7 +162,7 @@ export function createNewGame(seed: number, setup: PlayerSetup): GameState {
   const wholesale = makeBusiness(state, {
     id: 'wholesale', name: 'Harbour Wholesale', kind: 'wholesale', ownerId: 'p_gail', locationId: 'wholesale', open: [sh(MON_SAT, 6, 18)],
     positions: [
-      pos({ id: 'driver', title: 'Delivery Driver', wage: 1450, shifts: [sh(MON_SAT, 6, 14)], uniform: 'uniform_wholesale', headcount: 2, playable: true, duties: ['Collect the loaded van at the depot', 'Drive it to the shop\'s loading bay', 'Bring the van back and park it'], description: 'Drives the loaded delivery van from the depot to the shops and back.' }),
+      pos({ id: 'driver', title: 'Delivery Driver', wage: 1450, shifts: [sh(MON_SAT, 6, 14)], uniform: 'uniform_wholesale', headcount: 2, playable: true, quals: ['driving'], duties: ['Collect the loaded van at the depot', 'Drive it to the shop\'s loading bay', 'Bring the van back and park it'], description: 'Drives the loaded delivery van from the depot to the shops and back.' }),
       pos({ id: 'operative', title: 'Warehouse Operative', wage: 1350, shifts: [sh(MON_SAT, 14, 22)], uniform: 'uniform_wholesale', headcount: 2, requires: {}, playable: true, duties: ['Pick order lines from the racking', 'Stage cases for the morning van', 'Put back stock not on the pick list'], description: 'Evening shift: picks the day\'s shop orders from the racking into the staging lanes for the morning van.' }),
     ],
     prices: Object.fromEntries([...PRODUCTS, 'cafe_supplies'].map((k) => [k, ITEMS[k].wholesale])), reputation: 60, supplierId: null,
@@ -169,8 +171,8 @@ export function createNewGame(seed: number, setup: PlayerSetup): GameState {
   });
   const cafe = makeBusiness(state, {
     id: 'cafe', name: 'Tidewater Cafe', kind: 'cafe', ownerId: 'p_rosa', locationId: 'cafe', open: [sh([0, 1, 3, 4, 5, 6], 8, 17)],
-    positions: [pos({ id: 'cook', title: 'Cafe Cook', wage: 1300, shifts: [sh([0, 1, 3, 4, 5, 6], 8, 17)], uniform: 'uniform_cafe', headcount: 1, playable: true, duties: ['Cook each order at the grill', 'Serve the customer at the counter', 'Keep the queue moving at lunchtime'], description: 'Cooks and serves at Tidewater Cafe: customers queue at the counter, you cook their meal on the grill and hand it over.' }),
-      pos({ id: 'kitchen', title: 'Kitchen Assistant (Lunch)', wage: 1200, shifts: [sh([0, 1, 3, 4, 5, 6], 11, 15)], uniform: 'uniform_cafe', headcount: 1, playable: true, duties: ['Cook orders at the grill through the lunch rush', 'Serve them at the counter'], description: 'Helps in the kitchen through the lunchtime rush: cook each order at the grill and serve it at the counter.' })],
+    positions: [pos({ id: 'cook', title: 'Cafe Cook', wage: 1300, shifts: [sh([0, 1, 3, 4, 5, 6], 8, 17)], uniform: 'uniform_cafe', headcount: 1, playable: true, quals: ['food_hygiene'], duties: ['Cook each order at the grill', 'Serve the customer at the counter', 'Keep the queue moving at lunchtime'], description: 'Cooks and serves at Tidewater Cafe: customers queue at the counter, you cook their meal on the grill and hand it over.' }),
+      pos({ id: 'kitchen', title: 'Kitchen Assistant (Lunch)', wage: 1200, shifts: [sh([0, 1, 3, 4, 5, 6], 11, 15)], uniform: 'uniform_cafe', headcount: 1, playable: true, quals: ['food_hygiene'], duties: ['Cook orders at the grill through the lunch rush', 'Serve them at the counter'], description: 'Helps in the kitchen through the lunchtime rush: cook each order at the grill and serve it at the counter.' })],
     prices: { meal: 950 }, reputation: 60, supplierId: 'wholesale', reorder: {}, rentDue: 0, utilitiesPerDay: 1500, stockContainers: ['cafe_supplies'], cashReserve: 300000, cash: 300000,
   });
   const port = makeBusiness(state, {

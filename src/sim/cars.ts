@@ -63,7 +63,8 @@ export function sellCar(state: GameState, personId: Id): { ok: boolean; msg: str
   return { ok: true, msg: `Sold the ${v.name} for ${fmtMoney(amount)}.` };
 }
 
-export function canDriveCar(v: Vehicle): string | undefined {
+export function canDriveCar(state: GameState, v: Vehicle): string | undefined {
+  if (!state.people[v.ownerId]?.quals?.includes('driving')) return 'You need a driving licence (course and test at the Job Centre)';
   if (v.uninsured) return 'Uninsured: pay the overdue insurance first (keep money in your account)';
   return undefined;
 }
@@ -72,7 +73,7 @@ export function enterCar(state: GameState, personId: Id, carId: Id): string {
   const v = state.vehicles[carId];
   const p = state.people[personId];
   if (!v || v.kind !== 'car' || v.ownerId !== personId || v.state !== 'parked') return 'You cannot drive that.';
-  const why = canDriveCar(v);
+  const why = canDriveCar(state, v);
   if (why) return why;
   v.state = 'manual_out';
   v.driverId = personId;

@@ -163,6 +163,7 @@ export type InteractKind =
   | 'site_work'
   | 'cafe_grill'
   | 'vehicle'
+  | 'study_desk'
   | 'baler'
   | 'shopbin'
   | 'dumpster'
@@ -605,6 +606,9 @@ function buildWorldData(homeDesign: HomeDesign): World {
   obstacles.push({ kind: 'board', rect: { x0: -27, z0: -27.85, x1: -21, z1: -27.5 }, height: 2.2, solid: true });
   add({ id: 'jobboard', kind: 'board', label: 'Vacancy board', pos: { x: -24, z: -26.3 }, facing: Math.PI, obj: { x: -24, z: -27.7 }, locationId: 'jobcentre', range: 2.0 });
   obstacles.push({ kind: 'desk', rect: { x0: -33, z0: -20, x1: -29, z1: -18.8 }, height: 0.9, solid: true });
+  // training desk in the corner: courses for qualifications
+  obstacles.push({ kind: 'desk', rect: { x0: -33.0, z0: -26.4, x1: -31.8, z1: -25.8 }, height: 0.75, solid: true, rot: 0 });
+  add({ id: 'training', kind: 'study_desk', label: 'Training desk', pos: { x: -32.4, z: -24.75 }, facing: Math.PI, obj: { x: -32.4, z: -25.45 }, locationId: 'jobcentre', range: 1.6 });
   add({ id: 'advisor', kind: 'advisor', label: 'Employment advisor', pos: { x: -31, z: -17.6 }, facing: Math.PI, obj: { x: -31, z: -21 }, locationId: 'jobcentre', range: 2.0 });
 
   // waiting area: rows of seats along the east wall and facing the board, water, leaflets, plants
@@ -930,6 +934,7 @@ function buildWorldData(homeDesign: HomeDesign): World {
   N('jc_desk_back', -31, -21.4, 'jobcentre');
   L('nw_-24', 'jc_out', 'jc_in', 'jc_board'); L('jc_in', 'jc_adv');
   N('jc_mid', -26, -23, 'jobcentre'); L('jc_board', 'jc_mid', 'jc_desk_back');
+  N('jc_train', -32.4, -24.2, 'jobcentre'); L('jc_mid', 'jc_train');
   // Cafe
   N('cf_out', -24, 8.6); N('cf_in', -24, 11.6, 'cafe'); N('cf_counter', -24, 18.8, 'cafe'); N('cf_back', -24, 23, 'cafe');
   N('cf_seat_1', -31, 12.6, 'cafe'); N('cf_seat_2', -17, 12.6, 'cafe');

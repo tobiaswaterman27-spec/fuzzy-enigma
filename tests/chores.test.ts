@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createNewGame, step, startAction, optionsFor, getWorld, choresOf, isDirty, retailTick, openTasks, addItems, auditLedger, hire, at, homeQueueSlot, creditLimit, takeLoan, transfer, loansTick, canBuyHome, mortgageTerms, HOME_PRICES, buyProperty, activeLease, hasHomeAccess, ownedHome, propertyTick, sellHome, inviteForCoffee, plannedMeetup, blockPrice, buyStake, sellStake, stakeOf, dividendsReceived, BLOCK, dailyEconomy, buyOut, holdings, inspect, hygieneOf, isOpen, inspectionsTick, buyCar, playerCar, enterCar, exitCar, carsTick, sellCar, FUEL_PER_KM, CAR_WEEKLY, allInteractables, type GameState } from '../src/sim/index';
+import { createNewGame, step, startAction, optionsFor, getWorld, choresOf, isDirty, retailTick, openTasks, addItems, auditLedger, hire, at, homeQueueSlot, creditLimit, takeLoan, transfer, loansTick, canBuyHome, mortgageTerms, HOME_PRICES, buyProperty, activeLease, hasHomeAccess, ownedHome, propertyTick, sellHome, inviteForCoffee, plannedMeetup, blockPrice, buyStake, sellStake, stakeOf, dividendsReceived, BLOCK, dailyEconomy, buyOut, holdings, inspect, hygieneOf, isOpen, inspectionsTick, buyCar, playerCar, enterCar, exitCar, carsTick, sellCar, FUEL_PER_KM, CAR_WEEKLY, allInteractables, enrol, type GameState } from '../src/sim/index';
 import { buyHome, ONLINE_DELIVERY, quoteHome } from '../src/sim/homestore';
 
 const setup = { name: 'Tester', appearance: { skin: '#e3b48f', hair: 'short' as const, hairColor: '#3b2416', build: 'average' as const } };
@@ -268,6 +268,8 @@ describe('Cars', () => {
     expect(buyCar(s, 'player', 'hatch', '#8a8f94').ok).toBe(true);
     const car = playerCar(s, 'player')!;
     expect(car.state).toBe('parked');
+    expect(enterCar(s, 'player', car.id)).toMatch(/licence/);
+    p.quals = ['driving'];
     const it = allInteractables(s).find((x) => x.id === `car:${car.id}`)!;
     expect(it).toBeTruthy();
     expect(optionsFor(s, 'player', it.id).find((o) => o.type === 'drive_car')?.enabled).toBe(true);
@@ -284,6 +286,26 @@ describe('Cars', () => {
     expect(s.ledger.accounts[p.accountId].balance).toBe(b2 - CAR_WEEKLY);
     expect(sellCar(s, 'player').ok).toBe(true);
     expect(playerCar(s, 'player')).toBeNull();
+    expect(auditLedger(s)).toEqual([]);
+  });
+});
+
+describe('Training', () => {
+  it('enrols, attends sessions at the training desk one a day, qualifies, and can then apply for the cook job', () => {
+    const s = createNewGame(7, setup);
+    const p = s.people.player;
+    const cook = s.businesses.cafe.positions.find((x) => x.id === 'cook')!;
+    expect(cook.quals).toEqual(['food_hygiene']);
+    transfer(s, { from: s.externalId, to: p.accountId, amount: 100000, reason: 'transfer', memo: 'test funds', key: 'course_funds' });
+    expect(enrol(s, 'player', 'food_hygiene').ok).toBe(true);
+    while (s.minute < at(0, 9, 30)) step(s, 5);
+    expect(act(s, 'training', 'study').ok).toBe(true);
+    expect(p.course?.done).toBe(1);
+    expect(optionsFor(s, 'player', 'training').find((o) => o.type === 'study')?.enabled).toBe(false);
+    while (s.minute < at(1, 9, 30)) step(s, 5);
+    expect(act(s, 'training', 'study').ok).toBe(true);
+    expect(p.quals).toContain('food_hygiene');
+    expect(p.course).toBeNull();
     expect(auditLedger(s)).toEqual([]);
   });
 });

@@ -1,5 +1,6 @@
 // EmploymentSystem: vacancies -> applications -> offers -> contracts ->
 // attendance -> performance -> payroll -> promotion / resignation / dismissal.
+import { COURSES, FORKLIFT_PREMIUM } from './training';
 import type { Application, Attendance, Business, Contract, GameState, Id, Person, Position, ShiftTemplate, Traits, Vacancy } from './types';
 import { at, dayIndex, dayOfWeek, fmtClock, fmtDate, MIN_PER_DAY } from './clock';
 import { clamp, nextId, rand } from './core';
@@ -350,6 +351,7 @@ export function canApply(state: GameState, personId: Id, vacancyId: Id): string 
   if (p.isPlayer && !pos.playable) return 'This role is not playable yet.';
   if (v.applicants.some((aid) => state.applications[aid].personId === personId)) return 'You have already applied.';
   if (p.contractId && state.contracts[p.contractId]?.businessId === b.id && state.contracts[p.contractId].positionId === pos.id) return 'You already hold this position.';
+  for (const q of pos.quals ?? []) if (!p.quals?.includes(q)) return `Needs a ${COURSES[q]?.name ?? q} qualification (courses at the Job Centre: Phone > Jobs).`;
   for (const [k, xp] of Object.entries(pos.requires)) {
     const have = p.skills[k] ?? 0;
     if (have < xp) return `Needs ${k} experience level ${skillLevel(xp)} (you are level ${skillLevel(have)}: about ${Math.ceil((xp - have) / 12)} more shifts of ${k} work).`;
@@ -589,8 +591,11 @@ export function hire(state: GameState, personId: Id, businessId: Id, positionId:
     const todays = shiftsOnDay(pos.shifts, startDay);
     if (todays.some((s) => s.start < state.minute + 30)) startDay++;
   }
+  // staff taken on by NPC employers already hold what the job needs; forklift licence holders earn more in the warehouse
+  if (!p.isPlayer) for (const q of pos.quals ?? []) if (!p.quals?.includes(q)) (p.quals ??= []).push(q);
+  const premium = b.kind === 'wholesale' && p.quals?.includes('forklift') ? FORKLIFT_PREMIUM : 0;
   const c: Contract = {
-    id: nextId(state, 'con'), personId, businessId, positionId, title: pos.title, wage: pos.wage, shifts: pos.shifts,
+    id: nextId(state, 'con'), personId, businessId, positionId, title: pos.title, wage: pos.wage + premium, shifts: pos.shifts,
     payEvery: pos.payEvery, startDay, endDay: null, status: 'active', warnings: 0, performance: 60, shiftsWorked: 0,
   };
   state.contracts[c.id] = c;

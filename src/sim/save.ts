@@ -3,6 +3,7 @@ import type { GameState } from './types';
 import { makeBusiness, SAVE_VERSION } from './newgame';
 import { startConstruction } from './construction';
 import { auditLedger } from './ledger';
+import { npcQuals } from './training';
 import { getWorld, setHomeDesign } from './world/layout';
 import { defaultDesign } from './world/homes';
 
@@ -22,6 +23,18 @@ export interface KV {
 
 /** migrations from version N to N+1 */
 const MIGRATIONS: Record<number, (s: any) => void> = {
+  8: (s) => {
+    // v8 -> v9: qualifications. Jobs that need one say so; townspeople hold their usual ones, and the
+    // player keeps doing the job they already have (and driving the car they already own)
+    const need: Record<string, string[]> = { 'wholesale:driver': ['driving'], 'cafe:cook': ['food_hygiene'], 'cafe:kitchen': ['food_hygiene'] };
+    for (const b of Object.values<any>(s.businesses ?? {})) for (const pos of b.positions ?? []) if (need[`${b.id}:${pos.id}`]) pos.quals = need[`${b.id}:${pos.id}`];
+    for (const p of Object.values<any>(s.people ?? {})) {
+      p.quals ??= p.isPlayer ? [] : npcQuals(p.id);
+      const c = p.contractId ? s.contracts?.[p.contractId] : null;
+      for (const q of (c && need[`${c.businessId}:${c.positionId}`]) || []) if (!p.quals.includes(q)) p.quals.push(q);
+      if (Object.values<any>(s.vehicles ?? {}).some((v) => v.kind === 'car' && v.ownerId === p.id) && !p.quals.includes('driving')) p.quals.push('driving');
+    }
+  },
   1: (s) => {
     // v1 -> v2: shipments gained `paid`, districts gained `cafeAccumulator`
     for (const sh of Object.values<any>(s.shipments ?? {})) if (sh.paid === undefined) sh.paid = sh.status === 'received';

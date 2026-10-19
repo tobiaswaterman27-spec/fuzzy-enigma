@@ -153,6 +153,7 @@ export type ActionType =
   | 'sit'
   | 'drive_van'
   | 'drive_car'
+  | 'study'
   | 'take_order'
   | 'cook_meal'
   | 'take_tool'
@@ -267,6 +268,10 @@ export interface Person {
   relations: Record<Id, number>;
   /** when you last spent time with each person (game minute) */
   lastSeen?: Record<Id, number>;
+  /** qualifications earned on courses (training.ts) */
+  quals?: string[];
+  /** the course currently enrolled on */
+  course?: import('./training').Enrolment | null;
   /** home upkeep (player): dirty dishes, untidiness, clothes wear and the washing machine */
   chores?: { dishes: number; mess: number; wear: Record<string, number>; washer: { items: string[]; until: number } | null };
 }
@@ -290,6 +295,8 @@ export interface Position {
   headcount: number;
   /** minimum skill xp requirements */
   requires: Record<string, number>;
+  /** qualifications needed (training.ts course ids) */
+  quals?: string[];
   uniform: string | null;
   /** can the player actually perform this job in the current build */
   playable: boolean;
