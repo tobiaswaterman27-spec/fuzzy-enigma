@@ -4,7 +4,7 @@ Status vocabulary: **planned → implemented → integrated → tested → playa
 
 | # | Milestone | Status | Evidence |
 |---|---|---|---|
-| 0 | Assessment & foundation | **tested** | Build, typecheck, Vitest (23 tests), browser playtest (`npm run e2e`), home-arrangement check (60 seeds) |
+| 0 | Assessment & foundation | **tested** | Build, typecheck, Vitest (22 tests), browser playtest (`npm run e2e`), home-arrangement check (60 seeds) |
 | 1 | Player & world | **playable** | Fully automatic follow camera, camera-relative movement with smooth acceleration, interiors with walls/ceilings, 30+ buildings, day/night, sky, character creator, save/load, autosave |
 | 2 | Functional workplace (Retail Assistant) | **playable** | Apply → seated, real-time interview at the café (spoken questions from a role question bank, experience checks, interviewer personality) → uniform → clock in → restock, serve, mop, check in deliveries, face up shelves, bale cardboard, empty bins to the dumpster; staff roles (cashier, stocker, cleaner, supervisor, manager) |
 | 3 | Personal economy & needs | **playable** | Wages with tax, rent, groceries, cooking, café; energy, food, hygiene, mood with real effects; clothes affect performance; home chores (washing up, laundry in a washing machine, tidying) with effects on mood, shift grooming and interviews |
