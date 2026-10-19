@@ -20,6 +20,7 @@ import { buildWorld, type WorldView } from '../render/world';
 import { Views } from '../render/views';
 import { Traffic } from '../render/traffic';
 import { Rain } from '../render/rain';
+import { Audio } from '../render/audio';
 import { raining } from '../sim/weather';
 import { safeWrite, loadSlot, type KV } from '../sim/save';
 import { news } from '../sim/events';
@@ -51,6 +52,7 @@ export class Game {
   views: Views;
   traffic: Traffic;
   rain: Rain;
+  audio: Audio;
   keys = new Set<string>();
   camYaw = Math.PI; // camera sits behind (south of) the player looking north
   camPitch = 0.22;
@@ -116,6 +118,10 @@ export class Game {
     this.views = new Views(this.scene);
     this.traffic = new Traffic(this.scene);
     this.rain = new Rain(this.scene);
+    this.audio = new Audio();
+    try { this.audio.muted = localStorage.getItem('bigshot.sound') === 'off'; } catch { /* */ }
+    const unlock = () => { this.audio.start(); window.removeEventListener('keydown', unlock); window.removeEventListener('pointerdown', unlock); };
+    window.addEventListener('keydown', unlock); window.addEventListener('pointerdown', unlock);
     this.resize();
     window.addEventListener('resize', () => this.resize());
     this.bindInput();
@@ -263,6 +269,7 @@ export class Game {
     if (++this.homeCheck % 30 === 0) { const k = JSON.stringify(s.homeDesigns.flat ?? null); if (k !== this.homeKey) { if (this.homeKey) this.applyHomeDesign(); this.homeKey = k; } }
     this.views.update(s, this.paused ? 0 : dt, this.player.pos, this.insideId, this.speech);
     this.traffic.update(s, this.paused ? 0 : dt);
+    this.audio.update(s, this.paused ? 0 : dt, Math.hypot(this.vel.x, this.vel.z), this.drivingVan() ? this.vanSpeed : null);
     this.watchFrameRate(dt);
     this.world.update(s, dt);
     if (!this.freeCam) this.updateCamera(dt);

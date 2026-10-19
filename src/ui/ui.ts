@@ -543,6 +543,7 @@ export class UI {
       <button data-m="load">Load saved game</button>
       <button data-m="loadauto">Load autosave <span class="muted">(${esc(sum(auto))})</span></button>
       <button data-m="new">New game</button>
+      <button data-m="sound">Sound: ${this.game.audio.muted ? 'Off' : 'On'} - click to switch</button>
       <button data-m="gfx">Graphics: ${this.game.quality === 'high' ? 'High (ambient occlusion, bloom, anti-aliasing)' : 'Low (faster)'} - click to switch</button>
       <h3>Controls</h3><p class="muted">WASD or arrows: walk in that direction (relative to the camera) · Shift: run · E: use · 1-6: other options · Tab or P: phone · Esc: pause. The camera follows you automatically.</p>
       <p class="muted">Day ${dayIndex(this.s.minute) + 1}. Time passes at ${this.game.speedMult}× (1× = 20 game minutes per real minute). Sleeping fast-forwards.</p>`;
@@ -554,6 +555,7 @@ export class UI {
     if (m === 'resume') return this.toggleMenu();
     if (m === 'save') { const r = this.game.save(); this.renderMenu(r.ok ? 'Saved.' : r.error ?? 'Save failed'); }
     if (m === 'load' || m === 'loadauto') { const r = this.game.load(m === 'load' ? 'bigshot.slot1' : 'bigshot.auto'); this.renderMenu(r.ok ? 'Loaded.' : (r as any).error); }
+    if (m === 'sound') { const a = this.game.audio; a.muted = !a.muted; try { localStorage.setItem('bigshot.sound', a.muted ? 'off' : 'on'); } catch { /* */ } a.start(); this.renderMenu(); return; }
     if (m === 'gfx') { this.game.setQuality(this.game.quality === 'high' ? 'low' : 'high'); this.renderMenu(); return; }
     if (m === 'new') { if (b.dataset.confirm) location.reload(); else { b.dataset.confirm = '1'; b.textContent = 'Click again: unsaved progress will be lost'; } }
   }

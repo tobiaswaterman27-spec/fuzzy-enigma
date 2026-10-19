@@ -29,7 +29,7 @@ Blender runs as the `bpy` Python module (`pip install bpy`); no Blender UI is ne
 | Products | `src/render/products.ts` | Vertex-coloured product models in 5×2 facings; shelf counts equal real stock. |
 | Signs | textures.ts `signTexture` | Canvas text. |
 | UI fonts | Google Fonts (Archivo Black, IBM Plex Sans/Mono) | Loaded by URL with system fallbacks. |
-| Audio | — | None yet. |
+| Audio | `src/render/audio.ts` | Synthesised with the Web Audio API, no sample files: footsteps (hard floors indoors), till scanner beeps, shop door chime, rain, distant traffic, van engine, birdsong on dry days. Toggle in the pause menu. |
 
 ## Artifact builds
 Artifact hosting does not serve `.bin`/`.glb`, so `scripts/make-artifact.mjs` also writes base64 `.txt` copies; `src/render/binary.ts` falls back to them.
