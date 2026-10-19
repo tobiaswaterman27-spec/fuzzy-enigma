@@ -301,7 +301,18 @@ def build_clip(name, spec, body):
             g = f + win
             feet = np.abs(np.diff(fl[f:g], axis=0)).sum() + np.abs(np.diff(fr[f:g], axis=0)).sum()
             dyaw = abs(((yaw(g) - yaw(f)) + math.pi) % (2 * math.pi) - math.pi)
-            score = feet + dyaw * 40
+            # a relaxed stand: head level and facing the way the body faces, arms hanging by the sides
+            pose = 0.0
+            for k in range(f, g, step * 3):
+                hv = world['head'][k] @ np.array([0, 0, 1.0])
+                bv = world['hips'][k] @ np.array([0, 0, 1.0])
+                pose += abs(hv[1] + 0.05) * 6 + (1 - (hv[0] * bv[0] + hv[2] * bv[2]) / max(1e-6, math.hypot(hv[0], hv[2]) * math.hypot(bv[0], bv[2]))) * 8
+                for bone in ('armL', 'foreL', 'armR', 'foreR'):
+                    d = world[bone][k] @ np.array([0, -1.0, 0])
+                    pose += (1 - d[1] * -1) * (3 if bone.startswith('fore') else 2)
+            score = feet + dyaw * 40 + pose / max(1, len(range(f, g, step * 3)))
+            if os.environ.get('ANIM_DEBUG'):
+                print(f'  still {f / fps:5.1f}s feet {feet:.3f} yaw {dyaw:.3f} pose {pose / max(1, len(range(f, g, step * 3))):.3f}')
             if best is None or score < best:
                 best, a = score, f
         b = a + win
@@ -383,6 +394,14 @@ def build_clip(name, spec, body):
                 seq[k] = -seq[k]
         r, times = resample(seq, fps, t0, t1)
         quats[bn] = r
+    if kind == 'still':
+        # a relaxed stand: keep the capture's weight shifts and torso, but the head level and the arms
+        # hanging loosely, with only a little of the actor's head and arm movement left in
+        keep = {'neck': 0.3, 'head': 0.3, 'armL': 0.2, 'armR': 0.2, 'foreL': 0.25, 'foreR': 0.25, 'handL': 0.35, 'handR': 0.35,
+                'thighL': 0.4, 'thighR': 0.4, 'shinL': 0.4, 'shinR': 0.4, 'footL': 0.5, 'footR': 0.5}
+        ident = np.array([0.0, 0.0, 0.0, 1.0])  # quaternions are x, y, z, w
+        for bn, k in keep.items():
+            quats[bn] = [slerp(ident, np.array(q), k) for q in quats[bn]]
     hp, _ = resample(list(hips), fps, t0, t1)
     hp = np.array(hp)
     # in place: remove travel; keep sway. Heights scale to the game's 0.95 m standing hip

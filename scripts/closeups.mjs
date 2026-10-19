@@ -7,7 +7,7 @@ const browser = await pw.chromium.launch({ args: ['--use-gl=angle', '--use-angle
 const page = await browser.newPage({ viewport: { width: 900, height: 700 } });
 page.on('pageerror', (e) => console.log('pageerror', e.message));
 await page.goto('http://localhost:4173/?skipcreator'); await page.waitForTimeout(3000);
-const looks = [
+const looks = process.env.ONE ? [['m_casual', { frame: 'm', hair: 'short', hairColor: '#2a1b10', skin: '#c58c6a', outfit: 'outfit_casual', build: 'average' }]] : [
   ['m_casual', { frame: 'm', hair: 'short', hairColor: '#2a1b10', skin: '#c58c6a', outfit: 'outfit_casual', build: 'average' }],
   ['f_long', { frame: 'f', hair: 'long', hairColor: '#a8743f', skin: '#f1d3b6', outfit: 'uniform_market', build: 'average' }],
   ['m_smart', { frame: 'm', hair: 'curly', hairColor: '#111', skin: '#6b4026', outfit: 'outfit_smart', build: 'broad' }],
