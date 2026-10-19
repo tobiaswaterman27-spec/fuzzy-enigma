@@ -16,6 +16,7 @@ import { transfer } from './ledger';
 import { news } from './events';
 import { fmtClock, minuteOfDay } from './clock';
 import { completeHomeOrder, storeStaffed } from './homestore';
+import { cafeQueueSlot, serveMeal, takePortion } from './cafe';
 import { homeQueueSlot } from './npc';
 import { choresOf, DISHES_BLOCK, homeMess, inWash, messLabel, wearOf, WASH_MINUTES } from './home';
 
@@ -316,7 +317,19 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
     case 'advisor':
       out.push({ type: 'ui', label: 'Talk to the employment advisor', enabled: true, ui: 'advisor' });
       break;
+    case 'cafe_grill': {
+      const b2 = state.businesses.cafe;
+      const waiting = (b2.queue?.length ?? 0);
+      const supplies = count(state.containers[b2.stockContainers[0]], 'cafe_supplies');
+      out.push(opt('cook_meal', waiting ? `Cook a meal (${waiting} waiting)` : 'Cook a meal', !onShift ? 'Staff only' : p.equipment === 'plate' ? 'Serve the plate you have first' : !handsFree(state, p) ? 'Your hands are full' : !supplies ? 'Out of supplies' : !waiting ? 'No orders waiting' : undefined));
+      break;
+    }
     case 'cafe_counter': {
+      if (onShift) {
+        const head = b?.queue?.[0] ? state.people[b.queue[0]] : null;
+        out.push(opt('serve_meal', head ? `Serve ${head.name} their meal` : 'Serve a meal', p.equipment !== 'plate' ? 'Cook a meal at the grill first' : !head ? 'Nobody waiting' : dist(head.pos, cafeQueueSlot(0)) > 1.3 ? `${head.name.split(' ')[0]} is still coming over` : undefined));
+        break;
+      }
       const staffed = b ? Object.values(state.people).some((x) => isOnShift(state, x.id, b.id)) : false;
       const supplies = b ? count(state.containers[b.stockContainers[0]], 'cafe_supplies') : 0;
       const price = b ? priceOf(b, 'meal') : 0;
@@ -376,6 +389,10 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
       begin(p, type, itId, { duration: 0.3 }, now); break;
     case 'take_order':
       begin(p, type, itId, { duration: 3 / sp }, now); break;
+    case 'cook_meal':
+      begin(p, type, itId, { duration: 4 / speed(p, 'cooking') }, now); break;
+    case 'serve_meal':
+      begin(p, type, itId, { duration: 0.5 }, now); break;
     case 'stage_case':
       begin(p, type, itId, { duration: 0.4 / speed(p, 'warehouse') }, now); break;
     case 'bale_cardboard':
@@ -516,6 +533,14 @@ export function tickAction(state: GameState, p: Person, dt: number): string | nu
       break;
     }
     case 'take_mop': p.equipment = 'mop'; msg = 'Mop & bucket ready.'; break;
+    case 'cook_meal':
+      if (takePortion(state)) { p.equipment = 'plate'; addXp(p, 'cooking', 2); msg = 'Meal plated up - take it to the counter.'; } else msg = 'Out of supplies.';
+      break;
+    case 'serve_meal': {
+      const head = state.businesses.cafe.queue?.[0];
+      if (head && p.equipment === 'plate') { p.equipment = null; msg = serveMeal(state, head, p.id).msg; addXp(p, 'cooking', 1); } else msg = 'Nobody to serve.';
+      break;
+    }
     case 'take_order': {
       const b = state.businesses[it!.businessId!];
       const head = b?.queue?.[0];

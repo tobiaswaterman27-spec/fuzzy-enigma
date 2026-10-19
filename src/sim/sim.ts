@@ -8,6 +8,7 @@ import { tickNeeds } from './needs';
 import { tickChores } from './home';
 import { homeStoreDaily, homeStoreMinute, homeStoreTick } from './homestore';
 import { loansTick } from './bank';
+import { cafeMinute } from './cafe';
 import { propertyTick } from './property';
 import { enforceLocationRules, tickAction } from './actions';
 import { employmentTick, processApplications, refreshVacancies, runPayroll } from './employment';
@@ -72,6 +73,7 @@ export function minuteTick(state: GameState) {
   for (const b of Object.values(state.businesses)) if (b.kind === 'retail') retailTick(state, b);
   if (state.businesses.wholesale) warehouseTick(state, 'wholesale');
   homeStoreMinute(state);
+  cafeMinute(state);
   homeStoreTick(state);
   loansTick(state);
   propertyTick(state);

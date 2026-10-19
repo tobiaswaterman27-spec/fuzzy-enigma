@@ -151,6 +151,7 @@ export type InteractKind =
   | 'rack'
   | 'staging'
   | 'home_counter'
+  | 'cafe_grill'
   | 'vehicle'
   | 'baler'
   | 'shopbin'
@@ -606,6 +607,12 @@ function buildWorldData(homeDesign: HomeDesign): World {
 
   // ---- Cafe interior
   obstacles.push({ kind: 'counter', rect: { x0: -30, z0: 19.6, x1: -18, z1: 20.6 }, height: 1.0, solid: true, color: '#7b2d26' });
+  // the kitchen behind the counter: units along the back wall and the grill
+  obstacles.push({ kind: 'kitchen', rect: { x0: -31.5, z0: 25.2, x1: -26.6, z1: 25.85 }, height: 0.92, solid: true, rot: Math.PI });
+  obstacles.push({ kind: 'stove', rect: { x0: -26.6, z0: 25.2, x1: -25.4, z1: 25.85 }, height: 0.92, solid: true, rot: Math.PI });
+  obstacles.push({ kind: 'terminal', rect: { x0: -33.98, z0: 21.5, x1: -33.55, z1: 22.5 }, height: 1.4, solid: true });
+  add({ id: 'cafe_terminal', kind: 'terminal', label: 'Staff terminal', pos: { x: -32.8, z: 22 }, facing: -Math.PI / 2, obj: { x: -33.75, z: 22 }, locationId: 'cafe', businessId: 'cafe' });
+  add({ id: 'cafe_grill', kind: 'cafe_grill', label: 'Grill', pos: { x: -26, z: 24.4 }, facing: 0, obj: { x: -26, z: 25.5 }, locationId: 'cafe', businessId: 'cafe' });
   add({ id: 'cafe_counter', kind: 'cafe_counter', label: 'Cafe counter', pos: { x: -24, z: 18.8 }, facing: 0, obj: { x: -24, z: 20.1 }, locationId: 'cafe', businessId: 'cafe', range: 1.8 });
   for (const [tx, tz] of [[-31, 14], [-17, 14]]) obstacles.push({ kind: 'table', rect: box(tx, tz, 1.4, 1.4), height: 0.75, solid: true });
   for (const [tx, tz] of [[-28.5, 16.4], [-20.5, 16.8]]) obstacles.push({ kind: 'bistro_set', rect: box(tx, tz, 0.8, 1.6), height: 0.9, solid: true });
@@ -894,6 +901,9 @@ function buildWorldData(homeDesign: HomeDesign): World {
   L('sw_-24', 'cf_out', 'cf_in', 'cf_counter'); L('cf_in', 'cf_seat_1'); L('cf_in', 'cf_seat_2');
   N('cf_side', -31.5, 18.5, 'cafe'); L('cf_counter', 'cf_side');
   N('cf_kitchen', -31.5, 23, 'cafe'); L('cf_side', 'cf_kitchen', 'cf_back');
+  N('cf_term', -32.8, 22, 'cafe'); L('cf_kitchen', 'cf_term');
+  N('cf_grill', -26, 24.4, 'cafe'); L('cf_back', 'cf_grill'); L('cf_kitchen', 'cf_grill');
+  N('cf_pass', -24, 21.3, 'cafe'); L('cf_back', 'cf_pass');
   // Flat (player only, but graph allows player-follow tests)
   N('fl_out', 16, 8.6); N('fl_in', 16, 11.6, 'flat');
   L('se_16', 'fl_out', 'fl_in');

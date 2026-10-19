@@ -79,3 +79,26 @@ describe('Delivery Driver', () => {
     expect(p.visible).toBe(true);
   });
 });
+
+describe('Cafe Cook', () => {
+  it('customers queue while you cook; you cook at the grill and serve at the counter', () => {
+    const s = createNewGame(7, setup);
+    while (s.minute < at(0, 11, 30)) step(s, 5);
+    hire(s, 'player', 'cafe', 'kitchen', true);
+    s.people.player.appearance.outfit = 'uniform_cafe';
+    expect(act(s, 'cafe_terminal', 'clock_in').ok).toBe(true);
+    // lunchtime: customers come in to the counter
+    for (let k = 0; k < 40 && !(s.businesses.cafe.queue?.length); k++) step(s, 1);
+    const q = s.businesses.cafe.queue!;
+    expect(q.length).toBeGreaterThan(0);
+    const c = s.people[q[0]];
+    for (let k = 0; k < 20 && Math.hypot(c.pos.x - (-24), c.pos.z - 18.8) > 1.0; k++) step(s, 0.5);
+    expect(act(s, 'cafe_grill', 'cook_meal').ok).toBe(true);
+    expect(s.people.player.equipment).toBe('plate');
+    const rev = s.ledger.accounts[s.businesses.cafe.accountId].balance;
+    expect(act(s, 'cafe_counter', 'serve_meal').ok).toBe(true);
+    expect(s.people.player.equipment).toBe(null);
+    expect(s.ledger.accounts[s.businesses.cafe.accountId].balance).toBeGreaterThan(rev);
+    expect(s.businesses.cafe.queue).not.toContain(c.id);
+  });
+});

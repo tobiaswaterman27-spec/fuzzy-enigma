@@ -262,7 +262,7 @@ export class UI {
     const inv = (c: typeof bag | null) => c && total(c) ? Object.entries(c.items).map(([k, n]) => `${n}× ${itemName(k)}`).join(', ') : 'empty';
     return `<div class="card"><b>${esc(p.name)}</b><br>Energy ${p.needs.energy.toFixed(0)} · Food ${p.needs.satiety.toFixed(0)} · Hygiene ${p.needs.hygiene.toFixed(0)} · Mood ${p.needs.mood.toFixed(0)}<br><span class="muted">${conditionLabel(p).join(' · ') || 'Feeling fine'}</span><br>${choreStatus(s, p).length ? `<span class="muted">Home: ${esc(choreStatus(s, p).join(' · '))}</span><br>` : ''}Professional reputation ${p.reputation.toFixed(0)}/100</div>
       <h3>Effects</h3><p class="muted">Below 25 energy you move and work 20% slower (36% below 10). Starving slows work. Sleep in your bed to recover. Eat food from your kitchen or a cafe meal.</p>
-      <h3>Skills</h3>${['retail', 'cleaning', 'warehouse'].map((k) => `<div class="line"><span>${k}</span><span>level ${skillLevel(p.skills[k] ?? 0)} (${p.skills[k] ?? 0} xp)</span></div>`).join('')}
+      <h3>Skills</h3>${['retail', 'cleaning', 'warehouse', 'cooking'].map((k) => `<div class="line"><span>${k}</span><span>level ${skillLevel(p.skills[k] ?? 0)} (${p.skills[k] ?? 0} xp)</span></div>`).join('')}
       <p class="muted">Each level makes related work 6% faster and improves job applications.</p>
       <h3>Inventory</h3><div class="line"><span>Shopping bag</span><span>${inv(bag)}</span></div><div class="line"><span>Kitchen</span><span>${inv(pantry)}</span></div>
       <h3>Goals</h3>${s.objectives.map((o) => `<div class="line"><span>${o.done ? '✔' : '○'} ${esc(o.text)}</span></div>`).join('')}`;
@@ -594,7 +594,7 @@ const ACTION_LABELS: Record<string, string> = {
   change_outfit: 'Changing clothes…', buy_meal: 'Eating a cafe meal…', sit: 'Sitting (resting slowly)',
   shower: 'Showering…', cook: 'Cooking…', watch_tv: 'Watching TV', talk: 'Chatting…',
   face_shelf: 'Facing up: pulling packs forward, labels out…', bale_cardboard: 'Flattening boxes into the baler…', empty_bin: 'Tying off the bin bag…', dump_rubbish: 'Throwing the bag in…',
-  take_order: 'Talking the order through…', drive_van: 'Getting in…', pick_case: 'Picking from the racking…', stage_case: 'Staging cases for dispatch…', wash_up: 'Washing up…', laundry: 'Doing the laundry…', tidy: 'Tidying up…',
+  take_order: 'Talking the order through…', cook_meal: 'Cooking on the grill…', serve_meal: 'Handing over the meal…', drive_van: 'Getting in…', pick_case: 'Picking from the racking…', stage_case: 'Staging cases for dispatch…', wash_up: 'Washing up…', laundry: 'Doing the laundry…', tidy: 'Tidying up…',
 };
 const TASK_LABELS: Record<string, [string, string]> = {
   restock: ['restock', 'restocks'], serve: ['customer to serve', 'customers to serve'], clean: ['spill', 'spills'], receive: ['delivery', 'deliveries'],

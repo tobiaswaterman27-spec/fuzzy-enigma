@@ -51,6 +51,7 @@ class PersonView {
   mop: THREE.Group | null = null;
   binbag: THREE.Object3D | null = null;
   handItem: THREE.Mesh | null = null;
+  plate: THREE.Group | null = null;
   private handProd: string | null = null;
   label: THREE.Sprite | null = null;
   culled = false;
@@ -221,6 +222,18 @@ class PersonView {
       }
       this.handProd = handProd;
     }
+    // a plated meal carried from the grill to the counter, in both hands in front
+    if (p.equipment === 'plate' && !this.plate) {
+      const g = new THREE.Group();
+      const dish = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.11, 0.02, 24), new THREE.MeshStandardMaterial({ color: '#f4f2ec', roughness: 0.25 }));
+      const food = new THREE.Mesh(new THREE.SphereGeometry(0.07, 12, 8), new THREE.MeshStandardMaterial({ color: '#c97a35', roughness: 0.7 }));
+      food.scale.y = 0.45; food.position.set(0.02, 0.025, 0);
+      const greens = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 6), new THREE.MeshStandardMaterial({ color: '#4c9a2a', roughness: 0.8 }));
+      greens.position.set(-0.06, 0.02, 0.03);
+      g.add(dish, food, greens);
+      this.rig.root.parent!.add(g);
+      this.plate = g;
+    } else if (p.equipment !== 'plate' && this.plate) { this.plate.parent?.remove(this.plate); this.plate = null; }
     // a tied bin bag carried out to the dumpster in the right hand
     if (p.equipment === 'rubbish' && !this.binbag) {
       this.binbag = modelInstance('binbag') ?? new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 10), new THREE.MeshStandardMaterial({ color: '#111', roughness: 0.3 }));
@@ -328,9 +341,16 @@ class PersonView {
   /** Props that follow the hands of the final pose: the mop runs through both hands to the floor,
    * a carried case sits between the hands. */
   private placeProps(action: string | null, facing: number) {
-    if (!this.mop && !this.carried && !this.binbag && !this.handItem) return;
+    if (!this.mop && !this.carried && !this.binbag && !this.handItem && !this.plate) return;
     this.rig.root.updateMatrixWorld(true);
     const hl = this.rig.bones.handL.getWorldPosition(HAND_L), hr = this.rig.bones.handR.getWorldPosition(HAND_R);
+    if (this.plate) {
+      // held level between the hands, a little in front of the body
+      const mid = hl.clone().add(hr).multiplyScalar(0.5);
+      this.plate.position.set(mid.x + Math.sin(facing) * 0.12, Math.max(0.85, mid.y + 0.05), mid.z + Math.cos(facing) * 0.12);
+      this.plate.rotation.set(0, facing, 0);
+      this.plate.visible = this.rig.root.visible;
+    }
     if (this.handItem) {
       // gripped in the palm: just inside the hand, upright
       const root = this.rig.root.position;
@@ -429,7 +449,7 @@ class PersonView {
     }
   }
 
-  dispose(scene: THREE.Scene) { scene.remove(this.rig.root); this.mop?.parent?.remove(this.mop); this.binbag?.parent?.remove(this.binbag); this.handItem?.parent?.remove(this.handItem); }
+  dispose(scene: THREE.Scene) { scene.remove(this.rig.root); this.mop?.parent?.remove(this.mop); this.binbag?.parent?.remove(this.binbag); this.handItem?.parent?.remove(this.handItem); this.plate?.parent?.remove(this.plate); }
 }
 
 interface StageStep { until: number; at: { x: number; z: number }; face: number; clip: string }

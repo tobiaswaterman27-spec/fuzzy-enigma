@@ -168,8 +168,9 @@ export function createNewGame(seed: number, setup: PlayerSetup): GameState {
   });
   const cafe = makeBusiness(state, {
     id: 'cafe', name: 'Tidewater Cafe', kind: 'cafe', ownerId: 'p_rosa', locationId: 'cafe', open: [sh([0, 1, 3, 4, 5, 6], 8, 17)],
-    positions: [pos({ id: 'cook', title: 'Cafe Cook', wage: 1300, shifts: [sh([0, 1, 3, 4, 5, 6], 8, 17)], uniform: 'uniform_cafe', description: 'Cooks and serves.' })],
-    prices: { meal: 850 }, reputation: 60, supplierId: 'wholesale', reorder: {}, rentDue: 0, utilitiesPerDay: 1500, stockContainers: ['cafe_supplies'], cashReserve: 300000, cash: 300000,
+    positions: [pos({ id: 'cook', title: 'Cafe Cook', wage: 1300, shifts: [sh([0, 1, 3, 4, 5, 6], 8, 17)], uniform: 'uniform_cafe', headcount: 1, playable: true, duties: ['Cook each order at the grill', 'Serve the customer at the counter', 'Keep the queue moving at lunchtime'], description: 'Cooks and serves at Tidewater Cafe: customers queue at the counter, you cook their meal on the grill and hand it over.' }),
+      pos({ id: 'kitchen', title: 'Kitchen Assistant (Lunch)', wage: 1200, shifts: [sh([0, 1, 3, 4, 5, 6], 11, 15)], uniform: 'uniform_cafe', headcount: 1, playable: true, duties: ['Cook orders at the grill through the lunch rush', 'Serve them at the counter'], description: 'Helps in the kitchen through the lunchtime rush: cook each order at the grill and serve it at the counter.' })],
+    prices: { meal: 950 }, reputation: 60, supplierId: 'wholesale', reorder: {}, rentDue: 0, utilitiesPerDay: 1500, stockContainers: ['cafe_supplies'], cashReserve: 300000, cash: 300000,
   });
   const port = makeBusiness(state, {
     id: 'port', name: 'Port of Harbourside', kind: 'offsite', ownerId: 'external', locationId: 'offsite', open: [sh([0, 1, 2, 3, 4, 5, 6], 0, 24)],
@@ -266,6 +267,8 @@ export function createNewGame(seed: number, setup: PlayerSetup): GameState {
     { id: 'p_ivy', name: 'Ivy Marsh', home: 'house_5', cash: 55000, job: ['homestore', 'sales'], rent: 12500, traits: { sociability: 0.85 } },
     { id: 'p_raj', name: 'Raj Patel', home: 'house_3', cash: 20000, job: ['market', 'stocker_pm'], rent: 0, skills: { retail: 90, warehouse: 60 } },
     { id: 'p_eve', name: 'Eve Doyle', home: 'house_6', cash: 18000, rent: 0, skills: { retail: 40 }, search: 4 },
+    { id: 'p_luca', name: 'Luca Romano', home: 'house_2', cash: 22000, rent: 0, skills: { cooking: 80 }, search: 3 },
+    { id: 'p_hana', name: 'Hana Sato', home: 'house_5', cash: 26000, rent: 0, skills: { retail: 110 }, search: 5 },
   ];
   for (const n of npcs) {
     const p = makePerson(state, n.id, n.name, { homeId: n.home, cash: n.cash, traits: n.traits });

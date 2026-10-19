@@ -12,7 +12,8 @@ import { ITEMS, PRODUCTS } from './items';
 import { news } from './events';
 import { statsFor } from './employment';
 import { cleanliness, isOpen, productsOf, staffOnDuty } from './retail';
-import { groceryList, startHomeShopping, startShopping } from './npc';
+import { groceryList, startCafeVisit, startHomeShopping, startShopping } from './npc';
+import { playerCooking } from './cafe';
 import { rainDemandFactor } from './weather';
 import { placeOrder } from './logistics';
 import { getWorld, SHOPS } from './world/layout';
@@ -98,10 +99,24 @@ export function economyTick(state: GameState) {
   const cafe = state.businesses.cafe;
   if (isOpen(cafe, now) && staffOnDuty(state, 'cafe').length) {
     const h = hourOfDay(now);
-    const rate = (h >= 11.5 && h < 14) || (h >= 17 && h < 19) ? 4 : 1.5;
+    // two people in the kitchen get through the lunch rush faster, so more customers stay
+    const rush = (h >= 11.5 && h < 14) || (h >= 17 && h < 19);
+    const rate = rush ? (staffOnDuty(state, 'cafe').length >= 2 ? 6 : 4) : 1.5;
     d.cafeAccumulator = (d.cafeAccumulator ?? 0) + (rate * d.confidence) / 60;
     while (d.cafeAccumulator >= 1) {
       d.cafeAccumulator -= 1;
+      if (playerCooking(state)) {
+        // you are in the kitchen: the customer comes in and queues at the counter
+        const free = Object.values(state.people).filter((p) => p.npc?.ambient && p.npc.goal === 'offsite' && !p.visible);
+        if (free.length && (cafe.queue?.length ?? 0) < 7) {
+          const p = free[randInt(state, 0, free.length - 1)];
+          const sp = getWorld().spawnPoints;
+          const spawn = getWorld().nodes[sp[randInt(state, 0, sp.length - 1)]];
+          p.pos = { x: spawn.x, z: spawn.z }; p.where = 'outside'; p.visible = true;
+          startCafeVisit(state, p);
+        } else statsFor(state, cafe).lostSales++;
+        continue;
+      }
       const sup = state.containers[cafe.stockContainers[0]];
       if (count(sup, 'cafe_supplies') <= 0) { statsFor(state, cafe).lostSales++; continue; }
       const price = cafe.prices.meal;
@@ -191,8 +206,9 @@ export function cafeReorder(state: GameState) {
   const sup = state.containers[cafe.stockContainers[0]];
   const have = count(sup, 'cafe_supplies');
   const pending = Object.values(state.shipments).some((s) => s.buyerId === 'cafe' && s.status === 'ordered');
-  if (have < 25 && !pending) {
-    const qty = 40;
+  // about two days of meals in hand: order up to ~100 portions when below 60
+  if (have < 60 && !pending) {
+    const qty = 100 - have + 20;
     const cost = qty * state.businesses.wholesale.prices.cafe_supplies;
     if (state.ledger.accounts[cafe.accountId].balance > cost + 5000) placeOrder(state, 'cafe', 'wholesale', { cafe_supplies: qty });
     else news(state, 'world', 'Tidewater Cafe short of cash', `Could not afford ${fmtMoney(cost)} of ingredients.`);

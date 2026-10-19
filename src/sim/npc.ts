@@ -12,6 +12,7 @@ import { cancelAction, interactable, startAction } from './actions';
 import { isOpen, joinQueue, leaveQueue, openTasks, queueSlot, shelfFor, staffOnDuty, walkout, productsOf } from './retail';
 import { getWorld, SHOPS } from './world/layout';
 import { pickNeed, pickQueue } from './logistics';
+import { CAFE_PATIENCE, cafeQueueSlot } from './cafe';
 import { planRoute, resolveCircle, routeLength } from './world/nav';
 import { capability } from './needs';
 import { npcLog } from './events';
@@ -316,6 +317,12 @@ export function startShopping(state: GameState, p: Person, shopId: string, list:
   if (missing) statsFor(state, state.businesses[shopId]).lostSales += missing;
 }
 
+/** a cafe customer when you are cooking: in through the door, queue at the counter for a meal */
+export function startCafeVisit(state: GameState, p: Person) {
+  setGoal(state, p, 'shop', [{ kind: 'move', to: { x: -24, z: 11.8 }, label: 'Tidewater Cafe' }, { kind: 'call', fn: 'cafeQueue' }]);
+  p.npc!.shopId = 'cafe';
+}
+
 /** a Harbour Home customer: browses the room sets, then queues at the counter to order */
 const HOME_BROWSE = [{ x: -55.6, z: -22.5 }, { x: -47.6, z: -24.5 }, { x: -48.6, z: -15.4 }, { x: -59.3, z: -27.4 }];
 export const homeQueueSlot = (i: number) => ({ x: -51, z: -30.0 + i * 0.9 });
@@ -402,6 +409,18 @@ function runCall(state: GameState, p: Person, fn: string) {
     case 'leaveShop':
       leaveShop(state, p);
       break;
+    case 'cafeQueue': {
+      const b = state.businesses.cafe;
+      if (!b || !isOpen(b, state.minute)) { leaveShop(state, p); break; }
+      const q = (b.queue ??= []);
+      if (!q.includes(p.id)) q.push(p.id);
+      n.step = 'cafe_wait';
+      n.queuedAt = state.minute;
+      n.patienceUntil = state.minute + CAFE_PATIENCE + Math.round(p.traits.patience * 8);
+      n.queueSlot = q.indexOf(p.id);
+      goTo(state, p, cafeQueueSlot(n.queueSlot), 'counter');
+      break;
+    }
     case 'homeQueue': {
       const b = state.businesses.homestore;
       if (!b || !isOpen(b, state.minute)) { leaveShop(state, p); break; }
@@ -662,6 +681,22 @@ function warehouseWork(state: GameState, p: Person, ending: boolean) {
   else n.plan = [{ kind: 'wait', until: state.minute + 2 }];
 }
 
+/** waiting for a meal at the cafe counter */
+function cafeWaitTick(state: GameState, p: Person) {
+  const n = p.npc!;
+  const b = state.businesses.cafe;
+  if (n.step === 'paid' || !b) { leaveShop(state, p); return; }
+  const i = (b.queue ?? []).indexOf(p.id);
+  if (i < 0 || state.minute > (n.patienceUntil ?? Infinity)) {
+    b.queue = (b.queue ?? []).filter((id) => id !== p.id);
+    if (i >= 0) { statsFor(state, b).walkouts++; const pl = state.people[state.playerId]; const a = openAttendance(state, pl.id); if (a && state.contracts[a.contractId]?.businessId === 'cafe') a.waitPenalty += 6; }
+    leaveShop(state, p);
+    return;
+  }
+  if (i !== n.queueSlot && !p.move) { n.queueSlot = i; goTo(state, p, cafeQueueSlot(i), 'counter'); }
+  if (!p.move) p.facing = 0;
+}
+
 /** waiting at the Harbour Home counter: shuffle up the queue, give up when patience runs out */
 function homeWaitTick(state: GameState, p: Person) {
   const n = p.npc!;
@@ -742,6 +777,7 @@ export function npcTick(state: GameState) {
     const n = p.npc;
     if (state.minute >= n.nextDecision && !p.action) decide(state, p);
     if (n.step === 'home_wait' || (n.step === 'paid' && n.shopId === 'homestore')) { homeWaitTick(state, p); continue; }
+    if (n.step === 'cafe_wait' || (n.step === 'paid' && n.shopId === 'cafe')) { cafeWaitTick(state, p); continue; }
     if (n.step === 'queue' || n.step === 'paid') { queueTick(state, p); continue; }
     if (shouldPreemptForTill(state, p)) { releaseClaim(state, p); n.plan = []; p.move = null; npcLog(state, p, 'customer waiting - going to till'); }
     runPlan(state, p);

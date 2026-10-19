@@ -151,6 +151,8 @@ export type ActionType =
   | 'sit'
   | 'drive_van'
   | 'take_order'
+  | 'cook_meal'
+  | 'serve_meal'
   | 'pick_case'
   | 'stage_case'
   | 'face_shelf'
