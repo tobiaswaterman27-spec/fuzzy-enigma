@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createNewGame, step, startAction, optionsFor, getWorld, choresOf, isDirty, retailTick, openTasks, addItems, auditLedger, hire, at, homeQueueSlot, creditLimit, takeLoan, transfer, loansTick, canBuyHome, mortgageTerms, HOME_PRICES, buyProperty, activeLease, hasHomeAccess, ownedHome, propertyTick, sellHome, inviteForCoffee, plannedMeetup, blockPrice, buyStake, sellStake, stakeOf, dividendsReceived, BLOCK, dailyEconomy, type GameState } from '../src/sim/index';
+import { createNewGame, step, startAction, optionsFor, getWorld, choresOf, isDirty, retailTick, openTasks, addItems, auditLedger, hire, at, homeQueueSlot, creditLimit, takeLoan, transfer, loansTick, canBuyHome, mortgageTerms, HOME_PRICES, buyProperty, activeLease, hasHomeAccess, ownedHome, propertyTick, sellHome, inviteForCoffee, plannedMeetup, blockPrice, buyStake, sellStake, stakeOf, dividendsReceived, BLOCK, dailyEconomy, buyOut, holdings, type GameState } from '../src/sim/index';
 import { buyHome, ONLINE_DELIVERY, quoteHome } from '../src/sim/homestore';
 
 const setup = { name: 'Tester', appearance: { skin: '#e3b48f', hair: 'short' as const, hairColor: '#3b2416', build: 'average' as const } };
@@ -209,5 +209,26 @@ describe('Investing', () => {
     expect(s.ledger.accounts[p.accountId].balance).toBeGreaterThan(mid);
     expect(auditLedger(s)).toEqual([]);
     expect(buyStake(s, 'player', 'council').ok).toBe(false);
+  });
+
+  it('with a quarter of the shares, buys the market outright; the draw then comes to the player', () => {
+    const s = createNewGame(7, setup);
+    const p = s.people.player;
+    const m = s.businesses.market;
+    transfer(s, { from: s.externalId, to: p.accountId, amount: 50000000, reason: 'transfer', memo: 'test funds', key: 'inv_funds2' });
+    for (let i = 0; i < 4; i++) expect(buyStake(s, 'player', 'market').ok).toBe(true);
+    expect(buyOut(s, 'player', 'market').ok).toBe(false);
+    expect(buyStake(s, 'player', 'market').ok).toBe(true);
+    const harlan = s.ledger.accounts[s.people.p_harlan.accountId].balance;
+    expect(buyOut(s, 'player', 'market').ok).toBe(true);
+    expect(m.ownerId).toBe('player');
+    expect(s.ledger.accounts[s.people.p_harlan.accountId].balance).toBeGreaterThan(harlan);
+    expect(holdings(s, 'player').map((b) => b.id)).toEqual(['market']);
+    transfer(s, { from: s.externalId, to: m.accountId, amount: 500000, reason: 'sale', memo: 'test takings', key: 'inv_takings2' });
+    const before = s.ledger.accounts[p.accountId].balance;
+    s.minute = at(6, 23, 30);
+    dailyEconomy(s);
+    expect(s.ledger.accounts[p.accountId].balance).toBeGreaterThan(before);
+    expect(auditLedger(s)).toEqual([]);
   });
 });

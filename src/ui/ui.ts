@@ -1,7 +1,7 @@
 // UIController: every panel reads authoritative state and requests changes
 // through simulation functions; it never computes money or outcomes itself.
 import type { Game } from '../game/game';
-import type { GameState, Person } from '../sim/types';
+import type { Business, GameState, Person } from '../sim/types';
 import { fmtClock, fmtDate, fmtDuration, dayIndex } from '../sim/clock';
 import { fmtMoney } from '../sim/core';
 import { accountTxns } from '../sim/ledger';
@@ -12,7 +12,7 @@ import { choreStatus } from '../sim/home';
 import { weatherLabel } from '../sim/weather';
 import { FRIEND_AT, inviteForCoffee, plannedMeetup, relationLabel } from '../sim/social';
 import { buyProperty as buyHomeProperty, canBuyHome, mortgageTerms, ownedHome, ownershipLines, redemption, sellHome, SELL_SHARE, SERVICE_CHARGE } from '../sim/property';
-import { blockPrice, BLOCK, buyStake, canInvestIn, dividendsReceived, MAX_STAKE, sellStake, stakeOf, valuation, weeklyProfit } from '../sim/invest';
+import { blockPrice, BLOCK, buyOut, buyOutPrice, holdings, TAKEOVER_AT, buyStake, canInvestIn, dividendsReceived, MAX_STAKE, sellStake, stakeOf, valuation, weeklyProfit } from '../sim/invest';
 import { creditLimit, LOAN_APR_FLAT, LOAN_SIZES, LOAN_WEEKS, repayLoan, takeLoan } from '../sim/bank';
 import { buyHome, ONLINE_DELIVERY, quoteHome, storeStaffed } from '../sim/homestore';
 import { agenda, currentObjective } from '../sim/objectives';
@@ -255,7 +255,7 @@ export class UI {
         return `<h3>Borrow</h3><p class="muted">Harbourside Savings: ${esc(c.reason)} ${LOAN_WEEKS} weekly repayments, ${Math.round(LOAN_APR_FLAT * 100)}% total interest.</p>${c.limit ? `<div class="row">${LOAN_SIZES.filter((a) => a <= c.limit).map((a) => `<button data-loan="${a}">Borrow ${fmtMoney(a)}</button>`).join('')}</div>` : ''}`;
       })()}
       <h3>Invest</h3><p class="muted">Buy shares in local businesses ${BLOCK}% at a time (outsiders may hold up to ${MAX_STAKE}%). Shareholders get their part of the owner's draw every Sunday.${dividendsReceived(s, p.id) ? ` Dividends so far: ${fmtMoney(dividendsReceived(s, p.id))}.` : ''}</p>
-      ${Object.values(s.businesses).filter((b) => canInvestIn(b) && b.ownerId !== p.id).map((b) => { const mine = stakeOf(b, p.id); const wp = weeklyProfit(s, b); return `<div class="card${mine ? ' good' : ''}"><b>${esc(b.name)}</b>${mine ? ` <span class="tag">you hold ${mine}%</span>` : ''}<div class="line"><span>Valued at</span><span>${fmtMoney(valuation(s, b))}</span></div><div class="line"><span>Weekly profit (recent)</span><span class="${wp >= 0 ? 'pos' : 'neg'}">${fmtMoney(wp)}</span></div><div class="row"><button data-stakebuy="${b.id}">Buy ${BLOCK}% · ${fmtMoney(blockPrice(s, b))}</button>${mine ? `<button data-stakesell="${b.id}">Sell ${BLOCK}%</button>` : ''}</div></div>`; }).join('')}
+      ${Object.values(s.businesses).filter((b) => canInvestIn(b) && b.ownerId !== p.id).map((b) => { const mine = stakeOf(b, p.id); const wp = weeklyProfit(s, b); return `<div class="card${mine ? ' good' : ''}"><b>${esc(b.name)}</b>${mine ? ` <span class="tag">you hold ${mine}%</span>` : ''}<div class="line"><span>Valued at</span><span>${fmtMoney(valuation(s, b))}</span></div><div class="line"><span>Weekly profit (recent)</span><span class="${wp >= 0 ? 'pos' : 'neg'}">${fmtMoney(wp)}</span></div><div class="row"><button data-stakebuy="${b.id}">Buy ${BLOCK}% · ${fmtMoney(blockPrice(s, b))}</button>${mine ? `<button data-stakesell="${b.id}">Sell ${BLOCK}%</button>` : ''}${mine >= TAKEOVER_AT ? `<button class="primary" data-buyout="${b.id}">Buy the rest · ${fmtMoney(buyOutPrice(s, b, p.id))}</button>` : ''}</div></div>`; }).join('')}
       <h3>Transactions</h3>${txns.map((t) => `<div class="line"><span><span class="muted">${fmtDate(t.time).split(',')[1]} ${fmtClock(t.time)}</span> ${esc(t.memo)}</span><span class="${t.to === acc.id ? 'pos' : 'neg'}">${t.to === acc.id ? '+' : '-'}${fmtMoney(t.amount).replace('Cr ', '')}</span></div>`).join('') || '<p class="muted">No transactions yet.</p>'}`;
   }
 
@@ -375,7 +375,17 @@ export class UI {
     const s = this.s, p = this.p;
     const b = E.playerBusiness(s);
     const myBal = s.ledger.accounts[p.accountId].balance;
+    const held = holdings(s, p.id).filter((h) => h.id !== E.UNIT4);
+    const heldHtml = held.length ? `<h3>Your companies</h3>${held.map((h) => { const st = h.stats.slice(-7); const sum = (f: (x: typeof st[number]) => number) => st.reduce((a, x) => a + f(x), 0); const staff = Object.values(s.contracts).filter((c) => c.businessId === h.id && c.status === 'active').length; return `<div class="card good"><b>${esc(h.name)}</b><div class="line"><span>Cash</span><span>${fmtMoney(s.ledger.accounts[h.accountId].balance)}</span></div><div class="line"><span>Last 7 days: sales / wages</span><span>${fmtMoney(sum((x) => x.revenue))} / ${fmtMoney(sum((x) => x.wages))}</span></div><div class="line"><span>Staff</span><span>${staff}</span></div><div class="line"><span>Reputation</span><span>${Math.round(h.reputation)}</span></div></div>`; }).join('')}` : '';
     if (!b) {
+      return heldHtml + this.foundCard(myBal);
+    }
+    return heldHtml + this.ownBiz(b);
+  }
+
+  foundCard(myBal: number): string {
+    const s = this.s, p = this.p;
+    {
       const taken = !!s.businesses[E.UNIT4];
       return `<div class="card"><b>Property to let: Dockside Unit 4</b><br><span class="muted">Empty shop unit on the east end of Main Street. Shelving for four product lines, counter, store room, goods-in door.</span>
         <div class="line"><span>Rent</span><span>${fmtMoney(E.UNIT4_RENT)}/week</span></div><div class="line"><span>Deposit</span><span>${fmtMoney(E.UNIT4_DEPOSIT)}</span></div>
@@ -385,6 +395,10 @@ export class UI {
         <p>Invest from your account (you have ${fmtMoney(myBal)}):</p><div class="row">${[E.START_MIN_CAPITAL + E.TILL_COST + 20000, 100000, 150000, 250000].map((a) => `<button data-found="${a}" class="${myBal >= a ? 'primary' : ''}" ${myBal >= a ? '' : 'disabled'}>${fmtMoney(a)}</button>`).join('')}</div>
         <p class="muted">Minimum ${fmtMoney(E.START_MIN_CAPITAL)} covers deposit, first week and registration only.</p>`}</div>`;
     }
+  }
+
+  ownBiz(b: Business): string {
+    const s = this.s;
     const acc = s.ledger.accounts[b.accountId];
     const days = b.stats.slice(-7);
     const sum = (k: 'revenue' | 'cogs' | 'wages' | 'otherCosts' | 'customers' | 'lostSales' | 'walkouts') => days.reduce((a, d) => a + d[k], 0);
@@ -456,6 +470,7 @@ export class UI {
     if (d.invite) { this.toast(inviteForCoffee(s, this.p.id, d.invite).msg); this.lastBody = ''; this.renderPhone(); return; }
     if (d.loan) { this.toast(takeLoan(s, this.p.id, Number(d.loan)).msg); this.lastBody = ''; this.renderPhone(); return; }
     if (d.stakebuy) { this.toast(buyStake(s, this.p.id, d.stakebuy).msg); this.lastBody = ''; this.renderPhone(); return; }
+    if (d.buyout) { this.toast(buyOut(s, this.p.id, d.buyout).msg); this.lastBody = ''; this.renderPhone(); return; }
     if (d.stakesell) { this.toast(sellStake(s, this.p.id, d.stakesell).msg); this.lastBody = ''; this.renderPhone(); return; }
     if (d.loanrepay) { this.toast(repayLoan(s, d.loanrepay).msg); this.lastBody = ''; this.renderPhone(); return; }
     if (d.homeBuy) {
