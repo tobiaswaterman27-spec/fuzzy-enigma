@@ -52,6 +52,8 @@ class PersonView {
   binbag: THREE.Object3D | null = null;
   handItem: THREE.Mesh | null = null;
   plate: THREE.Group | null = null;
+  tool: THREE.Object3D | null = null;
+  private toolName: string | null = null;
   private handProd: string | null = null;
   label: THREE.Sprite | null = null;
   culled = false;
@@ -222,6 +224,13 @@ class PersonView {
       }
       this.handProd = handProd;
     }
+    // site tools in the hand
+    const toolName = p.equipment?.startsWith('tool_') ? p.equipment : null;
+    if (toolName !== this.toolName) {
+      if (this.tool) { this.tool.parent?.remove(this.tool); this.tool = null; }
+      if (toolName) { const t = modelInstance(toolName); if (t) { t.traverse((o) => { o.castShadow = true; }); this.rig.root.parent!.add(t); this.tool = t; } }
+      this.toolName = toolName;
+    }
     // a plated meal carried from the grill to the counter, in both hands in front
     if (p.equipment === 'plate' && !this.plate) {
       const g = new THREE.Group();
@@ -247,7 +256,9 @@ class PersonView {
     this.syncHeld(state, p);
     const stepping = a?.type === 'shower' && this.showerStep;
     const realSpeed = stage ? (stage.walking ? Math.max(0.6, this.speed) : 0) : stepping ? 0.9 : a || this.bedIt ? 0 : this.speed;
-    const clipAction = stage ? (stage.walking ? null : stage.clip) : this.bedIt ? this.bedPose : stepping ? null : a?.type ?? null;
+    // site work looks like the job in hand: digging and shovelling, laying bricks, fixing and painting
+    const siteClip = a?.type === 'site_work' ? (p.equipment === 'tool_spade' || p.equipment === 'tool_shovel' ? 'clean' : 'stock_shelf') : null;
+    const clipAction = stage ? (stage.walking ? null : stage.clip) : this.bedIt ? this.bedPose : stepping ? null : siteClip ?? a?.type ?? null;
     this.anim.update(dt, realSpeed, !!item, clipAction);
     // keep the feet on the floor: whatever the animation does, the lower foot rests on the ground
     if (!this.bedIt && this.rig.joints) {
@@ -341,9 +352,21 @@ class PersonView {
   /** Props that follow the hands of the final pose: the mop runs through both hands to the floor,
    * a carried case sits between the hands. */
   private placeProps(action: string | null, facing: number) {
-    if (!this.mop && !this.carried && !this.binbag && !this.handItem && !this.plate) return;
+    if (!this.mop && !this.carried && !this.binbag && !this.handItem && !this.plate && !this.tool) return;
     this.rig.root.updateMatrixWorld(true);
     const hl = this.rig.bones.handL.getWorldPosition(HAND_L), hr = this.rig.bones.handR.getWorldPosition(HAND_R);
+    if (this.tool) {
+      // long tools run from the gripping hand down towards the ground in front; hand tools sit in the fist
+      const long = this.toolName === 'tool_spade' || this.toolName === 'tool_shovel';
+      this.tool.position.copy(hr);
+      if (long) {
+        const working = action === 'site_work';
+        const tip = new THREE.Vector3(hr.x + Math.sin(facing) * (working ? 0.7 : 0.3), 0.05, hr.z + Math.cos(facing) * (working ? 0.7 : 0.3));
+        const dir = tip.sub(hr).normalize();
+        this.tool.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), dir);
+      } else this.tool.rotation.set(0, facing, 0);
+      this.tool.visible = this.rig.root.visible;
+    }
     if (this.plate) {
       // held level between the hands, a little in front of the body
       const mid = hl.clone().add(hr).multiplyScalar(0.5);
@@ -449,7 +472,7 @@ class PersonView {
     }
   }
 
-  dispose(scene: THREE.Scene) { scene.remove(this.rig.root); this.mop?.parent?.remove(this.mop); this.binbag?.parent?.remove(this.binbag); this.handItem?.parent?.remove(this.handItem); this.plate?.parent?.remove(this.plate); }
+  dispose(scene: THREE.Scene) { scene.remove(this.rig.root); this.tool?.parent?.remove(this.tool); this.mop?.parent?.remove(this.mop); this.binbag?.parent?.remove(this.binbag); this.handItem?.parent?.remove(this.handItem); this.plate?.parent?.remove(this.plate); }
 }
 
 interface StageStep { until: number; at: { x: number; z: number }; face: number; clip: string }

@@ -1,5 +1,6 @@
 // Static world definition for the Harbourside starting district.
 import { defaultDesign, furnish, type HomeDesign, type PlacedItem } from './homes';
+import { PLOTS } from './plots';
 // Geometry, colliders, interaction anchors and the pedestrian/vehicle graphs
 // are built from code (not saved) and shared by simulation and renderer.
 //
@@ -114,7 +115,12 @@ export type ObstacleKind =
   | 'waiting_chairs'
   | 'water_cooler'
   | 'leaflet_stand'
-  | 'bistro_set';
+  | 'bistro_set'
+  | 'site_fence'
+  | 'site_house'
+  | 'site_cabin'
+  | 'site_pallet'
+  | 'site_mixer';
 
 export interface Obstacle {
   kind: ObstacleKind;
@@ -151,6 +157,9 @@ export type InteractKind =
   | 'rack'
   | 'staging'
   | 'home_counter'
+  | 'site_cabin'
+  | 'site_pallet'
+  | 'site_work'
   | 'cafe_grill'
   | 'vehicle'
   | 'baler'
@@ -686,6 +695,29 @@ function buildWorldData(homeDesign: HomeDesign): World {
     for (const [x, color] of [[-58, '#c45a3c'], [-56, '#3c6e8c'], [-46, '#d9b44a'], [-44, '#5f8a5a']] as [number, string][]) O('art', x - 0.4, -33.96, x + 0.4, -33.92, 1.55, 0, false, color);
   }
 
+  // ---- building sites at the end of Harbour Road: fenced plot, cabin, brick pallet, the house going up
+  for (const pl of PLOTS) {
+    const sgn = pl.front === 'x1' ? 1 : -1; // +1: west plot (front faces +x), -1: east plot
+    const r = pl.rect, fx = pl.front === 'x1' ? r.x1 : r.x0, bx = pl.front === 'x1' ? r.x0 : r.x1;
+    const F = (x0: number, z0: number, x1: number, z1: number) => obstacles.push({ kind: 'site_fence', rect: { x0: Math.min(x0, x1), z0, x1: Math.max(x0, x1), z1 }, height: 2.0, solid: true });
+    F(r.x0, r.z0 - 0.05, r.x1, r.z0 + 0.05);
+    F(r.x0, r.z1 - 0.05, r.x1, r.z1 + 0.05);
+    F(bx - 0.05, r.z0, bx + 0.05, r.z1);
+    // the front, with a gate opening onto the pavement
+    F(fx - 0.05, r.z0, fx + 0.05, 70.6);
+    F(fx - 0.05, 72.6, fx + 0.05, r.z1);
+    obstacles.push({ kind: 'site_house', rect: pl.house, height: 6, solid: true, rot: pl.front === 'x1' ? Math.PI / 2 : -Math.PI / 2 });
+    const cab = { x0: bx + sgn * 0.2, x1: bx + sgn * 2.6 };
+    obstacles.push({ kind: 'site_cabin', rect: { x0: Math.min(cab.x0, cab.x1), z0: 67.6, x1: Math.max(cab.x0, cab.x1), z1: 68.9 }, height: 2.5, solid: true });
+    const pal = bx + sgn * 4.0;
+    obstacles.push({ kind: 'site_pallet', rect: { x0: pal - 0.55, z0: 67.75, x1: pal + 0.55, z1: 68.7 }, height: 0.9, solid: true });
+    obstacles.push({ kind: 'site_mixer', rect: { x0: Math.min(fx - sgn * 1.0, fx - sgn * 2.1), z0: 74.6, x1: Math.max(fx - sgn * 1.0, fx - sgn * 2.1), z1: 75.6 }, height: 1.4, solid: true });
+    const cabX = (cab.x0 + cab.x1) / 2;
+    add({ id: `${pl.id}_cabin`, kind: 'site_cabin', label: 'Site cabin (tools)', pos: { x: cabX, z: 69.6 }, facing: Math.PI, obj: { x: cabX, z: 68.3 }, locationId: 'outside', businessId: 'builders' });
+    add({ id: `${pl.id}_pallet`, kind: 'site_pallet', label: 'Brick pallet', pos: { x: pal, z: 69.6 }, facing: Math.PI, obj: { x: pal, z: 68.2 }, locationId: 'outside', businessId: 'builders' });
+    add({ id: `${pl.id}_work`, kind: 'site_work', label: `Building ${pl.name}`, pos: { x: fx - sgn * 1.0, z: 72.4 }, facing: -sgn * Math.PI / 2, obj: { x: pl.front === 'x1' ? pl.house.x1 : pl.house.x0, z: 72.4 }, locationId: 'outside', businessId: 'builders', range: 2.2 });
+  }
+
   // ---- Dockside Unit 4 (player-leasable shop)
   for (const gx of [80.5, 84.5]) obstacles.push({ kind: 'gondola', rect: { x0: gx - 0.6, z0: 19, x1: gx + 0.6, z1: 29 }, height: 1.8, solid: true });
   for (const sct of U4_SECTIONS) add({ id: sct.id, kind: 'shelf', label: 'Shelf section', pos: { x: sct.gx - 1.15, z: sct.zc }, facing: Math.PI / 2, obj: { x: sct.gx, z: sct.zc }, locationId: 'unit4', businessId: 'unit4', container: sct.id });
@@ -960,6 +992,16 @@ function buildWorldData(homeDesign: HomeDesign): World {
   N('hh_side', -47.6, -30.6, 'homestore'); N('hh_side_back', -47.6, -33.45, 'homestore'); N('hh_staff', -51, -33.45, 'homestore');
   L('hh_counter', 'hh_side', 'hh_side_back', 'hh_staff');
   N('hh_term_a', -55.5, -30.6, 'homestore'); N('hh_term', -55.5, -33.0, 'homestore'); L('hh_counter', 'hh_term_a', 'hh_term');
+  // building sites: through the gate to the front of the house, and round to the yard
+  for (const pl of PLOTS) {
+    const sgn = pl.front === 'x1' ? 1 : -1, fx = pl.front === 'x1' ? pl.rect.x1 : pl.rect.x0, bx = pl.front === 'x1' ? pl.rect.x0 : pl.rect.x1;
+    const side = pl.front === 'x1' ? 'w' : 'e';
+    N(`${pl.id}_gate`, fx - sgn * 0.4, 71.6, 'outside'); L(`hs_${side}_72`, `${pl.id}_gate`);
+    N(`${pl.id}_worknode`, fx - sgn * 1.0, 72.4, 'outside'); L(`${pl.id}_gate`, `${pl.id}_worknode`);
+    N(`${pl.id}_yard`, fx - sgn * 2.4, 69.6, 'outside'); L(`${pl.id}_gate`, `${pl.id}_yard`);
+    N(`${pl.id}_palnode`, bx + sgn * 4.0, 69.6, 'outside'); N(`${pl.id}_cabnode`, bx + sgn * 1.4, 69.6, 'outside');
+    L(`${pl.id}_yard`, `${pl.id}_palnode`, `${pl.id}_cabnode`);
+  }
   // Wholesale staff door, and the warehouse floor: front aisle, middle aisle, staging lanes
   N('door_wholesale', -43, 13.3); L('sw_-43', 'door_wholesale');
   N('wh_in', -43, 15.4, 'wholesale'); L('door_wholesale', 'wh_in');

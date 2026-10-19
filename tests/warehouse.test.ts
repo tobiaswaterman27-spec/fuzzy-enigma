@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { createNewGame, step, startAction, getWorld, hire, placeOrder, pickQueue, total, count, at, ITEMS, interactable, type GameState } from '../src/sim/index';
+import { createNewGame, step, startAction, getWorld, hire, placeOrder, pickQueue, total, count, at, ITEMS, interactable, clockIn, type GameState } from '../src/sim/index';
+import { courses } from '../src/sim/construction';
 
 const setup = { name: 'Tester', appearance: { skin: '#e3b48f', hair: 'short' as const, hairColor: '#3b2416', build: 'average' as const } };
 function act(s: GameState, itId: string, type: Parameters<typeof startAction>[3], arg?: string) {
@@ -100,5 +101,34 @@ describe('Cafe Cook', () => {
     expect(s.people.player.equipment).toBe(null);
     expect(s.ledger.accounts[s.businesses.cafe.accountId].balance).toBeGreaterThan(rev);
     expect(s.businesses.cafe.queue).not.toContain(c.id);
+  });
+});
+
+describe('Site Labourer', () => {
+  it('fetches the right tool, works the stage, carries bricks and lays them; the developer pays per stage', () => {
+    const s = createNewGame(7, setup);
+    while (s.minute < at(0, 7, 5)) step(s, 5);
+    hire(s, 'player', 'builders', 'labourer', true);
+    s.people.player.appearance.outfit = 'uniform_site';
+    s.people.player.where = 'outside';
+    clockIn(s, 'player');
+    const p = s.people.player;
+    // groundworks need the spade
+    expect(act(s, 'plot_w_work', 'site_work').ok).toBe(false);
+    expect(act(s, 'plot_w_cabin', 'take_tool', 'tool_spade').ok).toBe(true);
+    expect(p.equipment).toBe('tool_spade');
+    const done0 = s.build!.done;
+    expect(act(s, 'plot_w_work', 'site_work').ok).toBe(true);
+    expect(s.build!.done).toBeGreaterThan(done0);
+    // skip ahead to the brickwork
+    s.build!.stage = 2; s.build!.done = 0; s.containers.site_bricks.items.bricks = 500;
+    expect(act(s, 'plot_w_pallet', 'take_bricks').ok).toBe(false); // still holding the spade
+    expect(act(s, 'plot_w_cabin', 'return_tool').ok).toBe(true);
+    expect(act(s, 'plot_w_pallet', 'take_bricks').ok).toBe(true);
+    expect(count(s.containers[p.handsId], 'bricks')).toBe(16);
+    expect(act(s, 'plot_w_work', 'site_work').ok).toBe(true);
+    expect(count(s.containers[p.handsId], 'bricks')).toBe(0);
+    expect(s.build!.done).toBeGreaterThanOrEqual(16); // the NPC labourer lays bricks too
+    expect(courses(s, 0)).toBeGreaterThanOrEqual(0);
   });
 });

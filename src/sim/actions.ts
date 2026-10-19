@@ -17,6 +17,7 @@ import { news } from './events';
 import { fmtClock, minuteOfDay } from './clock';
 import { completeHomeOrder, storeStaffed } from './homestore';
 import { cafeQueueSlot, serveMeal, takePortion } from './cafe';
+import { addWork, bricksOnPallet, courses, currentPlot, currentStage, plotFinished, PLOTS, stageProgress } from './construction';
 import { homeQueueSlot } from './npc';
 import { choresOf, DISHES_BLOCK, homeMess, inWash, messLabel, wearOf, WASH_MINUTES } from './home';
 
@@ -317,6 +318,26 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
     case 'advisor':
       out.push({ type: 'ui', label: 'Talk to the employment advisor', enabled: true, ui: 'advisor' });
       break;
+    case 'site_cabin': case 'site_pallet': case 'site_work': {
+      const plot = currentPlot(state), st = currentStage(state);
+      const here = !!plot && it.id.startsWith(plot.id);
+      if (p.equipment?.startsWith('tool_') && it.kind === 'site_cabin') { out.push(opt('return_tool', `Put the ${p.equipment.slice(5)} back`)); break; }
+      if (!here) { out.push(opt('site_work', plotFinished(state, PLOTS.findIndex((x) => it.id.startsWith(x.id))) ? 'The house here is finished' : 'Not started yet', 'Work is on the other plot')); break; }
+      const tool = st?.tool ? `tool_${st.tool}` : null;
+      if (it.kind === 'site_cabin') {
+        if (p.equipment?.startsWith('tool_')) out.push(opt('return_tool', `Put the ${p.equipment.slice(5)} back`));
+        else out.push(opt('take_tool', tool ? `Take a ${st!.tool} for: ${st!.label.split(':')[0].toLowerCase()}` : 'Tools (none needed for brickwork)', !onShift ? 'Staff only' : !tool ? 'Bricks and a trowel: take bricks from the pallet' : !handsFree(state, p) ? 'Your hands are full' : undefined, tool ?? undefined));
+      } else if (it.kind === 'site_pallet') {
+        const n = bricksOnPallet(state);
+        out.push(opt('take_bricks', `Pick up a load of bricks (${n} on the pallet)`, !onShift ? 'Staff only' : st?.id !== 'walls' ? 'Bricks are for the brickwork stage' : !handsFree(state, p) ? 'Your hands are full' : !n ? 'Pallet empty' : undefined));
+      } else {
+        const pct = Math.round(stageProgress(state) * 100);
+        const carrying = count(h, 'bricks');
+        const label = st?.id === 'walls' ? `Lay bricks (${carrying} in hand · course ${courses(state, state.build!.plot) + 1}/12)` : `${st?.label} (${pct}%)`;
+        out.push(opt('site_work', label, !onShift ? 'Staff only' : st?.id === 'walls' ? (carrying ? undefined : 'Fetch bricks from the pallet') : p.equipment !== tool ? `Fetch a ${st?.tool} from the site cabin` : undefined));
+      }
+      break;
+    }
     case 'cafe_grill': {
       const b2 = state.businesses.cafe;
       const waiting = (b2.queue?.length ?? 0);
@@ -391,6 +412,12 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
       begin(p, type, itId, { duration: 3 / sp }, now); break;
     case 'cook_meal':
       begin(p, type, itId, { duration: 4 / speed(p, 'cooking') }, now); break;
+    case 'take_tool': case 'return_tool':
+      begin(p, type, itId, { duration: 0.5, arg }, now); break;
+    case 'take_bricks':
+      begin(p, type, itId, { duration: 0.8 / speed(p, 'construction') }, now); break;
+    case 'site_work':
+      { const st = currentStage(state); begin(p, type, itId, { unitTime: (st ? st.minutes / st.units : 5) / speed(p, 'construction') }, now); } break;
     case 'serve_meal':
       begin(p, type, itId, { duration: 0.5 }, now); break;
     case 'stage_case':
@@ -533,6 +560,13 @@ export function tickAction(state: GameState, p: Person, dt: number): string | nu
       break;
     }
     case 'take_mop': p.equipment = 'mop'; msg = 'Mop & bucket ready.'; break;
+    case 'take_tool': p.equipment = a.arg ?? null; msg = `Got the ${(a.arg ?? '').slice(5)}.`; break;
+    case 'return_tool': msg = `Put the ${(p.equipment ?? '').slice(5)} away.`; p.equipment = null; break;
+    case 'take_bricks': {
+      const n = moveItems(state, 'site_bricks', p.handsId, 'bricks', ITEMS.bricks.caseSize);
+      msg = n ? `Picked up ${n} bricks.` : 'The pallet is empty.';
+      break;
+    }
     case 'cook_meal':
       if (takePortion(state)) { p.equipment = 'plate'; addXp(p, 'cooking', 2); msg = 'Meal plated up - take it to the counter.'; } else msg = 'Out of supplies.';
       break;
@@ -797,6 +831,26 @@ function doUnit(state: GameState, p: Person, a: ActionState, it: Interactable, h
       const c = choresOf(p);
       if (c.dishes > 0) { c.dishes--; a.units++; }
       if (c.dishes <= 0) { finish(state, p); return `Washed and dried ${a.units} dish${a.units === 1 ? '' : 'es'}.`; }
+      return null;
+    }
+    case 'site_work': {
+      const st = currentStage(state);
+      if (!st) { finish(state, p); return 'Nothing to do here.'; }
+      if (st.id === 'walls') {
+        if (!removeItems(h, 'bricks', 1)) { finish(state, p); return 'Out of bricks - fetch more from the pallet.'; }
+      } else if (p.equipment !== `tool_${st.tool}`) { finish(state, p); return `You need the ${st.tool}.`; }
+      a.units++;
+      addXp(p, 'construction', st.xpPerUnit);
+      const att = openAttendance(state, p.id);
+      if (att && a.units % 10 === 0) att.tasks++;
+      const done = addWork(state, 1);
+      if (done) {
+        // a new stage needs a different tool: put this one back first
+        finish(state, p);
+        return done;
+      }
+      if (st.id === 'walls' && count(h, 'bricks') === 0) { finish(state, p); return `Laid ${a.units} bricks - fetch more from the pallet.`; }
+      if (st.id !== 'walls' && a.units * a.unitTime >= 30) { finish(state, p); return `${st.label.split(':')[0]}: ${Math.round(stageProgress(state) * 100)}% done.`; }
       return null;
     }
     case 'self_checkout': {

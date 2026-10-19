@@ -4,6 +4,7 @@ import type { Appearance, Business, GameState, Id, Person, Position, ShiftTempla
 import { at } from './clock';
 import { openAccount, transfer } from './ledger';
 import { addItems, createContainer } from './inventory';
+import { startConstruction } from './construction';
 import { ITEMS, PRODUCTS } from './items';
 import { hire, refreshVacancies } from './employment';
 import { createLease } from './housing';
@@ -16,7 +17,7 @@ import { rand, randInt, pick } from './core';
 import { news } from './events';
 import { spawnDirt, SHELF_CAPACITY, shelfId } from './retail';
 
-export const SAVE_VERSION = 7;
+export const SAVE_VERSION = 8;
 
 export interface PlayerSetup {
   name: string;
@@ -190,6 +191,13 @@ export function createNewGame(seed: number, setup: PlayerSetup): GameState {
     prices: {}, reputation: 60, supplierId: null, reorder: {}, rentDue: 0, utilitiesPerDay: 1200, stockContainers: [], cashReserve: 400000, cash: 500000,
   });
   makeBusiness(state, {
+    id: 'builders', name: 'Harbour Build Co.', kind: 'construction', ownerId: 'external', locationId: 'outside', open: [sh(MON_FRI, 7, 15)],
+    positions: [pos({ id: 'labourer', title: 'Site Labourer', wage: 1450, shifts: [sh(MON_FRI, 7, 15)], uniform: 'uniform_site', headcount: 2, playable: true,
+      duties: ['Dig, shovel concrete and carry bricks', 'Lay brickwork course by course', 'Fix roofs, fit windows, paint'],
+      description: 'Builds new houses at the end of Harbour Road: tools from the site cabin, bricks from the pallet, every stage done by hand.' })],
+    prices: {}, reputation: 60, supplierId: null, reorder: {}, rentDue: 0, utilitiesPerDay: 800, stockContainers: [], cashReserve: 600000, cash: 800000,
+  });
+  makeBusiness(state, {
     id: 'estates', name: 'Harbourside Estates', kind: 'landlord', ownerId: 'district', locationId: 'outside', open: [],
     positions: [], prices: {}, reputation: 50, supplierId: null, reorder: {}, rentDue: 0, utilitiesPerDay: 0, stockContainers: [], cashReserve: 800000, cash: 1000000,
   });
@@ -210,6 +218,7 @@ export function createNewGame(seed: number, setup: PlayerSetup): GameState {
   // picked orders wait in the staging lanes by the loading door for the van
   createContainer(state, 'warehouse', 'wholesale', 'wholesale', 3000, undefined, 'wholesale_staging');
   wholesale.stockContainers.push('wholesale_staging');
+  createContainer(state, 'supplies', 'builders', 'outside', 1000, 'bricks', 'site_bricks');
   const cs = createContainer(state, 'supplies', 'cafe', 'cafe', 400, undefined, 'cafe_supplies');
   addItems(cs, 'cafe_supplies', 60);
   cafe.unitCost.cafe_supplies = ITEMS.cafe_supplies.wholesale;
@@ -269,6 +278,7 @@ export function createNewGame(seed: number, setup: PlayerSetup): GameState {
     { id: 'p_eve', name: 'Eve Doyle', home: 'house_6', cash: 18000, rent: 0, skills: { retail: 40 }, search: 4 },
     { id: 'p_luca', name: 'Luca Romano', home: 'house_2', cash: 22000, rent: 0, skills: { cooking: 80 }, search: 3 },
     { id: 'p_hana', name: 'Hana Sato', home: 'house_5', cash: 26000, rent: 0, skills: { retail: 110 }, search: 5 },
+    { id: 'p_dev', name: 'Dev Malik', home: 'house_4', cash: 30000, job: ['builders', 'labourer'], rent: 0, skills: { construction: 200 } },
   ];
   for (const n of npcs) {
     const p = makePerson(state, n.id, n.name, { homeId: n.home, cash: n.cash, traits: n.traits });
@@ -298,6 +308,7 @@ export function createNewGame(seed: number, setup: PlayerSetup): GameState {
     p.where = 'offsite';
   }
 
+  startConstruction(state);
   refreshVacancies(state);
   spawnDirt(state, 'market');
   news(state, 'info', 'Welcome to Harbourside', 'You have just moved into Flat 1, Marlow Court with a little savings. Rent is due every Monday. Find work at the Job Centre across Main Street.', true);

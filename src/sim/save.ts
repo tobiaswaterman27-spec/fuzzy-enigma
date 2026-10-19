@@ -1,6 +1,7 @@
 // SaveLoadSystem: versioned JSON, validation, migration, safe writes.
 import type { GameState } from './types';
 import { makeBusiness, SAVE_VERSION } from './newgame';
+import { startConstruction } from './construction';
 import { auditLedger } from './ledger';
 import { getWorld, setHomeDesign } from './world/layout';
 import { defaultDesign } from './world/homes';
@@ -65,6 +66,19 @@ const MIGRATIONS: Record<number, (s: any) => void> = {
         positions: [{ id: 'sales', title: 'Sales Assistant', wage: 1300, shifts: [{ days: [0, 1, 2, 3, 4, 5], start: 9 * 60, end: 18 * 60 }], payEvery: 'daily', headcount: 1, requires: {}, uniform: null, playable: false, description: 'Helps customers choose furniture and decor and takes their orders at the counter.', duties: [] }],
         prices: {}, reputation: 60, supplierId: null, reorder: {}, rentDue: 0, utilitiesPerDay: 1200, stockContainers: [], cashReserve: 400000, cash: 500000,
       });
+    }
+  },
+  7: (s) => {
+    // v7 -> v8: Harbour Build Co. starts building houses at the end of Harbour Road
+    if (!s.businesses.builders) {
+      const days = [0, 1, 2, 3, 4];
+      makeBusiness(s, {
+        id: 'builders', name: 'Harbour Build Co.', kind: 'construction', ownerId: 'external', locationId: 'outside', open: [{ days, start: 7 * 60, end: 15 * 60 }],
+        positions: [{ id: 'labourer', title: 'Site Labourer', wage: 1450, shifts: [{ days, start: 7 * 60, end: 15 * 60 }], payEvery: 'daily', headcount: 2, requires: {}, uniform: 'uniform_site', playable: true, description: 'Builds new houses at the end of Harbour Road.', duties: [] }],
+        prices: {}, reputation: 60, supplierId: null, reorder: {}, rentDue: 0, utilitiesPerDay: 800, stockContainers: [], cashReserve: 600000, cash: 800000,
+      });
+      s.containers.site_bricks = { id: 'site_bricks', kind: 'supplies', ownerId: 'builders', locationId: 'outside', capacity: 1000, filter: 'bricks', items: {} };
+      startConstruction(s);
     }
   },
 };

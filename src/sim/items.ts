@@ -39,6 +39,8 @@ export const ITEMS: Record<string, ItemDef> = {
   uniform_market: { id: 'uniform_market', name: 'Corner Market Uniform', category: 'clothing', caseSize: 1, wholesale: 0, importCost: 0, retail: 0, satiety: 0, energy: 0, color: '#2e8b57', demand: 0 },
   uniform_wholesale: { id: 'uniform_wholesale', name: 'Hi-Vis Workwear', category: 'clothing', caseSize: 1, wholesale: 0, importCost: 0, retail: 0, satiety: 0, energy: 0, color: '#f4c20d', demand: 0 },
   uniform_cafe: { id: 'uniform_cafe', name: 'Cafe Apron', category: 'clothing', caseSize: 1, wholesale: 0, importCost: 0, retail: 0, satiety: 0, energy: 0, color: '#7b2d26', demand: 0 },
+  uniform_site: { id: 'uniform_site', name: 'Site Gear (hi-vis, boots, hard hat)', category: 'clothing', caseSize: 1, wholesale: 0, importCost: 0, retail: 0, satiety: 0, energy: 0, color: '#f2a516', demand: 0 },
+  bricks: { id: 'bricks', name: 'Bricks', category: 'supplies', caseSize: 16, wholesale: 60, importCost: 40, retail: 0, satiety: 0, energy: 0, color: '#a5583e', demand: 0 },
   mop: { id: 'mop', name: 'Mop & Bucket', category: 'supplies', caseSize: 1, wholesale: 0, importCost: 0, retail: 0, satiety: 0, energy: 0, color: '#2a7fd4', demand: 0 },
 };
 
@@ -54,6 +56,7 @@ export const CLOTHING: Record<string, ClothingEffect> = {
   uniform_market: { formality: 1, comfort: 0, label: 'Corner Market uniform: required on shift there' },
   uniform_wholesale: { formality: 0, comfort: 0, label: 'Hi-vis workwear: required in the warehouse' },
   uniform_cafe: { formality: 1, comfort: 0, label: 'Cafe apron' },
+  uniform_site: { formality: 0, comfort: 0, label: 'Site gear: required on the building site' },
 };
 
 export const PRODUCTS = ['bread', 'milk', 'apples', 'soup', 'pasta', 'coffee', 'snacks', 'soap'] as const;

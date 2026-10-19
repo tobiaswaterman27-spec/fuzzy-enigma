@@ -13,6 +13,7 @@ import { isOpen, joinQueue, leaveQueue, openTasks, queueSlot, shelfFor, staffOnD
 import { getWorld, SHOPS } from './world/layout';
 import { pickNeed, pickQueue } from './logistics';
 import { CAFE_PATIENCE, cafeQueueSlot } from './cafe';
+import { currentPlot, currentStage, PLOTS } from './construction';
 import { planRoute, resolveCircle, routeLength } from './world/nav';
 import { capability } from './needs';
 import { npcLog } from './events';
@@ -21,10 +22,13 @@ import { raining } from './weather';
 export const WALK = 4.5; // metres per game minute (1.5 m/s real at the default 1/3 game-min per real second)
 
 interface Workplace {
-  mode: 'shop' | 'post' | 'hidden' | 'warehouse';
+  mode: 'shop' | 'post' | 'hidden' | 'warehouse' | 'site';
   pos: Vec2;
   facing: number;
 }
+
+/** which plot the builders are on (set each tick from the state, used by workplaceOf) */
+let sitePlot = 0;
 
 export function workplaceOf(bid: Id, positionId?: Id): Workplace {
   const w = getWorld();
@@ -32,6 +36,11 @@ export function workplaceOf(bid: Id, positionId?: Id): Workplace {
   switch (bid) {
     case 'market': case 'unit4': return { mode: 'shop', pos: w.interactables[SHOPS[bid].terminal].pos, facing: w.interactables[SHOPS[bid].terminal].facing };
     case 'cafe': return { mode: 'post', pos: { x: -24, z: 21.3 }, facing: Math.PI };
+    case 'builders': {
+      const plot = PLOTS[Math.min(sitePlot, PLOTS.length - 1)];
+      const it = w.interactables[`${plot.id}_cabin`];
+      return { mode: 'site', pos: it.pos, facing: it.facing };
+    }
     case 'homestore': return { mode: 'post', pos: { x: -51, z: -33.45 }, facing: 0 };
     case 'council': return { mode: 'post', pos: n('jc_desk_back'), facing: 0 };
     case 'wholesale':
@@ -348,6 +357,7 @@ function startWork(state: GameState, p: Person) {
   const plan: PlanStep[] = [{ kind: 'move', to: wp.pos, label: 'work' }];
   if (wp.mode === 'shop') plan.push({ kind: 'act', it: SHOPS[c.businessId].terminal, type: 'clock_in' });
   else if (wp.mode === 'warehouse') plan.push({ kind: 'act', it: 'wh_terminal', type: 'clock_in' });
+  else if (wp.mode === 'site') plan.push({ kind: 'call', fn: 'arriveWork' });
   else plan.push({ kind: 'call', fn: 'arriveWork' });
   setGoal(state, p, 'go_work', plan);
 }
@@ -408,6 +418,9 @@ function runCall(state: GameState, p: Person, fn: string) {
     }
     case 'leaveShop':
       leaveShop(state, p);
+      break;
+    case 'dropBricks':
+      moveAll(state, p.handsId, 'site_bricks');
       break;
     case 'cafeQueue': {
       const b = state.businesses.cafe;
@@ -482,6 +495,7 @@ function workChoose(state: GameState, p: Person) {
   const palletOf = (item: string) => { const sh = shelfFor(state, bid, item); return sh ? S.pallets[sh] : null; };
   // end of shift
   if (wp.mode === 'warehouse') { warehouseWork(state, p, state.minute >= att.scheduledEnd); return; }
+  if (wp.mode === 'site') { siteWork(state, p, state.minute >= att.scheduledEnd); return; }
   if (state.minute >= att.scheduledEnd) {
     if (wp.mode !== 'shop') {
       if (p.where === 'vehicle') return; // driver still out on the road
@@ -642,6 +656,41 @@ function workChoose(state: GameState, p: Person) {
   else { p.facing = I[S.till].facing; n.plan = [{ kind: 'wait', until: state.minute + 1 }]; }
 }
 
+/** Site labourer: fetch the right tool (or a load of bricks) and work the current stage of the build */
+function siteWork(state: GameState, p: Person, ending: boolean) {
+  const n = p.npc!;
+  const I = getWorld().interactables;
+  const plot = currentPlot(state);
+  const st = currentStage(state);
+  const hands = state.containers[p.handsId];
+  const pl = plot ?? PLOTS[0];
+  const cabin = `${pl.id}_cabin`, pallet = `${pl.id}_pallet`, work = `${pl.id}_work`;
+  if (ending || !plot || !st) {
+    const plan: PlanStep[] = [];
+    if (p.equipment?.startsWith('tool_')) plan.push({ kind: 'move', to: I[cabin].pos, label: 'cabin' }, { kind: 'act', it: cabin, type: 'return_tool' });
+    if (count(hands, 'bricks')) plan.push({ kind: 'move', to: I[pallet].pos, label: 'pallet' }, { kind: 'call', fn: 'dropBricks' });
+    if (ending) { plan.push({ kind: 'call', fn: 'leaveWork' }); n.step = 'finishing'; }
+    else if (!plan.length) plan.push({ kind: 'move', to: I[cabin].pos, label: 'cabin' }, { kind: 'wait', until: state.minute + 10 });
+    n.plan = plan;
+    return;
+  }
+  const tool = st.tool ? `tool_${st.tool}` : null;
+  if (st.id === 'walls') {
+    if (p.equipment) { n.plan = [{ kind: 'move', to: I[cabin].pos, label: 'cabin' }, { kind: 'act', it: cabin, type: 'return_tool' }]; return; }
+    n.plan = count(hands, 'bricks') > 0
+      ? [{ kind: 'move', to: I[work].pos, label: 'wall' }, { kind: 'act', it: work, type: 'site_work' }]
+      : [{ kind: 'move', to: I[pallet].pos, label: 'pallet' }, { kind: 'act', it: pallet, type: 'take_bricks' }];
+    return;
+  }
+  if (count(hands, 'bricks')) { n.plan = [{ kind: 'move', to: I[pallet].pos, label: 'pallet' }, { kind: 'call', fn: 'dropBricks' }]; return; }
+  if (p.equipment !== tool) {
+    n.plan = p.equipment ? [{ kind: 'move', to: I[cabin].pos, label: 'cabin' }, { kind: 'act', it: cabin, type: 'return_tool' }]
+      : [{ kind: 'move', to: I[cabin].pos, label: 'cabin' }, { kind: 'act', it: cabin, type: 'take_tool', arg: tool! }];
+    return;
+  }
+  n.plan = [{ kind: 'move', to: I[work].pos, label: 'house' }, { kind: 'act', it: work, type: 'site_work' }];
+}
+
 /** Warehouse operative: take the oldest pick line, pick it from the racking, bring it to the staging lanes */
 function warehouseWork(state: GameState, p: Person, ending: boolean) {
   const n = p.npc!;
@@ -772,6 +821,7 @@ function shouldPreemptForTill(state: GameState, p: Person): boolean {
 
 // ------------------------------------------------------------ main tick
 export function npcTick(state: GameState) {
+  sitePlot = state.build?.plot ?? 0;
   for (const p of Object.values(state.people)) {
     if (p.isPlayer || !p.npc) continue;
     const n = p.npc;

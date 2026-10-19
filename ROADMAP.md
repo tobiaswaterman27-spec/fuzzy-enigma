@@ -4,7 +4,7 @@ Status vocabulary: **planned → implemented → integrated → tested → playa
 
 | # | Milestone | Status | Evidence |
 |---|---|---|---|
-| 0 | Assessment & foundation | **tested** | Build, typecheck, Vitest (23 tests), browser playtest (`npm run e2e`), home-arrangement check (60 seeds) |
+| 0 | Assessment & foundation | **tested** | Build, typecheck, Vitest (25 tests), browser playtest (`npm run e2e`), home-arrangement check (60 seeds) |
 | 1 | Player & world | **playable** | Fully automatic follow camera, camera-relative movement with smooth acceleration, interiors with walls/ceilings, 30+ buildings, day/night, sky, character creator, save/load, autosave |
 | 2 | Functional workplace (Retail Assistant) | **playable** | Apply → seated, real-time interview at the café (spoken questions from a role question bank, experience checks, interviewer personality) → uniform → clock in → restock, serve, mop, check in deliveries, face up shelves, bale cardboard, empty bins to the dumpster; staff roles (cashier, stocker, cleaner, supervisor, manager) |
 | 2b | More playable jobs | **playable** | Warehouse Operative, Delivery Driver, Sales Assistant (Harbour Home), Kitchen Assistant / Cafe Cook (cook at the grill, serve at the counter) |
@@ -13,7 +13,7 @@ Status vocabulary: **planned → implemented → integrated → tested → playa
 | 5 | Business operations | **playable** | Player can lease Dockside Unit 4: register, buy a till, set sections, prices, hours, order stock, invest/withdraw |
 | 6 | Employees & management | **playable** | Player hires from the real labour pool, sets shifts, dismisses; NPC owners recruit |
 | 7 | Property | **playable** | Buy the flat you rent with a 10% deposit and a 10-year mortgage, pay a weekly service charge, sell it back (equity after the mortgage), repossession after three missed payments; bank loans against your wages; Harbour Home furniture & decor store sells every home change (pay at the counter or order online, fitted later);  Residential and business leases, arrears, eviction, re-rent; no purchase yet |
-| 8 | Construction | planned | — |
+| 8 | Construction | **playable** | Harbour Build Co. builds houses on two plots at the end of Harbour Road: groundworks, foundations, brickwork course by course, roof trusses and tiles, windows, finishing. Labourers (player or NPC) take the right tool from the site cabin or carry bricks from the pallet; an investor pays per stage; finished houses bring new households; the firm lays its labourers off with redundancy pay when both are done. Progress is visible on site (Heras fencing, cabin, mixer, scaffolding) |
 | 9 | Transport & logistics | **playable** | Van drives real routes for both shops, cargo, receipt, invoicing; Harbour Wholesale is a walkable warehouse where Warehouse Operatives (player or NPC, evening shift) pick order lines from pallet racking into staging lanes that the morning van loads from; as a Delivery Driver the player drives the loaded van to the shop's bay and back (chase camera, collisions) |
 | 10 | Connected regional economy | partial | District demand split between competing shops, wholesale trade, government |
 | 11–13 | Corporate, national, polish | planned | — |

@@ -152,6 +152,10 @@ export type ActionType =
   | 'drive_van'
   | 'take_order'
   | 'cook_meal'
+  | 'take_tool'
+  | 'return_tool'
+  | 'take_bricks'
+  | 'site_work'
   | 'serve_meal'
   | 'pick_case'
   | 'stage_case'
@@ -263,7 +267,7 @@ export interface Person {
 }
 
 // ------------------------------------------------------------- business
-export type BusinessKind = 'retail' | 'wholesale' | 'cafe' | 'landlord' | 'offsite' | 'government' | 'store';
+export type BusinessKind = 'retail' | 'wholesale' | 'cafe' | 'landlord' | 'offsite' | 'government' | 'store' | 'construction';
 
 export interface ShiftTemplate {
   days: number[]; // 0 = Monday
@@ -570,6 +574,8 @@ export interface GameState {
   creditBans?: Record<Id, boolean>;
   /** homes owned outright or with a mortgage (property.ts), by location */
   ownership?: Record<Id, import('./property').Ownership>;
+  /** the house being built at the end of Harbour Road (construction.ts) */
+  build?: import('./construction').Build;
   /** a Harbour Home order waiting to be delivered and fitted */
   pendingHome?: { design: HomeDesign; fitAt: number };
   version: number;

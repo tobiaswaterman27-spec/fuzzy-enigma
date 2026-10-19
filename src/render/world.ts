@@ -706,6 +706,8 @@ function buildObstacle(o: Obstacle): THREE.Object3D {
     case 'forklift': if (fit('forklift', r, o.rot ?? 0, '#f2a516')) return grp; break;
     case 'pallet_load': if (fit('pallet_load', r, o.rot ?? 0)) return grp; break;
     case 'roller_door': if (fit('roller_door', r, o.rot ?? 0)) return grp; break;
+    // building sites are drawn from the build's progress (render/sites.ts); colliders stay here
+    case 'site_fence': case 'site_house': case 'site_cabin': case 'site_pallet': case 'site_mixer': return grp;
     case 'waiting_chairs': case 'water_cooler': case 'leaflet_stand': case 'bistro_set':
       if (fit(o.kind, r, o.rot ?? 0)) return grp; break;
     case 'terminal': { const f = userFacing(o); if (fit('terminal', Math.abs(Math.sin(f)) > 0.5 ? { x0: cx - 0.06, x1: cx + 0.06, z0: cz - 0.25, z1: cz + 0.25 } : { x0: cx - 0.25, x1: cx + 0.25, z0: cz - 0.06, z1: cz + 0.06 }, f)) return grp; break; }

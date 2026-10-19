@@ -239,6 +239,7 @@ export const GARMENTS: Record<string, Garment> = {
   outfit_casual: { top: { color: '#3f6ea8', tex: 'knit', sleeve: 'short', hem: 0.97 }, bottom: { color: '#2d4366', tex: 'denim', length: 'long' }, shoes: '#ececec' },
   outfit_smart: { top: { color: '#f1efe9', tex: 'shirt', sleeve: 'long', collar: '#f1efe9', hem: 0.95 }, bottom: { color: '#2b2f38', tex: 'suit', length: 'long' }, shoes: '#2a1a12', over: { kind: 'blazer', color: '#2b2f38' }, tie: '#7a2b2b' },
   uniform_market: { top: { color: '#2e8b57', tex: 'polo', sleeve: 'short', collar: '#256f46', hem: 0.97, accent: '#ffffff' }, bottom: { color: '#24272b', tex: 'twill', length: 'long' }, shoes: '#18181a', over: { kind: 'apron', color: '#1d5c3a', accent: '#e9f2ec' } },
+  uniform_site: { top: { color: '#5b5f63', tex: 'twill', sleeve: 'long', hem: 0.97 }, bottom: { color: '#3b3f2e', tex: 'twill', length: 'long' }, shoes: '#4a3520', over: { kind: 'vest', color: '#ff8c1a' } },
   uniform_wholesale: { top: { color: '#3a4652', tex: 'twill', sleeve: 'long', hem: 0.97 }, bottom: { color: '#2b3440', tex: 'twill', length: 'long' }, shoes: '#4a3520', over: { kind: 'vest', color: '#f2d000' } },
   uniform_cafe: { top: { color: '#f3f0ea', tex: 'shirt', sleeve: 'short', collar: '#f3f0ea', hem: 0.96 }, bottom: { color: '#222', tex: 'twill', length: 'long' }, shoes: '#181818', over: { kind: 'apron', color: '#7b2d26' } },
 };
