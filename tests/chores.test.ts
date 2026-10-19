@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createNewGame, step, startAction, optionsFor, getWorld, choresOf, isDirty, retailTick, openTasks, addItems, auditLedger, hire, at, homeQueueSlot, type GameState } from '../src/sim/index';
+import { createNewGame, step, startAction, optionsFor, getWorld, choresOf, isDirty, retailTick, openTasks, addItems, auditLedger, hire, at, homeQueueSlot, creditLimit, takeLoan, transfer, loansTick, type GameState } from '../src/sim/index';
 import { buyHome, ONLINE_DELIVERY, quoteHome } from '../src/sim/homestore';
 
 const setup = { name: 'Tester', appearance: { skin: '#e3b48f', hair: 'short' as const, hairColor: '#3b2416', build: 'average' as const } };
@@ -113,6 +113,31 @@ describe('Sales Assistant', () => {
     expect(r.ok).toBe(true);
     expect(s.businesses.homestore.queue).toEqual([]);
     expect(s.ledger.accounts[s.businesses.homestore.accountId].balance).toBeGreaterThan(rev);
+    expect(auditLedger(s)).toEqual([]);
+  });
+});
+
+describe('Bank loans', () => {
+  it('lends against wages, takes weekly repayments, and defaults after three missed', () => {
+    const s = createNewGame(7, setup);
+    const p = s.people.player;
+    expect(creditLimit(s, 'player').limit).toBe(0); // no income yet
+    // a fortnight of wages
+    for (let k = 0; k < 4; k++) transfer(s, { from: s.businesses.market.accountId, to: p.accountId, amount: 30000, reason: 'wage', memo: 'test wage' });
+    const lim = creditLimit(s, 'player').limit;
+    expect(lim).toBeGreaterThanOrEqual(100000);
+    const bal = s.ledger.accounts[p.accountId].balance;
+    expect(takeLoan(s, 'player', 100000).ok).toBe(true);
+    expect(s.ledger.accounts[p.accountId].balance).toBe(bal + 100000);
+    expect(takeLoan(s, 'player', 50000).ok).toBe(false); // one loan at a time
+    const loan = Object.values(s.loans!)[0];
+    s.minute = loan.nextDue; loansTick(s);
+    expect(loan.owed).toBe(112000 - loan.weekly);
+    // empty the account: three missed payments default the loan
+    transfer(s, { from: p.accountId, to: s.externalId, amount: s.ledger.accounts[p.accountId].balance, reason: 'purchase', memo: 'spent' });
+    for (let k = 0; k < 3; k++) { s.minute = loan.nextDue; loansTick(s); }
+    expect(loan.status).toBe('defaulted');
+    expect(creditLimit(s, 'player').limit).toBe(0);
     expect(auditLedger(s)).toEqual([]);
   });
 });

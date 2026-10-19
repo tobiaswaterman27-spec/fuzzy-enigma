@@ -41,6 +41,8 @@ export type TxnReason =
   | 'public_service'
   | 'owner_draw'
   | 'services'
+  | 'loan'
+  | 'loan_repayment'
   | 'transfer';
 
 export interface Txn {
@@ -558,6 +560,9 @@ import type { HomeDesign } from './world/homes';
 export interface GameState {
   /** how each home is furnished and decorated (by home id) */
   homeDesigns: Record<string, HomeDesign>;
+  /** personal loans (bank.ts) */
+  loans?: Record<Id, import('./bank').Loan>;
+  creditBans?: Record<Id, boolean>;
   /** a Harbour Home order waiting to be delivered and fitted */
   pendingHome?: { design: HomeDesign; fitAt: number };
   version: number;

@@ -10,6 +10,7 @@ import { acceptOffer, acceptPromotion, applyForJob, attendInterview, canApply, c
 import { conditionLabel, skillLevel } from '../sim/needs';
 import { choreStatus } from '../sim/home';
 import { weatherLabel } from '../sim/weather';
+import { creditLimit, LOAN_APR_FLAT, LOAN_SIZES, LOAN_WEEKS, repayLoan, takeLoan } from '../sim/bank';
 import { buyHome, ONLINE_DELIVERY, quoteHome, storeStaffed } from '../sim/homestore';
 import { agenda, currentObjective } from '../sim/objectives';
 import { defaultDesign, EXTRAS, FABRICS, FLOORS, RUGS, WALLPAPERS, type HomeDesign } from '../sim/world/homes';
@@ -240,6 +241,12 @@ export class UI {
       <h3>Obligations</h3>
       ${l ? `<div class="line"><span>Rent · ${esc(l.label)}</span><span>${fmtMoney(l.weeklyRent)} every Monday 09:00</span></div><div class="line"><span>Paid until</span><span>${fmtDate(l.paidThroughDay * 1440)}</span></div>${l.arrears ? `<div class="line warn"><span>Arrears (${l.missedPayments}/3 missed)</span><span>${fmtMoney(l.arrears)}</span></div>` : ''}` : '<p class="warn">You have no home.</p>'}
       ${ended ? `<div class="card"><b>${esc(ended.label)}</b> is available again for ${fmtMoney(ended.arrears + ended.weeklyRent)} (arrears + 1 week).<div class="row"><button data-rerent="${ended.id}" class="primary">Rent again</button></div></div>` : ''}
+      ${(() => {
+        const loan = Object.values(s.loans ?? {}).find((x) => x.personId === p.id && x.status === 'active');
+        if (loan) return `<h3>Loan</h3><div class="line"><span>Still owed</span><span>${fmtMoney(loan.owed)}</span></div><div class="line"><span>Next payment</span><span>${fmtMoney(Math.min(loan.weekly, loan.owed))} on ${fmtDate(loan.nextDue)}</span></div>${loan.missed ? `<div class="line warn"><span>Missed payments</span><span>${loan.missed}/3</span></div>` : ''}<div class="row"><button data-loanrepay="${loan.id}">Settle early</button></div>`;
+        const c = creditLimit(s, p.id);
+        return `<h3>Borrow</h3><p class="muted">Harbourside Savings: ${esc(c.reason)} ${LOAN_WEEKS} weekly repayments, ${Math.round(LOAN_APR_FLAT * 100)}% total interest.</p>${c.limit ? `<div class="row">${LOAN_SIZES.filter((a) => a <= c.limit).map((a) => `<button data-loan="${a}">Borrow ${fmtMoney(a)}</button>`).join('')}</div>` : ''}`;
+      })()}
       <h3>Transactions</h3>${txns.map((t) => `<div class="line"><span><span class="muted">${fmtDate(t.time).split(',')[1]} ${fmtClock(t.time)}</span> ${esc(t.memo)}</span><span class="${t.to === acc.id ? 'pos' : 'neg'}">${t.to === acc.id ? '+' : '-'}${fmtMoney(t.amount).replace('Cr ', '')}</span></div>`).join('') || '<p class="muted">No transactions yet.</p>'}`;
   }
 
@@ -416,6 +423,8 @@ export class UI {
     if (d.order) this.toast(E.orderStock(s, { [d.order]: ITEMS[d.order].caseSize * Number(d.q) }).msg);
     if (d.invest) this.toast(E.invest(s, Number(d.invest)).msg);
     if (d.withdraw) this.toast(E.withdraw(s, Number(d.withdraw)).msg);
+    if (d.loan) { this.toast(takeLoan(s, this.p.id, Number(d.loan)).msg); this.lastBody = ''; this.renderPhone(); return; }
+    if (d.loanrepay) { this.toast(repayLoan(s, d.loanrepay).msg); this.lastBody = ''; this.renderPhone(); return; }
     if (d.homeBuy) {
       if (this.homeDraft) { const r = buyHome(s, this.p.id, this.homeDraft, d.homeBuy === 'counter'); this.toast(r.msg); if (r.ok) this.homeDraft = null; }
       this.lastBody = ''; this.renderPhone(); return;

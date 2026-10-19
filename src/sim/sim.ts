@@ -7,6 +7,7 @@ import { MIN_PER_DAY, minuteOfDay, dayIndex } from './clock';
 import { tickNeeds } from './needs';
 import { tickChores } from './home';
 import { homeStoreDaily, homeStoreMinute, homeStoreTick } from './homestore';
+import { loansTick } from './bank';
 import { enforceLocationRules, tickAction } from './actions';
 import { employmentTick, processApplications, refreshVacancies, runPayroll } from './employment';
 import { autoReorder, dailyClose, nightFill, retailTick } from './retail';
@@ -71,6 +72,7 @@ export function minuteTick(state: GameState) {
   if (state.businesses.wholesale) warehouseTick(state, 'wholesale');
   homeStoreMinute(state);
   homeStoreTick(state);
+  loansTick(state);
   npcTick(state);
   for (const p of Object.values(state.people)) if (p.npc) npcPostAction(state, p);
   economyTick(state);
