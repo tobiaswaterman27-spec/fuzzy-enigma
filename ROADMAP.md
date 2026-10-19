@@ -31,7 +31,8 @@ Status vocabulary: **planned → implemented → integrated → tested → playa
 | Seeded interior designer for homes; wallpaper, flooring, rugs and extras in a Home tab | **integrated** |
 | Real block of flats (Marlow Court), see-through windows | **integrated** |
 | Product packaging with printed labels | planned |
-| Strand-like hair cards, better shoes | planned |
+| Strand-like hair cards, better shoes | **integrated** (v12) |
+| Faces: hair-stroke brows, lash line, lid crease, round irises, solid lashes | **integrated** (v17) |
 
 ## Performance
 - Body builds cached per appearance and limited to one per frame; fabric textures no longer read back from the GPU.

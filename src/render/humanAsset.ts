@@ -3,6 +3,7 @@
 // a skeleton fitted to that body, clothing generated from the body surface
 // (so it can never clip), eyes, and a skin shader with brows/lips/cheeks.
 import * as THREE from 'three';
+import { buildFaceMask, type FaceMask } from './faceMask';
 import type { Appearance } from '../sim/types';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { GARMENTS } from './human';
@@ -62,6 +63,10 @@ export interface HumanAsset {
   origIndex: Uint32Array;
   morphs: Record<string, Int16Array>;
   masks: THREE.Texture | null;
+  face: FaceMask | null;
+  /** skin triangles and eyelash triangles, split by region */
+  bodyTris: Uint32Array;
+  lashTris: Uint32Array;
 }
 
 let asset: HumanAsset | null = null;
@@ -80,7 +85,13 @@ export async function loadHumanAsset(base = 'assets/human/'): Promise<boolean> {
     for (const m of meta.morphs) morphs[m] = view('morph:' + m);
     const masks = await new Promise<THREE.Texture | null>((res) => new THREE.TextureLoader().load(base + 'skin_masks.png', (t) => res(t), undefined, () => res(null)));
     if (masks) { masks.flipY = true; masks.colorSpace = THREE.NoColorSpace; }
-    asset = { meta, position: view('position'), uv: view('uv'), index: view('index'), region: view('region'), skinIndex: view('skinIndex'), skinWeight: view('skinWeight'), origIndex: view('origIndex'), morphs, masks };
+    const position = view('position'), uv = view('uv'), index = view('index'), region = view('region');
+    const lashR = meta.regions.indexOf('lash');
+    const bodyTris: number[] = [], lashTris: number[] = [];
+    for (let t = 0; t < region.length; t++) (region[t] === lashR ? lashTris : bodyTris).push(index[t * 3], index[t * 3 + 1], index[t * 3 + 2]);
+    let face: FaceMask | null = null;
+    try { face = buildFaceMask(position, uv, index, region, meta.eyes); } catch (e) { console.warn('face mask failed', e); }
+    asset = { meta, position, uv, index, region, skinIndex: view('skinIndex'), skinWeight: view('skinWeight'), origIndex: view('origIndex'), morphs, masks, face, bodyTris: new Uint32Array(bodyTris), lashTris: new Uint32Array(lashTris) };
     return true;
   } catch (e) {
     console.warn('Human asset unavailable, using procedural bodies', e);
@@ -181,22 +192,39 @@ function cached<T extends THREE.Material>(key: string, make: () => T): T {
 function skinMaterial(skin: string, hair: string, fem: boolean): THREE.Material {
   return cached(`hskin${skin}${hair}${fem}`, () => {
     // a faint warm emissive term stands in for light scattering under the skin
-    const m = new THREE.MeshPhysicalMaterial({ color: skin, roughness: 0.55, sheen: 0.25, sheenRoughness: 0.7, sheenColor: new THREE.Color(skin).lerp(new THREE.Color('#ff8a6a'), 0.5), emissive: new THREE.Color(skin).lerp(new THREE.Color('#c0503a'), 0.5), emissiveIntensity: 0.07, specularIntensity: 0.6 });
+    // very pale tones wash out to white in daylight: keep some colour in them
+    const base = new THREE.Color(skin);
+    const hsl = { h: 0, s: 0, l: 0 };
+    base.getHSL(hsl, THREE.SRGBColorSpace);
+    if (hsl.l > 0.7) base.setHSL(hsl.h, Math.min(1, hsl.s + 0.12), hsl.l - 0.08, THREE.SRGBColorSpace);
+    const m = new THREE.MeshPhysicalMaterial({ color: base, roughness: 0.55, sheen: 0.2, sheenRoughness: 0.7, sheenColor: new THREE.Color(skin).lerp(new THREE.Color('#ff8a6a'), 0.5), emissive: new THREE.Color(skin).lerp(new THREE.Color('#c0503a'), 0.5), emissiveIntensity: 0.07, specularIntensity: 0.6 });
     const masks = asset!.masks;
     if (masks) {
       m.onBeforeCompile = (sh) => {
         sh.uniforms.uMasks = { value: masks };
-        sh.uniforms.uBrow = { value: new THREE.Color(hair).multiplyScalar(0.75) };
+        sh.uniforms.uBrow = { value: new THREE.Color(hair).multiplyScalar(0.62) };
         sh.uniforms.uLip = { value: new THREE.Color(skin).lerp(new THREE.Color(fem ? '#b04a52' : '#9c5450'), fem ? 0.55 : 0.4) };
         sh.uniforms.uBlush = { value: new THREE.Color(skin).lerp(new THREE.Color('#d86a5a'), 0.3) };
+        const face = asset!.face;
+        sh.uniforms.uFace = { value: face?.tex ?? whiteTex() };
+        sh.uniforms.uFaceOff = { value: face?.off ?? new THREE.Vector2(2, 2) };
+        sh.uniforms.uFaceScale = { value: face?.scale ?? new THREE.Vector2(1, 1) };
+        sh.uniforms.uBrowAmt = { value: fem ? 0.85 : 1.0 };
         sh.fragmentShader = sh.fragmentShader
-          .replace('#include <common>', '#include <common>\nuniform sampler2D uMasks; uniform vec3 uBrow; uniform vec3 uLip; uniform vec3 uBlush;')
+          .replace('#include <common>', '#include <common>\nuniform sampler2D uMasks; uniform sampler2D uFace; uniform vec2 uFaceOff; uniform vec2 uFaceScale; uniform float uBrowAmt; uniform vec3 uBrow; uniform vec3 uLip; uniform vec3 uBlush;')
           .replace('#include <color_fragment>', `#include <color_fragment>
             vec4 mk = texture2D(uMasks, vMapUv);
             diffuseColor.rgb = mix(diffuseColor.rgb, uBlush, mk.a * 0.35);
             diffuseColor.rgb = mix(diffuseColor.rgb, uLip, smoothstep(0.1, 0.6, mk.g) * 0.85);
-            diffuseColor.rgb = mix(diffuseColor.rgb, uBrow, smoothstep(0.45, 0.95, mk.r) * 0.75);
-            diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 1.18 + 0.05, mk.b * 0.6);`);
+            diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 1.18 + 0.05, mk.b * 0.6);
+            vec2 fuv = (vMapUv - uFaceOff) / uFaceScale;
+            if (fuv.x > 0.0 && fuv.y > 0.0 && fuv.x < 1.0 && fuv.y < 1.0) {
+              vec4 fm = texture2D(uFace, fuv);
+              diffuseColor.rgb *= mix(vec3(1.0), vec3(0.84, 0.76, 0.76), fm.a * 0.6);
+              diffuseColor.rgb *= 1.0 - fm.b * 0.28;
+              diffuseColor.rgb = mix(diffuseColor.rgb, uBrow, fm.r * uBrowAmt);
+              diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.045, 0.032, 0.028), fm.g * 0.92);
+            }`);
         // make sure the uv varying is available
         sh.vertexShader = sh.vertexShader;
       };
@@ -205,6 +233,14 @@ function skinMaterial(skin: string, hair: string, fem: boolean): THREE.Material 
       m.customProgramCacheKey = () => `skin${skin}${hair}${fem}`;
     }
     return m;
+  });
+}
+
+/** eyelashes */
+function lashMaterial(hair: string): THREE.Material {
+  const col = new THREE.Color(hair).multiplyScalar(0.35).lerp(new THREE.Color('#120d0a'), 0.6);
+  return cached(`lash${col.getHexString()}`, () => {
+    return new THREE.MeshStandardMaterial({ color: col, roughness: 0.7, side: THREE.DoubleSide });
   });
 }
 
@@ -258,15 +294,21 @@ function irisTexture(color: string): THREE.Texture {
   const cv = document.createElement('canvas');
   cv.width = cv.height = S;
   const c = cv.getContext('2d')!;
-  c.fillStyle = '#f2efe9'; c.fillRect(0, 0, S, S);
-  // texture is mapped onto the front hemisphere: centre = pupil
+  // sclera: near white, faintly warm towards the corners
+  const sg = c.createLinearGradient(0, 0, S, 0);
+  sg.addColorStop(0, '#e8d6cf'); sg.addColorStop(0.35, '#f6f3ee'); sg.addColorStop(0.65, '#f6f3ee'); sg.addColorStop(1, '#e8d6cf');
+  c.fillStyle = sg; c.fillRect(0, 0, S, S);
+  // texture is mapped onto the sphere equirectangularly with the centre facing forward: a degree is
+  // twice as many pixels vertically as horizontally, so the round iris is drawn as a 1:2 ellipse
   const cx = S / 2, cy = S / 2;
-  const g = c.createRadialGradient(cx, cy, 6, cx, cy, 44);
-  g.addColorStop(0, '#0a0a0a'); g.addColorStop(0.28, '#0a0a0a'); g.addColorStop(0.32, new THREE.Color(color).multiplyScalar(0.6).getStyle()); g.addColorStop(0.8, color); g.addColorStop(1, '#2a1c12');
-  c.fillStyle = g; c.beginPath(); c.arc(cx, cy, 44, 0, Math.PI * 2); c.fill();
-  c.strokeStyle = 'rgba(255,255,255,.15)';
-  for (let i = 0; i < 60; i++) { const a = (i / 60) * Math.PI * 2; c.beginPath(); c.moveTo(cx + Math.cos(a) * 15, cy + Math.sin(a) * 15); c.lineTo(cx + Math.cos(a) * 42, cy + Math.sin(a) * 42); c.stroke(); }
-  c.fillStyle = 'rgba(255,255,255,.9)'; c.beginPath(); c.arc(cx - 12, cy - 12, 6, 0, Math.PI * 2); c.fill();
+  c.save(); c.translate(cx, cy); c.scale(0.5, 1);
+  const R = 46;
+  const g = c.createRadialGradient(0, 0, 4, 0, 0, R);
+  g.addColorStop(0, '#050505'); g.addColorStop(0.3, '#050505'); g.addColorStop(0.34, new THREE.Color(color).multiplyScalar(0.55).getStyle()); g.addColorStop(0.75, color); g.addColorStop(0.93, new THREE.Color(color).multiplyScalar(0.7).getStyle()); g.addColorStop(1, '#1c140e');
+  c.fillStyle = g; c.beginPath(); c.arc(0, 0, R, 0, Math.PI * 2); c.fill();
+  c.strokeStyle = 'rgba(255,255,255,.13)'; c.lineWidth = 1.5;
+  for (let i = 0; i < 70; i++) { const a = (i / 70) * Math.PI * 2; c.beginPath(); c.moveTo(Math.cos(a) * 16, Math.sin(a) * 16); c.lineTo(Math.cos(a) * 42, Math.sin(a) * 42); c.stroke(); }
+  c.restore();
   const t = new THREE.CanvasTexture(cv);
   t.colorSpace = THREE.SRGBColorSpace;
   matCache.set(key, t as any);
@@ -818,7 +860,7 @@ function buildRealHumanUncached(a: Appearance): HumanBuild {
     }
     for (let v = 0; v < n; v++) F[v] = cur[W.orig[v]];
   }
-  const { pool, buckets, rest } = cutBody(pos, nrm, [fHair, fTop, fBot, fShoe], A.index);
+  const { pool, buckets, rest } = cutBody(pos, nrm, [fHair, fTop, fBot, fShoe], A.bodyTris);
   const [hairTris, topTris, botTris, shoeTris] = buckets;
   const visibleSkin = rest;
   void hipsY; void neckBase;
@@ -840,6 +882,22 @@ function buildRealHumanUncached(a: Appearance): HumanBuild {
       return m;
     };
     sk(poolGeometry(pool, visibleSkin, 0, 1, 0), skinMaterial(a.skin, a.hairColor, fem));
+    if (A.lashTris.length) {
+      // the lash strips are long: draw them shorter and solid, so they read as a dark lash line
+      const lg = poolGeometry(pool, Array.from(A.lashTris), 0, 1, 0);
+      const lp = lg.getAttribute('position') as THREE.BufferAttribute;
+      const v = new THREE.Vector3();
+      for (let i = 0; i < lp.count; i++) {
+        v.fromBufferAttribute(lp, i);
+        const e = eyes.reduce((b, x) => (x.c.distanceTo(v) < b.c.distanceTo(v) ? x : b));
+        const d = v.clone().sub(e.c);
+        const len = d.length();
+        d.setLength(e.r + Math.max(0, len - e.r) * 0.5);
+        lp.setXYZ(i, e.c.x + d.x, e.c.y + d.y, e.c.z + d.z);
+      }
+      lp.needsUpdate = true;
+      sk(lg, lashMaterial(a.hairColor));
+    }
     const shirt = cutBody(pos, nrm, [fTopLong], A.index);
     const shirtGeo = torsoOnly(poolGeometry(shirt.pool, shirt.buckets[0], 0.011, 6, 6, bridge), bi('neck'), bi('head'), bi('chest'));
     sk(shirtGeo, cloth(g.top.color, g.top.tex));
