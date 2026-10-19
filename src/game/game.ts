@@ -236,7 +236,7 @@ export class Game {
     return r;
   }
 
-  onUi: (which: 'jobs' | 'advisor' | 'interview' | 'laptop' | 'homestore', arg?: string) => void = () => {};
+  onUi: (which: 'jobs' | 'advisor' | 'interview' | 'laptop' | 'homestore' | 'invite', arg?: string) => void = () => {};
 
   /** game minutes per real second right now */
   get rate() {

@@ -9,6 +9,7 @@ import { tickChores } from './home';
 import { homeStoreDaily, homeStoreMinute, homeStoreTick } from './homestore';
 import { loansTick } from './bank';
 import { cafeMinute } from './cafe';
+import { socialDaily, socialMinute } from './social';
 import { propertyTick } from './property';
 import { enforceLocationRules, tickAction } from './actions';
 import { employmentTick, processApplications, refreshVacancies, runPayroll } from './employment';
@@ -77,6 +78,7 @@ export function minuteTick(state: GameState) {
   homeStoreTick(state);
   loansTick(state);
   propertyTick(state);
+  socialMinute(state);
   npcTick(state);
   for (const p of Object.values(state.people)) if (p.npc) npcPostAction(state, p);
   economyTick(state);
@@ -101,6 +103,7 @@ export function minuteTick(state: GameState) {
   if (mod >= 22 * 60 && once(state, `payroll:${day}`)) runPayroll(state);
   if (mod >= 23 * 60 + 30 && once(state, `close:${day}`)) {
     homeStoreDaily(state);
+    socialDaily(state);
     for (const b of Object.values(state.businesses)) dailyClose(state, b);
     dailyEconomy(state);
     compactLedger(state, 14 * MIN_PER_DAY);

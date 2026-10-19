@@ -157,6 +157,7 @@ export type InteractKind =
   | 'rack'
   | 'staging'
   | 'home_counter'
+  | 'meet_chair'
   | 'site_cabin'
   | 'site_pallet'
   | 'site_work'
@@ -628,6 +629,9 @@ function buildWorldData(homeDesign: HomeDesign): World {
   for (const [px, pz] of [[-33.3, 10.7], [-14.7, 10.7], [-14.7, 18.8]]) obstacles.push({ kind: 'plant', rect: box(px, pz, 0.5, 0.5), height: 1.2, solid: true });
   // job interviews happen over a coffee at the window table: candidate faces the counter, interviewer opposite
   add({ id: 'iv_chair', kind: 'iv_chair', label: 'Interview table', pos: { x: -17, z: 12.6 }, facing: 0, obj: { x: -17, z: 13.05 }, locationId: 'cafe', range: 1.6 });
+  // meeting friends: the corner table by the other window
+  add({ id: 'meet_chair', kind: 'meet_chair', label: 'Corner table', pos: { x: -31, z: 12.6 }, facing: 0, obj: { x: -31, z: 13.05 }, locationId: 'cafe', range: 1.6 });
+  add({ id: 'meet_host', kind: 'meet_chair', label: 'Corner table', pos: { x: -31, z: 15.75 }, facing: Math.PI, obj: { x: -31, z: 14.95 }, locationId: 'cafe', range: 1.6 });
   add({ id: 'iv_host', kind: 'iv_host', label: 'Interview table', pos: { x: -17, z: 15.75 }, facing: Math.PI, obj: { x: -17, z: 14.95 }, locationId: 'cafe', range: 1.6 });
 
   // ---- Harbour Wholesale: pallet racking with a pick face per product, staging lanes by the loading door
@@ -932,6 +936,7 @@ function buildWorldData(homeDesign: HomeDesign): World {
   N('cf_t2_a', -15.4, 12.6, 'cafe'); N('cf_t2_b', -15.4, 15.75, 'cafe'); N('cf_t2_far', -17, 15.75, 'cafe'); L('cf_seat_2', 'cf_t2_a', 'cf_t2_b', 'cf_t2_far');
   L('sw_-24', 'cf_out', 'cf_in', 'cf_counter'); L('cf_in', 'cf_seat_1'); L('cf_in', 'cf_seat_2');
   N('cf_side', -31.5, 18.5, 'cafe'); L('cf_counter', 'cf_side');
+  N('cf_m_a', -32.7, 12.6, 'cafe'); N('cf_m_b', -32.7, 15.75, 'cafe'); N('cf_meet_far', -31, 15.75, 'cafe'); L('cf_seat_1', 'cf_m_a', 'cf_m_b', 'cf_meet_far');
   N('cf_kitchen', -31.5, 23, 'cafe'); L('cf_side', 'cf_kitchen', 'cf_back');
   N('cf_term', -32.8, 22, 'cafe'); L('cf_kitchen', 'cf_term');
   N('cf_grill', -26, 24.4, 'cafe'); L('cf_back', 'cf_grill'); L('cf_kitchen', 'cf_grill');

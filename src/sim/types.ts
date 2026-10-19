@@ -44,6 +44,8 @@ export type TxnReason =
   | 'loan'
   | 'loan_repayment'
   | 'property'
+  | 'investment'
+  | 'dividend'
   | 'transfer';
 
 export interface Txn {
@@ -262,6 +264,8 @@ export interface Person {
   sleeping: boolean;
   /** familiarity with other people built through conversation and working together (0..100) */
   relations: Record<Id, number>;
+  /** when you last spent time with each person (game minute) */
+  lastSeen?: Record<Id, number>;
   /** home upkeep (player): dirty dishes, untidiness, clothes wear and the washing machine */
   chores?: { dishes: number; mess: number; wear: Record<string, number>; washer: { items: string[]; until: number } | null };
 }
@@ -347,6 +351,8 @@ export interface Business {
   messy?: Record<string, number>;
   /** emptied stock cases waiting to be flattened in the baler */
   cardboard?: number;
+  /** outside shareholders: person id -> percent held (invest.ts) */
+  shares?: Record<Id, number>;
   /** litter bin by the door (0..BIN_CAPACITY) */
   binFill?: number;
   /** small per-business daily flags (e.g. the counter was staffed today) */
@@ -576,6 +582,8 @@ export interface GameState {
   ownership?: Record<Id, import('./property').Ownership>;
   /** the house being built at the end of Harbour Road (construction.ts) */
   build?: import('./construction').Build;
+  /** coffee meet-ups with friends (social.ts) */
+  meetups?: import('./social').Meetup[];
   /** a Harbour Home order waiting to be delivered and fitted */
   pendingHome?: { design: HomeDesign; fitAt: number };
   version: number;

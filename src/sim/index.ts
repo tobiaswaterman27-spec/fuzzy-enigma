@@ -25,3 +25,5 @@ export * from './weather';
 export * from './homestore';
 export * from './bank';
 export * from './property';
+export * from './social';
+export * from './invest';

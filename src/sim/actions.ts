@@ -16,6 +16,7 @@ import { transfer } from './ledger';
 import { news } from './events';
 import { fmtClock, minuteOfDay } from './clock';
 import { completeHomeOrder, storeStaffed } from './homestore';
+import { FRIEND_AT, plannedMeetup, relationLabel } from './social';
 import { cafeQueueSlot, serveMeal, takePortion } from './cafe';
 import { addWork, bricksOnPallet, courses, currentPlot, currentStage, plotFinished, PLOTS, stageProgress } from './construction';
 import { homeQueueSlot } from './npc';
@@ -27,7 +28,7 @@ export interface ActionOption {
   enabled: boolean;
   reason?: string;
   arg?: string;
-  ui?: 'jobs' | 'advisor' | 'interview' | 'laptop' | 'homestore';
+  ui?: 'jobs' | 'advisor' | 'interview' | 'laptop' | 'homestore' | 'invite';
 }
 
 export function interactable(state: GameState, id: Id): Interactable | null {
@@ -251,6 +252,11 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
     case 'iv_host':
       out.push(opt('sit', 'Sit down'));
       break;
+    case 'meet_chair': {
+      const m = plannedMeetup(state);
+      out.push(opt('sit', m && p.isPlayer ? `Sit down - meeting ${state.people[m.friendId].name.split(' ')[0]} at ${fmtClock(m.at)}` : 'Sit down'));
+      break;
+    }
     case 'sofa':
       out.push(opt('watch_tv', 'Watch TV (raises mood)', hasHomeAccess(state, actorId, it.locationId) ? undefined : 'Not your home'));
       out.push(opt('sit', 'Sit and rest'));
@@ -286,7 +292,8 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
       const iv = Object.values(state.applications).find((a) => a.personId === actorId && a.status === 'interview' && a.interviewerId === other.id);
       if (iv) out.push({ type: 'ui', label: `Interview with ${other.name}`, enabled: false, reason: 'Held at the window table in Tidewater Cafe - sit down there', ui: 'interview', arg: iv.id });
       const fam = Math.round(p.relations?.[other.id] ?? 0);
-      out.push(opt('talk', `Chat with ${other.name}${fam ? ` (familiarity ${fam})` : ''}`, other.action?.type === 'serve_customer' ? 'Busy serving' : undefined));
+      out.push(opt('talk', `Chat with ${other.name}${fam ? ` (${relationLabel(fam).toLowerCase()} · ${fam})` : ''}`, other.action?.type === 'serve_customer' ? 'Busy serving' : undefined));
+      if (p.isPlayer && !other.npc?.ambient) out.push({ type: 'ui', label: `Invite ${other.name.split(' ')[0]} for a coffee`, enabled: fam >= FRIEND_AT && !plannedMeetup(state), reason: fam < FRIEND_AT ? 'Get to know them better first (chat more)' : 'You already have a meet-up arranged', ui: 'invite', arg: other.id });
       break;
     }
     case 'vehicle': {
@@ -711,6 +718,8 @@ export function tickAction(state: GameState, p: Person, dt: number): string | nu
       if (o) {
         p.relations[o.id] = clamp((p.relations[o.id] ?? 0) + 5, 0, 100);
         o.relations[p.id] = clamp((o.relations[p.id] ?? 0) + 5, 0, 100);
+        (p.lastSeen ??= {})[o.id] = state.minute;
+        if (p.isPlayer && p.relations[o.id] >= FRIEND_AT && p.relations[o.id] - 5 < FRIEND_AT) news(state, 'good', `${o.name} is now a friend`, 'Invite them for a coffee at Tidewater Cafe to keep in touch.', true);
         p.needs.mood = clamp((p.needs.mood ?? 60) + 6, 0, 100);
         const lines = [`${o.name}: "Morning! Busy day?"`, `${o.name}: "Nice to see a new face around Harbourside."`, `${o.name}: "Corner Market's always short of staff, you know."`, `${o.name}: "Rent's gone up again, hasn't it."`, `${o.name}: "Have you tried the cafe? Rosa does a good lunch."`];
         msg = lines[Math.floor(state.minute) % lines.length];

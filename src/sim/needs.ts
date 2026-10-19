@@ -22,7 +22,8 @@ export function tickNeeds(_state: GameState, p: Person, dt: number) {
   if (p.isPlayer) {
     n.hygiene -= HYGIENE_DECAY * dt * (a0 === 'stock_shelf' || a0 === 'clean' || a0 === 'take_case' ? 2 : 1);
     // mood drifts toward a baseline set by how your basic needs are going
-    const base = 55 - (n.satiety < 20 ? 20 : 0) - (n.energy < 20 ? 15 : 0) - (n.hygiene < 25 ? 10 : 0) - homeMoodPenalty(p);
+    const friends = Object.values(p.relations).filter((v) => v >= 30).length;
+    const base = 55 + Math.min(9, friends * 3) - (n.satiety < 20 ? 20 : 0) - (n.energy < 20 ? 15 : 0) - (n.hygiene < 25 ? 10 : 0) - homeMoodPenalty(p);
     n.mood += (base - n.mood) * 0.002 * dt;
     if (a0 === 'watch_tv') n.mood += 0.45 * dt;
     if (a0 === 'sit') n.mood += 0.12 * dt;

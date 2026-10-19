@@ -3,6 +3,7 @@
 // from the rest of the country, pay tax and generate customer visits. Visits
 // are materialised as pooled "ambient" shoppers who physically walk in, pick
 // stock off shelves and pay at the till, so demand is never free money.
+import { payDividends } from './invest';
 import type { Business, GameState } from './types';
 import { dayIndex, fmtDate, hourOfDay } from './clock';
 import { fmtMoney, randInt } from './core';
@@ -163,7 +164,8 @@ export function dailyEconomy(state: GameState) {
       const draw = Math.round(excess * 0.5);
       const owner = state.people[b.ownerId];
       const to = owner ? owner.accountId : d.accountId;
-      const r = transfer(state, { from: b.accountId, to, amount: draw, reason: 'owner_draw', memo: `Owner's draw from ${b.name}`, key: `draw:${b.id}:${day}` });
+      const ownerPart = payDividends(state, b, draw, day);
+      const r = transfer(state, { from: b.accountId, to, amount: ownerPart, reason: 'owner_draw', memo: `Owner's draw from ${b.name}`, key: `draw:${b.id}:${day}` });
       if (r.ok) statsFor(state, b);
     }
     // landlords and owners living off-map spend in the district

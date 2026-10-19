@@ -75,6 +75,10 @@ export function agenda(state: GameState): Reminder | null {
     void v;
     items.push({ what: `interview${iv ? ` with ${iv.name}` : ''}`, at: a.interviewAt, where: getWorld().interactables.iv_chair.pos, place: 'Tidewater Cafe (window table)', outfit: 'outfit_smart', strict: false });
   }
+  for (const m of state.meetups ?? []) {
+    if (m.status !== 'planned') continue;
+    items.push({ what: `coffee with ${state.people[m.friendId].name.split(' ')[0]}`, at: m.at, where: getWorld().interactables.meet_chair.pos, place: 'Tidewater Cafe (corner table)', strict: false });
+  }
   if (p.contractId && !openAttendance(state, p.id)) {
     const c = state.contracts[p.contractId];
     const sh = nextShift(c, now - 30);

@@ -10,7 +10,9 @@ import { acceptOffer, acceptPromotion, applyForJob, attendInterview, canApply, c
 import { conditionLabel, skillLevel } from '../sim/needs';
 import { choreStatus } from '../sim/home';
 import { weatherLabel } from '../sim/weather';
+import { FRIEND_AT, inviteForCoffee, plannedMeetup, relationLabel } from '../sim/social';
 import { buyProperty as buyHomeProperty, canBuyHome, mortgageTerms, ownedHome, ownershipLines, redemption, sellHome, SELL_SHARE, SERVICE_CHARGE } from '../sim/property';
+import { blockPrice, BLOCK, buyStake, canInvestIn, dividendsReceived, MAX_STAKE, sellStake, stakeOf, valuation, weeklyProfit } from '../sim/invest';
 import { creditLimit, LOAN_APR_FLAT, LOAN_SIZES, LOAN_WEEKS, repayLoan, takeLoan } from '../sim/bank';
 import { buyHome, ONLINE_DELIVERY, quoteHome, storeStaffed } from '../sim/homestore';
 import { agenda, currentObjective } from '../sim/objectives';
@@ -28,7 +30,7 @@ import { isOpen } from '../sim/retail';
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector(sel) as T;
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
 
-type Tab = 'jobs' | 'work' | 'bank' | 'status' | 'news' | 'map' | 'shop' | 'biz' | 'home';
+type Tab = 'jobs' | 'work' | 'bank' | 'status' | 'news' | 'map' | 'shop' | 'biz' | 'home' | 'people';
 
 export class UI {
   phoneOpen = false;
@@ -41,7 +43,7 @@ export class UI {
 
   constructor(private game: Game) {
     game.onToast = (m) => this.toast(m);
-    game.onUi = (w, arg) => (w === 'jobs' || w === 'laptop' ? this.openPhone(w === 'laptop' ? this.tab : 'jobs') : w === 'homestore' ? this.openPhone('home') : w === 'interview' ? this.interviewInPerson(arg!) : this.advisor());
+    game.onUi = (w, arg) => (w === 'jobs' || w === 'laptop' ? this.openPhone(w === 'laptop' ? this.tab : 'jobs') : w === 'homestore' ? this.openPhone('home') : w === 'invite' ? this.toast(inviteForCoffee(this.s, this.p.id, arg!).msg) : w === 'interview' ? this.interviewInPerson(arg!) : this.advisor());
     game.onQualityAuto = () => this.toast('Graphics switched to Low for smoother play (Menu > Graphics to change).');
     game.onFrame = () => this.frame();
     window.addEventListener('keydown', (e) => {
@@ -152,7 +154,7 @@ export class UI {
 
   renderPhone() {
     this.lastPhoneRender = performance.now();
-    const tabs: [Tab, string][] = [['jobs', 'Jobs'], ['work', 'Work'], ['bank', 'Bank'], ['biz', 'Business'], ['home', 'Home'], ['status', 'Me'], ['news', 'News'], ['map', 'Map'], ['shop', 'Market']];
+    const tabs: [Tab, string][] = [['jobs', 'Jobs'], ['work', 'Work'], ['bank', 'Bank'], ['biz', 'Business'], ['home', 'Home'], ['people', 'People'], ['status', 'Me'], ['news', 'News'], ['map', 'Map'], ['shop', 'Market']];
     const unread = this.s.news.filter((n) => n.personal && !n.read).length;
     const tabsHtml = tabs.map(([t, l]) => `<button data-tab="${t}" class="${t === this.tab ? 'on' : ''}">${l}${t === 'news' && unread ? ` <i class="dot">${unread}</i>` : ''}</button>`).join('');
     if (tabsHtml !== this.lastTabs) { $('#phone-tabs').innerHTML = tabsHtml; this.lastTabs = tabsHtml; }
@@ -252,6 +254,8 @@ export class UI {
         const c = creditLimit(s, p.id);
         return `<h3>Borrow</h3><p class="muted">Harbourside Savings: ${esc(c.reason)} ${LOAN_WEEKS} weekly repayments, ${Math.round(LOAN_APR_FLAT * 100)}% total interest.</p>${c.limit ? `<div class="row">${LOAN_SIZES.filter((a) => a <= c.limit).map((a) => `<button data-loan="${a}">Borrow ${fmtMoney(a)}</button>`).join('')}</div>` : ''}`;
       })()}
+      <h3>Invest</h3><p class="muted">Buy shares in local businesses ${BLOCK}% at a time (outsiders may hold up to ${MAX_STAKE}%). Shareholders get their part of the owner's draw every Sunday.${dividendsReceived(s, p.id) ? ` Dividends so far: ${fmtMoney(dividendsReceived(s, p.id))}.` : ''}</p>
+      ${Object.values(s.businesses).filter((b) => canInvestIn(b) && b.ownerId !== p.id).map((b) => { const mine = stakeOf(b, p.id); const wp = weeklyProfit(s, b); return `<div class="card${mine ? ' good' : ''}"><b>${esc(b.name)}</b>${mine ? ` <span class="tag">you hold ${mine}%</span>` : ''}<div class="line"><span>Valued at</span><span>${fmtMoney(valuation(s, b))}</span></div><div class="line"><span>Weekly profit (recent)</span><span class="${wp >= 0 ? 'pos' : 'neg'}">${fmtMoney(wp)}</span></div><div class="row"><button data-stakebuy="${b.id}">Buy ${BLOCK}% · ${fmtMoney(blockPrice(s, b))}</button>${mine ? `<button data-stakesell="${b.id}">Sell ${BLOCK}%</button>` : ''}</div></div>`; }).join('')}
       <h3>Transactions</h3>${txns.map((t) => `<div class="line"><span><span class="muted">${fmtDate(t.time).split(',')[1]} ${fmtClock(t.time)}</span> ${esc(t.memo)}</span><span class="${t.to === acc.id ? 'pos' : 'neg'}">${t.to === acc.id ? '+' : '-'}${fmtMoney(t.amount).replace('Cr ', '')}</span></div>`).join('') || '<p class="muted">No transactions yet.</p>'}`;
   }
 
@@ -266,6 +270,25 @@ export class UI {
       <p class="muted">Each level makes related work 6% faster and improves job applications.</p>
       <h3>Inventory</h3><div class="line"><span>Shopping bag</span><span>${inv(bag)}</span></div><div class="line"><span>Kitchen</span><span>${inv(pantry)}</span></div>
       <h3>Goals</h3>${s.objectives.map((o) => `<div class="line"><span>${o.done ? '✔' : '○'} ${esc(o.text)}</span></div>`).join('')}`;
+  }
+
+  /** everyone you know: how well, when you last saw them, and invitations */
+  tab_people(): string {
+    const s = this.s, p = this.p;
+    const known = Object.entries(p.relations).filter(([id, v]) => v > 0 && s.people[id]).sort((a, b) => b[1] - a[1]);
+    const m = plannedMeetup(s);
+    let h = `<p class="muted">Chat to people to get to know them. Friends lift your mood; invite them for a coffee to keep in touch, or friendships fade.</p>`;
+    if (m) h += `<div class="card">Coffee with <b>${esc(s.people[m.friendId].name)}</b> at ${fmtClock(m.at)}${dayIndex(m.at) > dayIndex(s.minute) ? ' tomorrow' : ''} - Tidewater Cafe, corner table.</div>`;
+    if (!known.length) return h + '<p class="muted">You do not know anyone yet. Say hello to your colleagues and neighbours.</p>';
+    for (const [id, v] of known) {
+      const o = s.people[id];
+      const c = o.contractId ? s.contracts[o.contractId] : null;
+      const job = c ? `${c.title} at ${s.businesses[c.businessId]?.name ?? ''}` : o.npc?.retired ? 'Retired' : 'Looking for work';
+      const seen = p.lastSeen?.[id];
+      h += `<div class="card"><b>${esc(o.name)}</b> <span class="tag">${relationLabel(v)}</span><br><span class="muted">${esc(job)}${seen ? ` · last seen ${fmtDate(seen).split(',')[1]} ${fmtClock(seen)}` : ''}</span>
+        <div class="bar"><i style="width:${Math.round(v)}%"></i></div>${v >= FRIEND_AT && !m ? `<div class="row"><button data-invite="${id}">Invite for a coffee</button></div>` : ''}</div>`;
+    }
+    return h;
   }
 
   tab_news(): string {
@@ -430,7 +453,10 @@ export class UI {
     if (d.withdraw) this.toast(E.withdraw(s, Number(d.withdraw)).msg);
     if (d.buyhome) { this.toast(buyHomeProperty(s, this.p.id).msg); this.lastBody = ''; this.renderPhone(); return; }
     if (d.sellhome) { if (btn.dataset.confirm) { this.toast(sellHome(s, this.p.id).msg); this.lastBody = ''; this.renderPhone(); } else { btn.dataset.confirm = '1'; btn.textContent = 'Click again to confirm the sale'; } return; }
+    if (d.invite) { this.toast(inviteForCoffee(s, this.p.id, d.invite).msg); this.lastBody = ''; this.renderPhone(); return; }
     if (d.loan) { this.toast(takeLoan(s, this.p.id, Number(d.loan)).msg); this.lastBody = ''; this.renderPhone(); return; }
+    if (d.stakebuy) { this.toast(buyStake(s, this.p.id, d.stakebuy).msg); this.lastBody = ''; this.renderPhone(); return; }
+    if (d.stakesell) { this.toast(sellStake(s, this.p.id, d.stakesell).msg); this.lastBody = ''; this.renderPhone(); return; }
     if (d.loanrepay) { this.toast(repayLoan(s, d.loanrepay).msg); this.lastBody = ''; this.renderPhone(); return; }
     if (d.homeBuy) {
       if (this.homeDraft) { const r = buyHome(s, this.p.id, this.homeDraft, d.homeBuy === 'counter'); this.toast(r.msg); if (r.ok) this.homeDraft = null; }

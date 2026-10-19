@@ -194,6 +194,7 @@ function decide(state: GameState, p: Person) {
   n.nextDecision = now + 10;
   if (n.ambient) return; // ambient shoppers are driven by the demand model
   if (hostInterview(state, p)) { n.nextDecision = now + 1; return; }
+  if (goToMeetup(state, p)) return;
   const c = p.contractId ? state.contracts[p.contractId] : null;
   // 1. work
   if (c) {
@@ -253,6 +254,29 @@ function decide(state: GameState, p: Person) {
   }
   // 5. otherwise be at home
   if (!atHome(p) && n.goal !== 'go_home') setGoal(state, p, 'go_home', [{ kind: 'move', to: homeDoor(p.homeId), label: 'home' }, { kind: 'call', fn: 'arriveHome' }]);
+}
+
+/** a coffee with the player: drop what you are doing in time to get to the cafe and sit at the corner table */
+function goToMeetup(state: GameState, p: Person): boolean {
+  const n = p.npc!;
+  const now = state.minute;
+  const meet = state.meetups?.find((m) => m.status === 'planned' && m.friendId === p.id);
+  if (!meet) return false;
+  const seat = getWorld().interactables.meet_host;
+  if (now < meet.at - travelMinutes(p, seat.pos) - 8 || now >= meet.at + 30) return false;
+  const already = (p.action?.type === 'sit' && p.action.target === 'meet_host') || n.plan.some((s) => s.kind === 'act' && s.it === 'meet_host');
+  if (already) return false;
+  if (p.action) cancelAction(state, p);
+  if (!p.visible) { p.pos = homeDoor(p.homeId); show(p); }
+  setGoal(state, p, 'leisure', [
+    { kind: 'move', to: seat.pos, label: 'meeting a friend' },
+    { kind: 'act', it: 'meet_host', type: 'sit' },
+    { kind: 'wait', until: meet.at + 45 },
+    { kind: 'move', to: homeDoor(p.homeId), label: 'home' }, { kind: 'call', fn: 'arriveHome' },
+  ]);
+  p.move = null;
+  n.nextDecision = now + 1;
+  return true;
 }
 
 function eatAtHome(state: GameState, p: Person) {
@@ -825,6 +849,7 @@ export function npcTick(state: GameState) {
   for (const p of Object.values(state.people)) {
     if (p.isPlayer || !p.npc) continue;
     const n = p.npc;
+    if (state.meetups?.length && !n.ambient) goToMeetup(state, p);
     if (state.minute >= n.nextDecision && !p.action) decide(state, p);
     if (n.step === 'home_wait' || (n.step === 'paid' && n.shopId === 'homestore')) { homeWaitTick(state, p); continue; }
     if (n.step === 'cafe_wait' || (n.step === 'paid' && n.shopId === 'cafe')) { cafeWaitTick(state, p); continue; }

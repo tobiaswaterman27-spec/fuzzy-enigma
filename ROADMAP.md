@@ -53,6 +53,7 @@ Status vocabulary: **planned → implemented → integrated → tested → playa
 - **v5** — clothes hang naturally (bum fix), apron/long-hair rebuilt, render performance work.
 - **v6** — normal-mapped surfaces, consistent road markings, Blender cars/van/gondolas/checkout, more parked cars.
 - **v7–v10** — motion capture, automatic camera, Blender furniture, Marlow Court block of flats, seated real-time interviews with spoken questions, staff roles, AI-arranged homes with decoration, see-through windows.
+- **v16** — shares in local businesses (buy 5% stakes, Sunday dividends, sell back) in the Bank tab; friendships: chatting builds relationships (acquaintance → friend → close friend), invite friends for coffee at the cafe's corner table, People tab, friends lift mood, neglected friendships fade.
 - **v15** — construction (build houses as a Site Labourer, visible stage by stage), Cafe Cook / Kitchen Assistant job, cafe keeps enough supplies.
 - **v14** — buy your home (mortgage, sale, repossession), bank loans, sound (footsteps, tills, chimes, rain, traffic, engine, birds), relaxed idle stance, clean ribbed necklines, people step round each other, evening shelf stacker.
 - **v13** — weather (deterministic rain spells: overcast sky, rain, fewer shoppers, wet and miserable outdoors, empty park), ambient traffic, Harbour Home furniture store with a playable Sales Assistant job, bread that looks like bread.

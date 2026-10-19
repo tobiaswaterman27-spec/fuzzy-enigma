@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createNewGame, step, startAction, optionsFor, getWorld, choresOf, isDirty, retailTick, openTasks, addItems, auditLedger, hire, at, homeQueueSlot, creditLimit, takeLoan, transfer, loansTick, canBuyHome, mortgageTerms, HOME_PRICES, buyProperty, activeLease, hasHomeAccess, ownedHome, propertyTick, sellHome, type GameState } from '../src/sim/index';
+import { createNewGame, step, startAction, optionsFor, getWorld, choresOf, isDirty, retailTick, openTasks, addItems, auditLedger, hire, at, homeQueueSlot, creditLimit, takeLoan, transfer, loansTick, canBuyHome, mortgageTerms, HOME_PRICES, buyProperty, activeLease, hasHomeAccess, ownedHome, propertyTick, sellHome, inviteForCoffee, plannedMeetup, blockPrice, buyStake, sellStake, stakeOf, dividendsReceived, BLOCK, dailyEconomy, type GameState } from '../src/sim/index';
 import { buyHome, ONLINE_DELIVERY, quoteHome } from '../src/sim/homestore';
 
 const setup = { name: 'Tester', appearance: { skin: '#e3b48f', hair: 'short' as const, hairColor: '#3b2416', build: 'average' as const } };
@@ -9,7 +9,7 @@ function act(s: GameState, itId: string, type: Parameters<typeof startAction>[3]
   p.pos = { ...it.pos };
   p.where = it.locationId;
   const r = startAction(s, 'player', itId, type, arg);
-  if (r.ok) { let guard = 0; while (p.action && guard++ < 4000) step(s, 0.25); }
+  if (r.ok && type !== 'sit') { let guard = 0; while (p.action && guard++ < 4000) step(s, 0.25); }
   return r;
 }
 
@@ -163,5 +163,51 @@ describe('Home ownership', () => {
     expect(ownedHome(s, 'player')).toBeNull();
     expect(activeLease(s, 'player')).toBeTruthy();
     expect(auditLedger(s)).toEqual([]);
+  });
+});
+
+describe('Friends', () => {
+  it('chatting makes friends; an invited friend comes to the cafe and you catch up', () => {
+    const s = createNewGame(7, setup);
+    const p = s.people.player;
+    const f = s.people.p_joan; // retired, so free in the day
+    p.relations[f.id] = 28; f.relations[p.id] = 28;
+    while (s.minute < at(0, 10, 0)) step(s, 5);
+    expect(inviteForCoffee(s, 'player', f.id).ok).toBe(false); // not a friend yet
+    p.relations[f.id] = 35; f.relations[p.id] = 35;
+    const r = inviteForCoffee(s, 'player', f.id);
+    expect(r.ok).toBe(true);
+    const m = plannedMeetup(s)!;
+    // go and sit at the corner table at the time
+    while (s.minute < m.at - 5) step(s, 1);
+    expect(act(s, 'meet_chair', 'sit').ok).toBe(true);
+    for (let k = 0; k < 40 && m.status === 'planned'; k++) step(s, 1);
+    expect(m.status).toBe('met');
+    expect(p.relations[f.id]).toBeGreaterThan(35);
+  });
+});
+
+describe('Investing', () => {
+  it('buys a stake in the cafe, takes a share of the weekly draw, and sells back', () => {
+    const s = createNewGame(7, setup);
+    const p = s.people.player;
+    const cafe = s.businesses.cafe;
+    const price = blockPrice(s, cafe);
+    transfer(s, { from: s.externalId, to: p.accountId, amount: price * 3, reason: 'transfer', memo: 'test funds', key: 'inv_funds' });
+    const before = s.ledger.accounts[p.accountId].balance;
+    expect(buyStake(s, 'player', 'cafe').ok).toBe(true);
+    expect(stakeOf(cafe, 'player')).toBe(BLOCK);
+    expect(s.ledger.accounts[p.accountId].balance).toBe(before - price);
+    // the Sunday draw (cafe has cash above its reserve)
+    transfer(s, { from: s.externalId, to: cafe.accountId, amount: 500000, reason: 'sale', memo: 'test takings', key: 'inv_takings' });
+    s.minute = at(6, 23, 30);
+    dailyEconomy(s);
+    expect(dividendsReceived(s, 'player')).toBeGreaterThan(0);
+    const mid = s.ledger.accounts[p.accountId].balance;
+    expect(sellStake(s, 'player', 'cafe').ok).toBe(true);
+    expect(stakeOf(cafe, 'player')).toBe(0);
+    expect(s.ledger.accounts[p.accountId].balance).toBeGreaterThan(mid);
+    expect(auditLedger(s)).toEqual([]);
+    expect(buyStake(s, 'player', 'council').ok).toBe(false);
   });
 });
