@@ -26,6 +26,8 @@ import { raining } from '../sim/weather';
 import { safeWrite, loadSlot, type KV } from '../sim/save';
 import { news } from '../sim/events';
 import { CAR_MODELS, exitCar } from '../sim/cars';
+
+const CHATTER = ['How have you been?', 'Did you hear Corner Market is hiring again?', 'The rent on Harbour Road is daylight robbery.', 'Rosa\'s soup is the best thing in town.', 'They say rain again tomorrow.', 'My cousin started at the warehouse.', 'Those new houses are coming along.', 'Ha! No, really?', 'We should do this more often.', 'Long week. Glad it\'s nearly over.', 'Have you seen the prices at Harbour Home?', 'I passed my driving test!', 'The inspector came round the shop yesterday.', 'Exactly what I said!']; 
 import { fmtDate, fmtClock } from '../sim/clock';
 
 export const BASE_TIME_SCALE = 1 / 3; // game minutes per real second at 1x
@@ -276,6 +278,7 @@ export class Game {
     }
     // the flat is refitted when an order arrives (or a save is loaded): rebuild it
     if (++this.homeCheck % 30 === 0) { const k = JSON.stringify(s.homeDesigns.flat ?? null); if (k !== this.homeKey) { if (this.homeKey) this.applyHomeDesign(); this.homeKey = k; } }
+    if (!this.paused) this.chatter();
     this.views.update(s, this.paused ? 0 : dt, this.player.pos, this.insideId, this.speech);
     this.traffic.update(s, this.paused ? 0 : dt);
     this.sites.update(s);
@@ -287,6 +290,20 @@ export class Game {
     if (this.composer && !this.freeCam) this.composer.render(); else this.renderer.render(this.scene, this.camera);
     this.onFrame();
   }
+
+  /** townspeople talking near the player say something now and then */
+  private chatter() {
+    const now = performance.now();
+    if (now < this.nextChatter) return;
+    this.nextChatter = now + 2500;
+    const me = this.player.pos;
+    const talkers = Object.values(this.state.people).filter((q) => q.action?.type === 'talk' && q.action.arg === 'long' && q.visible && Math.hypot(q.pos.x - me.x, q.pos.z - me.z) < 16 && !((this.speech.get(q.id)?.until ?? 0) > now));
+    if (!talkers.length) return;
+    const q = talkers[Math.floor(Math.random() * talkers.length)];
+    const busy = talkers.some((t) => t.action?.target === `person:${q.id}` && (this.speech.get(t.id)?.until ?? 0) > now);
+    if (!busy) this.say(q.id, CHATTER[Math.floor(Math.random() * CHATTER.length)], 4);
+  }
+  private nextChatter = 0;
 
   /** the static colliders plus any privately owned parked cars (they move, so they are not in the layout) */
   private collidersWithCars() {

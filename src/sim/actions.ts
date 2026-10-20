@@ -510,7 +510,8 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
     case 'tidy':
       begin(p, type, itId, { duration: Math.max(3, Math.min(25, choresOf(p).mess * 0.3)) }, now); break;
     case 'talk': {
-      begin(p, type, itId, { duration: 2 }, now);
+      // townspeople who meet up on purpose talk for a good while
+      begin(p, type, itId, { duration: arg === 'long' ? 20 : 2 }, now);
       const o = state.people[itId.slice(7)];
       if (o) p.facing = Math.atan2(o.pos.x - p.pos.x, o.pos.z - p.pos.z);
       break;

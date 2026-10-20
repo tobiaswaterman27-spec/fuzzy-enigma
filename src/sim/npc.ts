@@ -238,6 +238,8 @@ function decide(state: GameState, p: Person) {
         { kind: 'move', to: homeDoor(p.homeId), label: 'home' }, { kind: 'call', fn: 'arriveHome' },
       ]);
     } else {
+      // half the time, call on someone and meet them in the park for a chat
+      if (rand(state) < 0.5 && raining(state) < 0.05 && arrangeChat(state, p)) return;
       const bench = pick(state, ['bench_1', 'bench_2']);
       const busy = Object.values(state.people).some((o) => o.action?.target === bench);
       // nobody sits in the park in the rain
@@ -254,6 +256,45 @@ function decide(state: GameState, p: Person) {
   }
   // 5. otherwise be at home
   if (!atHome(p) && n.goal !== 'go_home') setGoal(state, p, 'go_home', [{ kind: 'move', to: homeDoor(p.homeId), label: 'home' }, { kind: 'call', fn: 'arriveHome' }]);
+}
+
+/** spots in the park where two people stand and talk, facing each other */
+const CHAT_SPOTS = [{ x: 56, z: 32 }, { x: 52, z: 25 }, { x: 62, z: 26 }, { x: 56, z: 13.5 }, { x: 59, z: 29 }];
+
+/** minutes until this person must set off for their next shift (a lot if they have no job) */
+function freeMinutes(state: GameState, q: Person): number {
+  const c = q.contractId ? state.contracts[q.contractId] : null;
+  if (!c || c.status !== 'active') return 9999;
+  if (openAttendance(state, q.id)) return 0;
+  const s = nextShift(c, state.minute);
+  return s ? s.start - state.minute - travelMinutes(q, workplaceOf(c.businessId, c.positionId).pos) - 20 : 9999;
+}
+
+/** find someone free at home (a friend if possible) and meet them in the park to talk for a while */
+function arrangeChat(state: GameState, p: Person): boolean {
+  const now = state.minute;
+  // free: nobody standing there and nobody already on their way to it
+  const spot = CHAT_SPOTS.find((s) => !Object.values(state.people).some((o) => (o.visible && dist(o.pos, s) < 2.5) || o.npc?.plan.some((st) => st.kind === 'move' && dist(st.to, s) < 2.5) || (o.move && dist(o.move.dest ?? o.pos, s) < 2.5)));
+  if (!spot) return false;
+  const cands = Object.values(state.people).filter((q) => q.npc && !q.npc.ambient && q.id !== p.id && !q.sleeping && !q.action && q.npc.goal === 'idle_home' && atHome(q)
+    && q.needs.energy > 35 && freeMinutes(state, q) > 150 && !state.meetups?.some((m) => m.friendId === q.id && m.status === 'planned'));
+  if (!cands.length) return false;
+  cands.sort((a, b) => (p.relations[b.id] ?? 0) - (p.relations[a.id] ?? 0));
+  const q = (p.relations[cands[0].id] ?? 0) > 0 ? cands[0] : pick(state, cands);
+  const a = { x: spot.x - 0.55, z: spot.z }, b = { x: spot.x + 0.55, z: spot.z };
+  const at = now + Math.max(travelMinutes(p, a), travelMinutes(q, b)) + 3;
+  const plan = (who: Person, here: Vec2, other: Person): PlanStep[] => [
+    { kind: 'move', to: here, label: `meeting ${other.name.split(' ')[0]}` },
+    { kind: 'wait', until: at },
+    { kind: 'act', it: `person:${other.id}`, type: 'talk', arg: 'long' },
+    { kind: 'move', to: homeDoor(who.homeId), label: 'home' }, { kind: 'call', fn: 'arriveHome' },
+  ];
+  if (!q.visible) { q.pos = homeDoor(q.homeId); show(q); }
+  setGoal(state, p, 'leisure', plan(p, a, q));
+  setGoal(state, q, 'leisure', plan(q, b, p));
+  q.npc!.nextDecision = now + 1;
+  npcLog(state, p, `meeting ${q.name} in the park`);
+  return true;
 }
 
 /** a coffee with the player: drop what you are doing in time to get to the cafe and sit at the corner table */
