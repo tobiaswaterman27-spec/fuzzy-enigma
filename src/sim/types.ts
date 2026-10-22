@@ -152,6 +152,7 @@ export type ActionType =
   | 'buy_pint'
   | 'knock'
   | 'grab'
+  | 'rob'
   | 'scratch'
   | 'fish'
   | 'buy_tackle'

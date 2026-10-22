@@ -429,3 +429,37 @@ export function goToAandE(state: GameState, id: Id): { ok: boolean; msg: string 
 }
 
 export const isNight = (state: GameState) => { const m = minuteOfDay(state.minute); return m < 6 * 60 || m > 22 * 60; };
+
+// ------------------------------------------------------------ robbery
+/** demand the takings at a counter. With a weapon the staff hand it over; without one they may not */
+export function robTill(state: GameState, robberId: Id, businessId: Id): string {
+  const me = state.people[robberId];
+  const b = state.businesses[businessId];
+  if (!b) return '';
+  const staff = Object.values(state.people).filter((o) => !o.isPlayer && o.visible && !o.dead && o.down == null && dist(o.pos, me.pos) < 8 && (o.contractId ? state.contracts[o.contractId]?.businessId === businessId : false));
+  const clerk = staff.sort((x, y) => dist(x.pos, me.pos) - dist(y.pos, me.pos))[0];
+  if (!clerk) return 'There is nobody at the counter.';
+  clerk.facing = Math.atan2(me.pos.x - clerk.pos.x, me.pos.z - clerk.pos.z);
+  clerk.relations[me.id] = 0;
+  // everyone else in the shop gets out
+  for (const o of Object.values(state.people)) if (!o.isPlayer && o !== clerk && o.visible && dist(o.pos, me.pos) < 15 && !o.police) flee(state, o, me.pos);
+  if (!me.weapon) {
+    if (clerk.traits.patience < 0.4 && healthOf(clerk) > 50) {
+      clerk.combat = { target: me.id, until: state.minute + 3, next: state.minute + 0.3 };
+      crime(state, 'attempted robbery', 2, clerk.id);
+      return `${clerk.name.split(' ')[0]} comes over the counter at you!`;
+    }
+    clerk.gesture = { clip: 'argue', until: state.minute + 1 };
+    crime(state, 'attempted robbery', 2, clerk.id);
+    return `${clerk.name.split(' ')[0]} refuses and hits the alarm.`;
+  }
+  const bal = state.ledger.accounts[b.accountId]?.balance ?? 0;
+  const take = Math.max(0, Math.min(40000, Math.round(bal * 0.08)));
+  if (take > 0) transfer(state, { from: b.accountId, to: me.accountId, amount: take, reason: 'transfer', memo: 'Cash from a till', key: `robbery:${businessId}:${Math.floor(state.minute)}` });
+  clerk.gesture = { clip: 'scared', until: state.minute + 1.5 };
+  clerk.needs.mood = clamp(clerk.needs.mood - 30, 0, 100);
+  lifeEvent(state, clerk, `Held up at ${b.name} by ${me.name}`);
+  news(state, 'bad', `Armed robbery at ${b.name}`, `A ${me.weapon === 'knife' ? 'knife' : 'bat'}-wielding robber took ${fmtMoney(take)} from the till. Police are looking for them.`, false);
+  crime(state, 'armed robbery', 4, clerk.id);
+  return `${clerk.name.split(' ')[0]} empties the till for you with shaking hands: ${fmtMoney(take)}. Now run.`;
+}

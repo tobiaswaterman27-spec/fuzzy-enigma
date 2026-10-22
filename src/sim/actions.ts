@@ -2,7 +2,7 @@
 // Actions are timed, interruptible and validated. State changes happen in
 // unit callbacks or on completion - never because an animation finished.
 import { useEnergy } from './bills';
-import { buyWeapon, WEAPONS } from './health';
+import { buyWeapon, robTill, WEAPONS } from './health';
 import { breakIn, houseOf, houseOpen, knock, searchValuables } from './houses';
 import { grabShoplifter } from './incidents';
 import { buyLotto, LOTTO_PRICE, SCRATCH_PRICE, scratchcard } from './leisure';
@@ -180,6 +180,7 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
       const head = till.queue[0] ? state.people[till.queue[0]] : null;
       const atTill = head && dist(head.pos, queueSlot(bid!, 0)) < 1.2;
       out.push(opt('serve_customer', head ? `Serve ${head.name} (${total(state.containers[head.basketId])} items)` : 'Serve customers', !onShift ? 'Staff only' : !isEmpty(h) ? 'Put down what you are carrying' : !head ? 'No customer waiting' : !atTill ? 'Customer is still walking up' : undefined));
+      if (p.isPlayer && !onShift && bid) out.push(opt('rob', p.weapon ? `Hold up the till (${p.weapon === 'knife' ? 'knife' : 'bat'} out)` : 'Demand the cash from the till'));
       break;
     }
     case 'kiosk': {
@@ -437,6 +438,7 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
         break;
       }
       const staffed = b ? Object.values(state.people).some((x) => isOnShift(state, x.id, b.id)) : false;
+      if (p.isPlayer && staffed && p.weapon) out.push(opt('rob', `Hold up the cafe (${p.weapon === 'knife' ? 'knife' : 'bat'} out)`));
       const supplies = b ? count(state.containers[b.stockContainers[0]], 'cafe_supplies') : 0;
       const price = b ? priceOf(b, 'meal') : 0;
       out.push(opt('buy_meal', `Buy a hot meal - ${fmtMoney(price)} (+55 food)`, !b || !isOpen(b, state.minute) || !staffed ? 'Cafe is closed' : supplies <= 0 ? 'Sold out - waiting for supplies' : state.ledger.accounts[p.accountId].balance < price ? 'Not enough money' : undefined));
@@ -577,6 +579,9 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
       begin(p, type, itId, { duration: 0.3 }, now);
       return r;
     }
+    case 'rob':
+      begin(p, type, itId, { duration: 0.3 }, now);
+      return { ok: true, msg: robTill(state, p.id, it.businessId!) };
     case 'grab':
       return { ok: true, msg: grabShoplifter(state, p.id, itId.slice(7)) };
     case 'break_in':

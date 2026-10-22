@@ -139,3 +139,24 @@ describe('Houses', () => {
     expect(auditLedger(s)).toEqual([]);
   });
 });
+
+describe('Robbery', () => {
+  it('holding up the till with a weapon gets the cash and four stars', async () => {
+    const { robTill, getWorld: gw, step: st } = await import('../src/sim/index');
+    const s = createNewGame(7, setup);
+    const me = s.people.player;
+    const till = gw().interactables.till;
+    me.pos = { ...till.pos }; me.where = 'market'; me.visible = true;
+    const clerk = Object.values(s.people).find((p) => p.contractId && s.contracts[p.contractId].businessId === 'market' && !p.isPlayer)!;
+    clerk.visible = true; clerk.where = 'market'; clerk.pos = { x: me.pos.x + 1, z: me.pos.z };
+    expect(robTill(s, me.id, 'market')).toMatch(/refuses|comes over/);
+    s.wanted = null;
+    me.weapon = 'knife';
+    const before = s.ledger.accounts[me.accountId].balance;
+    expect(robTill(s, me.id, 'market')).toMatch(/empties the till/);
+    expect(s.ledger.accounts[me.accountId].balance).toBeGreaterThan(before);
+    expect(s.wanted?.level).toBeGreaterThanOrEqual(4);
+    st(s, 1);
+    expect(auditLedger(s)).toEqual([]);
+  });
+});
