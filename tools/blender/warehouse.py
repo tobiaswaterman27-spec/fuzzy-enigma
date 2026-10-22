@@ -83,7 +83,7 @@ def cases_on_pallet(x, y, z, w, d, layers, card, wrap=None, seed=0):
             for j in range(ny):
                 if l == layers - 1 and random.random() < 0.15:
                     continue
-                block((cw - 0.01, cd - 0.01, ch - 0.005), (x - w / 2 + (i + 0.5) * w / nx, y - d / 2 + (j + 0.5) * d / ny, z + l * ch + ch / 2), card, 0.004)
+                block((cw - 0.01, cd - 0.01, ch - 0.005), (x - w / 2 + (i + 0.5) * w / nx, y - d / 2 + (j + 0.5) * d / ny, z + l * ch + ch / 2), card, 0.004, segs=1)
     if wrap:
         block((w + 0.02, d + 0.02, layers * ch), (x, y, z + layers * ch / 2), wrap, 0.02)
 

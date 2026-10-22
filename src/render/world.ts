@@ -10,6 +10,8 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import type { GameState } from '../sim/types';
 
 let occ: THREE.Object3D[] = [];
+let lightSpots: WorldView['lightSpots'] = [];
+export const LIGHT_POOL = 6;
 const matCache = new Map<string, THREE.MeshStandardMaterial>();
 const M = (color: string, rough = 0.9, extra: Partial<THREE.MeshStandardMaterialParameters> = {}) => {
   const k = `${color}|${rough}|${JSON.stringify(extra, (_k, v) => (v instanceof THREE.Color ? `#${v.getHexString()}` : v))}`;
@@ -20,7 +22,14 @@ const M = (color: string, rough = 0.9, extra: Partial<THREE.MeshStandardMaterial
 let glassShared: THREE.MeshStandardMaterial | null = null;
 const metal = (color: string, rough = 0.35) => M(color, rough, { metalness: 0.6 });
 const glassM = () => (glassShared ??= new THREE.MeshStandardMaterial({ color: '#9fc2d3', roughness: 0.08, metalness: 0.3, transparent: true, opacity: 0.32, depthWrite: false }));
-const texMat = (t: THREE.Texture, rough = 0.9, color = '#ffffff') => new THREE.MeshStandardMaterial({ map: t, color, roughness: rough, normalMap: normalOf(t) ?? null });
+/** textured materials are shared: the same texture, roughness and tint is one material (and so merges into one draw call) */
+const texMats = new Map<string, THREE.MeshStandardMaterial>();
+const texMat = (t: THREE.Texture, rough = 0.9, color = '#ffffff') => {
+  const k = `${t.uuid}|${rough}|${color}`;
+  let m = texMats.get(k);
+  if (!m) { m = new THREE.MeshStandardMaterial({ map: t, color, roughness: rough, normalMap: normalOf(t) ?? null }); texMats.set(k, m); }
+  return m;
+};
 
 function box(w: number, h: number, d: number, m: THREE.Material | THREE.Material[], x: number, y: number, z: number, shadow = true, tile = 0) {
   const g = new THREE.BoxGeometry(w, h, d);
@@ -53,7 +62,11 @@ export interface WorldView {
   cutaway: Map<string, { roof: THREE.Object3D[]; walls: THREE.Mesh[]; fullH: number }>;
   windowsMat: THREE.MeshStandardMaterial[];
   lampBulbs: THREE.MeshStandardMaterial;
+  /** a fixed pool of point lights, moved each frame to the light sources nearest the player (a
+   * constant light count keeps shaders cheap and avoids recompiling them) */
   lampLights: THREE.PointLight[];
+  /** ceiling lights inside buildings: drawn by the pool when near */
+  lightSpots: { x: number; y: number; z: number; intensity: number; distance: number; bid: string }[];
   occluders: THREE.Object3D[];
   doors: AnimDoor[];
   update: (state: GameState, dt: number) => void;
@@ -86,6 +99,7 @@ export function buildWorld(scene: THREE.Scene): WorldView {
   const windowsMat: THREE.MeshStandardMaterial[] = [];
   const doors: AnimDoor[] = [];
   occ = [];
+  lightSpots = [];
   fixtures.length = 0;
 
   // ---------------- ground
@@ -151,7 +165,7 @@ export function buildWorld(scene: THREE.Scene): WorldView {
     g.add(box(0.42, 0.04, 0.24, lampBulbs, l.x + dir.x * 1.05, 5.0, l.z + dir.z * 1.05, false));
   }
   const lampLights: THREE.PointLight[] = [];
-  for (let i = 0; i < 6; i++) { const pl = new THREE.PointLight('#ffcf80', 0, 18, 1.6); pl.position.y = 4.6; g.add(pl); lampLights.push(pl); }
+  for (let i = 0; i < LIGHT_POOL; i++) { const pl = new THREE.PointLight('#ffcf80', 0, 18, 1.6); pl.position.y = 4.6; g.add(pl); lampLights.push(pl); }
 
   // ---------------- parked cars
   for (const p of w.parked) g.add(buildCar(p.color, p.pos.x, p.pos.z, p.rot));
@@ -185,42 +199,136 @@ export function buildWorld(scene: THREE.Scene): WorldView {
       }
     }
   };
-  return { group: g, cutaway, windowsMat, lampBulbs, lampLights, occluders: occ, doors, update };
+  return { group: g, cutaway, windowsMat, lampBulbs, lampLights, lightSpots, occluders: occ, doors, update };
 }
 
-/** merge every static mesh that shares a material into one draw call */
-function bakeStatic(g: THREE.Group, cutaway: WorldView['cutaway']) {
-  const keep = new Set<THREE.Object3D>(occ);
-  for (const c of cutaway.values()) { c.roof.forEach((o) => o.traverse((x) => keep.add(x))); c.walls.forEach((o) => keep.add(o)); }
-  g.updateMatrixWorld(true);
-  const buckets = new Map<THREE.Material, { geos: THREE.BufferGeometry[]; shadow: boolean }[]>();
-  const victims: THREE.Mesh[] = [];
-  g.traverse((o) => {
-    const m = o as THREE.Mesh;
-    if (!m.isMesh || keep.has(m) || m.userData.dynamic || Array.isArray(m.material)) return;
-    let geo = m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone();
+/** world-space pieces of a mesh, one per material (multi-material boxes are split by their groups) */
+function piecesOf(m: THREE.Mesh): [THREE.Material, THREE.BufferGeometry][] {
+  const base = m.geometry;
+  const clean = (geo: THREE.BufferGeometry) => {
     geo.applyMatrix4(m.matrixWorld);
     for (const name of Object.keys(geo.attributes)) if (name !== 'position' && name !== 'normal' && name !== 'uv') geo.deleteAttribute(name);
-    if (!geo.getAttribute('uv')) geo.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array((geo.getAttribute('position').count) * 2), 2));
+    if (!geo.getAttribute('uv')) geo.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(geo.getAttribute('position').count * 2), 2));
     if (!geo.getAttribute('normal')) geo.computeVertexNormals();
-    geo = geo.index ? geo.toNonIndexed() : geo;
-    const list = buckets.get(m.material as THREE.Material) ?? [];
-    let bucket = list.find((b) => b.shadow === m.castShadow);
-    if (!bucket) { bucket = { geos: [], shadow: m.castShadow }; list.push(bucket); }
-    bucket.geos.push(geo);
-    buckets.set(m.material as THREE.Material, list);
+    geo.clearGroups();
+    return geo;
+  };
+  if (!Array.isArray(m.material)) return [[m.material, clean(base.index ? base.toNonIndexed() : base.clone())]];
+  const flat = base.index ? base.toNonIndexed() : base.clone();
+  const out: [THREE.Material, THREE.BufferGeometry][] = [];
+  const groups = base.groups.length ? base.groups : [{ start: 0, count: flat.getAttribute('position').count, materialIndex: 0 }];
+  for (const gr of groups) {
+    const mat = m.material[gr.materialIndex ?? 0];
+    if (!mat) continue;
+    const sub = new THREE.BufferGeometry();
+    for (const [name, attr] of Object.entries(flat.attributes)) {
+      const a = attr as THREE.BufferAttribute;
+      sub.setAttribute(name, new THREE.BufferAttribute((a.array as Float32Array).slice(gr.start * a.itemSize, (gr.start + gr.count) * a.itemSize), a.itemSize));
+    }
+    out.push([mat, clean(sub)]);
+  }
+  return out;
+}
+
+/** one mesh per material for a set of meshes (they are removed from their parents) */
+function mergeMeshes(g: THREE.Group, list: THREE.Mesh[], shadow?: boolean): THREE.Mesh[] {
+  const by = new Map<THREE.Material, { geos: THREE.BufferGeometry[]; shadow: boolean }>();
+  for (const m of list) {
+    for (const [mat, geo] of piecesOf(m)) {
+      const e = by.get(mat) ?? { geos: [], shadow: false };
+      e.geos.push(geo);
+      e.shadow ||= shadow ?? m.castShadow;
+      by.set(mat, e);
+    }
+    m.parent?.remove(m);
+  }
+  const out: THREE.Mesh[] = [];
+  for (const [mat, e] of by) {
+    const merged = mergeGeometries(e.geos, false);
+    if (!merged) continue;
+    const mesh = new THREE.Mesh(merged, mat);
+    mesh.castShadow = e.shadow;
+    mesh.receiveShadow = true;
+    g.add(mesh);
+    out.push(mesh);
+  }
+  return out;
+}
+
+/** Merge static meshes into few draw calls. Merges are made per material within 24 m cells so that
+ * whatever is off screen (or outside the sun's shadow box) is still culled. Each building's walls and
+ * roof are merged on their own so the cut-away view can still lower and hide them. The camera's
+ * collision uses invisible copies of the original wall pieces. */
+const CELL = 32;
+function bakeStatic(g: THREE.Group, cutaway: WorldView['cutaway']) {
+  g.updateMatrixWorld(true);
+  // collision proxies for the camera (never drawn)
+  const proxies: THREE.Mesh[] = [];
+  for (const root of occ) root.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh) return;
+    const p = new THREE.Mesh(m.geometry, PROXY_MAT);
+    p.matrixAutoUpdate = false;
+    p.matrix.copy(m.matrixWorld);
+    p.matrixWorld.copy(m.matrixWorld);
+    proxies.push(p);
+  });
+  occ = proxies;
+  // cut-away walls and roofs: merged per building
+  const special = new Set<THREE.Object3D>();
+  for (const c of cutaway.values()) {
+    const roofMeshes: THREE.Mesh[] = [];
+    c.roof.forEach((o) => o.traverse((x) => { if ((x as THREE.Mesh).isMesh && !x.userData.dynamic) roofMeshes.push(x as THREE.Mesh); }));
+    const keepRoof = c.roof.filter((o) => !(o as THREE.Mesh).isMesh || o.userData.dynamic);
+    const walls = c.walls.filter((w) => !w.userData.dynamic);
+    for (const w of walls) special.add(w);
+    for (const r of roofMeshes) special.add(r);
+    const mw = mergeMeshes(g, walls);
+    for (const m of mw) m.userData.anchored = true;
+    c.walls = mw;
+    c.roof = [...keepRoof, ...mergeMeshes(g, roofMeshes)];
+    for (const m of [...c.walls, ...c.roof]) special.add(m);
+  }
+  // everything else that never moves: per material and cell
+  const buckets = new Map<string, { mat: THREE.Material; geos: THREE.BufferGeometry[]; shadow: boolean }>();
+  const victims: THREE.Mesh[] = [];
+  const pieces: { mat: THREE.Material; geo: THREE.BufferGeometry; shadow: boolean; cx: number; cz: number }[] = [];
+  const trisOf = new Map<THREE.Material, number>();
+  const box = new THREE.Box3(), c = new THREE.Vector3();
+  g.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh || special.has(m) || m.userData.dynamic || (m as THREE.InstancedMesh).isInstancedMesh) return;
+    for (let q: THREE.Object3D | null = m.parent; q; q = q.parent) if (q.userData.dynamic) return;
+    box.setFromObject(m).getCenter(c);
+    for (const [mat, geo] of piecesOf(m)) {
+      pieces.push({ mat, geo, shadow: m.castShadow, cx: c.x, cz: c.z });
+      trisOf.set(mat, (trisOf.get(mat) ?? 0) + geo.getAttribute('position').count / 3);
+    }
     victims.push(m);
   });
   for (const v of victims) v.parent?.remove(v);
-  for (const [mat, list] of buckets) for (const b of list) {
+  // only materials carrying a lot of geometry are split into cells: for the rest, one call beats culling
+  for (const p of pieces) {
+    const cell = (trisOf.get(p.mat) ?? 0) > 15000 ? `${Math.floor(p.cx / CELL)},${Math.floor(p.cz / CELL)}` : 'all';
+    const key = `${p.mat.uuid}|${p.shadow}|${cell}`;
+    const b = buckets.get(key) ?? { mat: p.mat, geos: [], shadow: p.shadow };
+    b.geos.push(p.geo);
+    buckets.set(key, b);
+  }
+  for (const b of buckets.values()) {
     const merged = mergeGeometries(b.geos, false);
     if (!merged) continue;
-    const mesh = new THREE.Mesh(merged, mat);
+    const mesh = new THREE.Mesh(merged, b.mat);
     mesh.castShadow = b.shadow;
     mesh.receiveShadow = true;
     g.add(mesh);
   }
+  // drop the groups left empty
+  const empty: THREE.Object3D[] = [];
+  g.traverse((o) => { if (o !== g && !(o as THREE.Mesh).isMesh && !(o as THREE.Light).isLight && o.children.length === 0 && !o.userData.dynamic) empty.push(o); });
+  for (const o of empty) o.parent?.remove(o);
 }
+const PROXY_MAT = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
 
 // ------------------------------------------------------------------ buildings
 function wallOutwardFace(r: Rect, b: BuildingDef): number {
@@ -444,9 +552,7 @@ function buildBuilding(g: THREE.Group, b: BuildingDef, cutaway: WorldView['cutaw
     for (let x = x0 + 3; x < x1 - 1.5; x += 5) for (let z = z0 + 3; z < z1 - 1.5; z += 5) { const p = box(1.4, 0.04, 0.5, panel, x, 3.16, z, false); roofs.push(p); g.add(p); }
     const nL = Math.max(1, Math.round((W * D) / 220));
     for (let i = 0; i < nL; i++) {
-      const pl = new THREE.PointLight('#fff1dc', 7, Math.max(W, D) * 1.0, 1.6);
-      pl.position.set(x0 + (W * (i + 0.5)) / nL, 2.9, cz);
-      g.add(pl);
+      lightSpots.push({ x: x0 + (W * (i + 0.5)) / nL, y: 2.9, z: cz, intensity: 7, distance: Math.max(W, D), bid: b.id });
     }
     for (const d of b.doors) addDoor(g, b, d.side, d.a, d.b, d.open, doors);
     if (b.id === 'flat') {
@@ -1138,7 +1244,22 @@ function buildObstacle(o: Obstacle): THREE.Object3D {
 
 export function buildCar(color: string, x: number, z: number, rot: number, van = false): THREE.Group {
   const model = modelInstance(van ? 'van' : 'car', color);
-  if (model) { model.position.set(x, 0, z); model.rotation.y = rot; return model; }
+  if (model) {
+    // full detail close up, a lighter model further away
+    const far = modelInstance(van ? 'van_lod' : 'car_lod', color);
+    const out = new THREE.Group();
+    if (far) {
+      const lod = new THREE.LOD();
+      lod.addLevel(model, 0);
+      far.traverse((o) => { o.castShadow = false; });
+      lod.addLevel(far, 18);
+      out.add(lod);
+    } else out.add(model);
+    out.userData.dynamic = true;
+    out.position.set(x, 0, z);
+    out.rotation.y = rot;
+    return out;
+  }
   const grp = new THREE.Group();
   const body = M(color, 0.3, { metalness: 0.5 });
   const glass = M('#1f2a33', 0.08, { metalness: 0.6 });

@@ -76,6 +76,7 @@ export function modelInstance(name: string, paint?: string): THREE.Group | null 
   const t = templates.get(name);
   if (!t) return null;
   const g = t.clone();
+  g.userData.model = name;
   if (paint) g.traverse((o) => {
     const m = o as THREE.Mesh;
     if (!m.isMesh || (m.material as THREE.Material).name !== 'paint') return;
@@ -85,4 +86,70 @@ export function modelInstance(name: string, paint?: string): THREE.Group | null 
     m.material = pm;
   });
   return g;
+}
+
+/** Replace the meshes under `root` with one mesh per material (positions, normals and UVs kept). For
+ * groups that are rebuilt now and then but never move, such as building sites. */
+export function mergeChildren(root: THREE.Group) {
+  root.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(root.matrixWorld).invert();
+  const by = new Map<THREE.Material, { geos: THREE.BufferGeometry[]; shadow: boolean }>();
+  const victims: THREE.Mesh[] = [];
+  root.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh || Array.isArray(m.material) || (m as THREE.SkinnedMesh).isSkinnedMesh) return;
+    let g = m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone();
+    g.applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, m.matrixWorld));
+    for (const a of Object.keys(g.attributes)) if (a !== 'position' && a !== 'normal' && a !== 'uv') g.deleteAttribute(a);
+    if (!g.getAttribute('normal')) g.computeVertexNormals();
+    if (!g.getAttribute('uv')) g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(g.getAttribute('position').count * 2), 2));
+    g = g.index ? g.toNonIndexed() : g;
+    const e = by.get(m.material as THREE.Material) ?? { geos: [], shadow: false };
+    e.geos.push(g);
+    e.shadow ||= m.castShadow;
+    by.set(m.material as THREE.Material, e);
+    victims.push(m);
+  });
+  for (const v of victims) v.parent?.remove(v);
+  for (const [mat, e] of by) {
+    const merged = mergeGeometries(e.geos, false);
+    if (!merged) continue;
+    const mesh = new THREE.Mesh(merged, mat);
+    mesh.castShadow = e.shadow;
+    mesh.receiveShadow = true;
+    root.add(mesh);
+  }
+}
+
+/** plain-array copy of a model (geometry plus material name and colour), to send to a worker */
+export function templateData(name: string): { name: string; parts: { position: Float32Array; normal: Float32Array | null; index: Uint32Array | null; mat: string; color: string }[] } | null {
+  const t = templates.get(name);
+  if (!t) return null;
+  const parts: { position: Float32Array; normal: Float32Array | null; index: Uint32Array | null; mat: string; color: string }[] = [];
+  t.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh) return;
+    const mm = m.material as THREE.MeshStandardMaterial;
+    const g = m.geometry;
+    parts.push({
+      position: new Float32Array(g.getAttribute('position').array as ArrayLike<number>), normal: g.getAttribute('normal') ? new Float32Array(g.getAttribute('normal').array as ArrayLike<number>) : null,
+      index: g.index ? new Uint32Array(g.index.array as ArrayLike<number>) : null, mat: mm.name, color: `#${mm.color.getHexString()}`,
+    });
+  });
+  return { name, parts };
+}
+
+/** (worker) install a model sent by templateData */
+export function registerTemplate(d: NonNullable<ReturnType<typeof templateData>>) {
+  const g = new THREE.Group();
+  for (const p of d.parts) {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(p.position, 3));
+    if (p.normal) geo.setAttribute('normal', new THREE.BufferAttribute(p.normal, 3));
+    if (p.index) geo.setIndex(new THREE.BufferAttribute(p.index, 1));
+    const m = new THREE.MeshStandardMaterial({ color: p.color });
+    m.name = p.mat;
+    g.add(new THREE.Mesh(geo, m));
+  }
+  templates.set(d.name, g);
 }

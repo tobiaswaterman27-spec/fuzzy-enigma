@@ -406,7 +406,7 @@ export class Game {
       for (const [id, c] of this.world.cutaway) {
         const cut = this.overview && id === inside;
         for (const r of c.roof) r.visible = !cut;
-        for (const wm of c.walls) { wm.scale.y = cut ? 0.34 : 1; wm.position.y = (cut ? 0.34 : 1) * c.fullH / 2; }
+        for (const wm of c.walls) { wm.scale.y = cut ? 0.34 : 1; wm.position.y = wm.userData.anchored ? 0 : (cut ? 0.34 : 1) * c.fullH / 2; }
       }
       this.insideId = inside;
       this.cutawayOn = this.overview;
@@ -495,8 +495,18 @@ export class Game {
     this.hemi.intensity = (0.25 + 0.75 * d) * (this.insideId ? 0.45 : 1) * (1 - 0.25 * r);
     const lit = d < 0.45;
     this.world.lampBulbs.emissiveIntensity = lit ? 1.6 : 0;
-    const lamps = getWorld().lamps.slice().sort((a, b) => Math.hypot(a.x - p.pos.x, a.z - p.pos.z) - Math.hypot(b.x - p.pos.x, b.z - p.pos.z));
-    this.world.lampLights.forEach((l, i) => { const lp = lamps[i]; l.position.set(lp.x, 4.6, lp.z); l.intensity = lit ? 18 : 0; });
+    // the light pool goes to the room you are in first, then whatever lights are nearest (street lamps only at night)
+    const inside = buildingAt(p.pos)?.id ?? null;
+    const near = (x: number, z: number) => Math.hypot(x - p.pos.x, z - p.pos.z);
+    const cands = [
+      ...this.world.lightSpots.map((l) => ({ x: l.x, y: l.y, z: l.z, i: l.intensity, d: l.distance, c: '#fff1dc', score: near(l.x, l.z) - (l.bid === inside ? 1000 : 0) })),
+      ...(lit ? getWorld().lamps.map((l) => ({ x: l.x, y: 4.6, z: l.z, i: 18, d: 18, c: '#ffcf80', score: near(l.x, l.z) + (inside ? 30 : 0) })) : []),
+    ].sort((a, b) => a.score - b.score);
+    this.world.lampLights.forEach((l, i) => {
+      const c = cands[i];
+      if (!c || c.score > 60) { l.intensity = 0; return; }
+      l.position.set(c.x, c.y, c.z); l.intensity = c.i; l.distance = c.d; l.color.set(c.c);
+    });
     for (const m of this.world.windowsMat) m.emissive.set(lit ? '#3a2e1a' : '#000000');
   }
 

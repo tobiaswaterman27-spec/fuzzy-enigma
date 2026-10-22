@@ -72,7 +72,7 @@ export interface HumanAsset {
 let asset: HumanAsset | null = null;
 export const humanAsset = () => asset;
 
-export async function loadHumanAsset(base = 'assets/human/'): Promise<boolean> {
+export async function loadHumanAsset(base = 'assets/human/', textures = true): Promise<boolean> {
   try {
     const [meta, bin] = await Promise.all([fetch(base + 'body.json').then((r) => r.json()), fetchBinary(base + 'body.bin')]);
     const get = (name: string) => meta.layout.find((l: any) => l.name === name);
@@ -83,14 +83,14 @@ export async function loadHumanAsset(base = 'assets/human/'): Promise<boolean> {
     };
     const morphs: Record<string, Int16Array> = {};
     for (const m of meta.morphs) morphs[m] = view('morph:' + m);
-    const masks = await new Promise<THREE.Texture | null>((res) => new THREE.TextureLoader().load(base + 'skin_masks.png', (t) => res(t), undefined, () => res(null)));
+    const masks = !textures ? null : await new Promise<THREE.Texture | null>((res) => new THREE.TextureLoader().load(base + 'skin_masks.png', (t) => res(t), undefined, () => res(null)));
     if (masks) { masks.flipY = true; masks.colorSpace = THREE.NoColorSpace; }
     const position = view('position'), uv = view('uv'), index = view('index'), region = view('region');
     const lashR = meta.regions.indexOf('lash');
     const bodyTris: number[] = [], lashTris: number[] = [];
     for (let t = 0; t < region.length; t++) (region[t] === lashR ? lashTris : bodyTris).push(index[t * 3], index[t * 3 + 1], index[t * 3 + 2]);
     let face: FaceMask | null = null;
-    try { face = buildFaceMask(position, uv, index, region, meta.eyes); } catch (e) { console.warn('face mask failed', e); }
+    if (textures) try { face = buildFaceMask(position, uv, index, region, meta.eyes); } catch (e) { console.warn('face mask failed', e); }
     asset = { meta, position, uv, index, region, skinIndex: view('skinIndex'), skinWeight: view('skinWeight'), origIndex: view('origIndex'), morphs, masks, face, bodyTris: new Uint32Array(bodyTris), lashTris: new Uint32Array(lashTris) };
     return true;
   } catch (e) {
@@ -286,6 +286,26 @@ function fabricTexture(base: string, kind: string): THREE.Texture {
 
 const cloth = (color: string, kind: string, rough = 0.85) => cached(`hcloth${color}${kind}`, () => new THREE.MeshStandardMaterial({ color: '#ffffff', map: fabricTexture(color, kind), roughness: rough, side: THREE.DoubleSide }));
 
+/** Materials are asked for by kind and arguments, so that a body can be built off the main thread: in
+ * the worker `mat` returns a placeholder carrying the request and the main thread makes the material. */
+export type MatSpec = [string, ...any[]];
+const MAKERS: Record<string, (...args: any[]) => THREE.Material> = {
+  skin: (skin: string, hair: string, fem: boolean) => skinMaterial(skin, hair, fem),
+  lash: (hair: string) => lashMaterial(hair),
+  cloth: (color: string, kind: string, rough: number) => cloth(color, kind, rough),
+  std: (key: string, p: THREE.MeshStandardMaterialParameters) => cached(key, () => new THREE.MeshStandardMaterial(p)),
+  hair: (color: string, style: string) => cached(`hhair${color}${style}`, () => new THREE.MeshStandardMaterial({ color: '#ffffff', map: hairTexture(color, style === 'curly'), roughness: 0.5, side: THREE.DoubleSide })),
+  shell: (color: string, style: string, k: number) => cached(`hshell${color}${style}${k}`, () => new THREE.MeshStandardMaterial({ color: '#ffffff', map: strandTexture(color, style === 'curly', k), roughness: 0.55, alphaTest: 0.35 + k * 0.1, side: THREE.DoubleSide })),
+  eye: (color: string) => cached(`eye${color}`, () => new THREE.MeshPhysicalMaterial({ map: irisTexture(color), roughness: 0.15, clearcoat: 1, clearcoatRoughness: 0.05 })),
+};
+let workerMode = false;
+export function setHumanWorkerMode() { workerMode = true; }
+function mat(...spec: MatSpec): THREE.Material {
+  if (workerMode) return { isMaterial: true, userData: { spec } } as unknown as THREE.Material;
+  return MAKERS[spec[0]](...spec.slice(1));
+}
+export function materialFromSpec(spec: MatSpec): THREE.Material { return MAKERS[spec[0]](...spec.slice(1)); }
+
 function irisTexture(color: string): THREE.Texture {
   const key = `iris${color}`;
   const hit = matCache.get(key) as any;
@@ -319,13 +339,27 @@ function irisTexture(color: string): THREE.Texture {
 interface Pool { p: number[]; n: number[]; uv: number[]; si: number[]; sw: number[]; f: number[][] }
 
 /** Split the body along fields: returns index lists for the part where field `which` < 0 (or where all fields >= 0 for which = -1). */
+const poolBase = new WeakMap<Float32Array, { nrm: Float32Array; p: number[]; n: number[] }>();
+let poolFixed: { uv: number[]; si: number[]; sw: number[] } | null = null;
+function toArr(t: ArrayLike<number>, scale = 1): number[] {
+  const out = new Array<number>(t.length);
+  for (let i = 0; i < t.length; i++) out[i] = t[i] * scale;
+  return out;
+}
+
 function cutBody(pos: Float32Array, nrm: Float32Array, fields: Float32Array[], tris: Uint32Array) {
   const A = asset!;
   const n0 = pos.length / 3;
-  const pool: Pool = { p: Array.from(pos), n: Array.from(nrm), uv: Array.from(A.uv), si: Array.from(A.skinIndex), sw: Array.from(A.skinWeight, (x) => x / 255), f: fields.map((f) => Array.from(f)) };
-  const edgeCache = new Map<string, number>();
+  // plain-array copies of the body are made once per body and per asset; each cut then copies them with
+  // slice(), which is a fast block copy (Array.from on typed arrays was most of the cost of a build)
+  let base = poolBase.get(pos);
+  if (!base || base.nrm !== nrm) { base = { nrm, p: toArr(pos), n: toArr(nrm) }; poolBase.set(pos, base); }
+  const fixed = (poolFixed ??= { uv: toArr(A.uv), si: toArr(A.skinIndex), sw: toArr(A.skinWeight, 1 / 255) });
+  const pool: Pool = { p: base.p.slice(), n: base.n.slice(), uv: fixed.uv.slice(), si: fixed.si.slice(), sw: fixed.sw.slice(), f: fields.map((f) => toArr(f)) };
+  const edgeCache = new Map<number, number>();
+  const NV = 1 << 20;
   const cut = (a: number, b: number, k: number): number => {
-    const key = `${Math.min(a, b)}_${Math.max(a, b)}_${k}`;
+    const key = (Math.min(a, b) * NV + Math.max(a, b)) * 8 + k;
     const hit = edgeCache.get(key);
     if (hit !== undefined) return hit;
     const fa = pool.f[k][a], fb = pool.f[k][b];
@@ -354,8 +388,18 @@ function cutBody(pos: Float32Array, nrm: Float32Array, fields: Float32Array[], t
     }
     return [inside, outside];
   };
+  const F = pool.f;
   for (let t = 0; t < tris.length; t += 3) {
-    let polys = [[tris[t], tris[t + 1], tris[t + 2]]];
+    const a = tris[t], b = tris[t + 1], c = tris[t + 2];
+    // fast path: a triangle no field crosses goes whole into the first field it is inside (or the rest)
+    let whole = -2;
+    for (let k = 0; k < F.length; k++) {
+      const fa = F[k][a] < 0, fb = F[k][b] < 0, fc = F[k][c] < 0;
+      if (fa !== fb || fa !== fc) { whole = -3; break; }
+      if (fa) { whole = k; break; }
+    }
+    if (whole !== -3) { (whole >= 0 ? buckets[whole] : rest).push(a, b, c); continue; }
+    let polys = [[a, b, c]];
     for (let k = 0; k < fields.length && polys.length; k++) {
       const next: number[][] = [];
       for (const poly of polys) {
@@ -612,9 +656,12 @@ function bridgeHollows(P: Float32Array, n: number, b: Bridge) {
 }
 
 function poolGeometry(pool: Pool, indices: number[], offset: number, uvScale: number, smooth: number, bridge?: Bridge, hang?: Hang): THREE.BufferGeometry {
-  const used = Array.from(new Set(indices)).sort((a, b) => a - b);
-  const remap = new Map<number, number>();
-  used.forEach((v, i) => remap.set(v, i));
+  const mark = new Uint8Array(pool.p.length / 3);
+  for (let i = 0; i < indices.length; i++) mark[indices[i]] = 1;
+  const used: number[] = [];
+  for (let i = 0; i < mark.length; i++) if (mark[i]) used.push(i);
+  const remap = new Int32Array(pool.p.length / 3);
+  used.forEach((v, i) => { remap[v] = i; });
   const n = used.length;
   const P = new Float32Array(n * 3), N = new Float32Array(n * 3), U = new Float32Array(n * 2), SI = new Uint16Array(n * 4), SW = new Float32Array(n * 4);
   used.forEach((v, i) => {
@@ -622,34 +669,56 @@ function poolGeometry(pool: Pool, indices: number[], offset: number, uvScale: nu
     U[i * 2] = pool.uv[v * 2] * uvScale; U[i * 2 + 1] = pool.uv[v * 2 + 1] * uvScale;
     for (let d = 0; d < 4; d++) { SI[i * 4 + d] = pool.si[v * 4 + d]; SW[i * 4 + d] = pool.sw[v * 4 + d]; }
   });
-  const idx = indices.map((v) => remap.get(v)!);
+  const idx = indices.map((v) => remap[v]);
   // bridge first so the drape smoothing below blends the bridged area into the rest of the cloth
   if (bridge) bridgeHollows(P, n, bridge);
   if (hang) hangCloth(P, n, SI, SW, hang);
   if (smooth) {
     // relax interior vertices so the fabric bridges hollows; boundary vertices stay on the cut line
-    const nb: Set<number>[] = Array.from({ length: n }, () => new Set());
-    const ec = new Map<string, number>();
-    const pkey = (i: number) => `${P[i * 3].toFixed(5)},${P[i * 3 + 1].toFixed(5)},${P[i * 3 + 2].toFixed(5)}`;
-    const weld = new Map<string, number>();
+
+    // weld vertices at the same spot (UV seams, cut points): sort by quantised position and sweep
     const rep = new Int32Array(n);
-    for (let i = 0; i < n; i++) { const k = pkey(i); if (!weld.has(k)) weld.set(k, i); rep[i] = weld.get(k)!; }
+    const Q = new Int32Array(n * 3);
+    for (let i = 0; i < n * 3; i++) Q[i] = Math.round(P[i] * 1e5);
+    const order = Array.from({ length: n }, (_, i) => i).sort((a, b) => (Q[a * 3] - Q[b * 3]) || (Q[a * 3 + 1] - Q[b * 3 + 1]) || (Q[a * 3 + 2] - Q[b * 3 + 2]));
+    for (let k = 0; k < n; k++) {
+      const i = order[k], j = k ? order[k - 1] : -1;
+      rep[i] = j >= 0 && Q[i * 3] === Q[j * 3] && Q[i * 3 + 1] === Q[j * 3 + 1] && Q[i * 3 + 2] === Q[j * 3 + 2] ? rep[j] : i;
+    }
+    // undirected edges as sorted numeric keys: runs of equal keys count how many triangles share an edge
+    const keys = new Float64Array(idx.length);
     for (let t = 0; t < idx.length; t += 3) for (let e = 0; e < 3; e++) {
       const a = rep[idx[t + e]], b = rep[idx[t + (e + 1) % 3]];
-      nb[a].add(b); nb[b].add(a);
-      const k = a < b ? `${a}_${b}` : `${b}_${a}`;
-      ec.set(k, (ec.get(k) ?? 0) + 1);
+      keys[t + e] = a < b ? a * n + b : b * n + a;
     }
+    keys.sort();
     const boundary = new Uint8Array(n);
-    const bnb: number[][] = Array.from({ length: n }, () => []);
-    for (const [k, c] of ec) if (c === 1) { const [a, b] = k.split('_').map(Number); boundary[a] = boundary[b] = 1; bnb[a].push(b); bnb[b].push(a); }
+    const bnb: number[][] = [];
+    const deg = new Int32Array(n + 1);
+    const ua: number[] = [], ub: number[] = [];
+    for (let i = 0; i < keys.length;) {
+      let j = i + 1;
+      while (j < keys.length && keys[j] === keys[i]) j++;
+      const a = Math.floor(keys[i] / n), b = keys[i] - a * n;
+      if (a !== b) {
+        ua.push(a); ub.push(b); deg[a]++; deg[b]++;
+        if (j - i === 1) { boundary[a] = boundary[b] = 1; (bnb[a] ??= []).push(b); (bnb[b] ??= []).push(a); }
+      }
+      i = j;
+    }
+    // neighbours in compressed rows
+    const start = new Int32Array(n + 1);
+    for (let i = 0; i < n; i++) start[i + 1] = start[i] + deg[i];
+    const fill = start.slice(0, n);
+    const adj = new Int32Array(start[n]);
+    for (let e = 0; e < ua.length; e++) { adj[fill[ua[e]]++] = ub[e]; adj[fill[ub[e]]++] = ua[e]; }
     const base = new Float32Array(P);
     // the cut line itself: relax each edge vertex towards its two neighbours along the edge, so hems and
     // necklines are smooth curves instead of following the triangle steps of the cut
     for (let it = 0; it < 6; it++) {
       const Q = new Float32Array(P);
       for (let i = 0; i < n; i++) {
-        if (rep[i] !== i || bnb[i].length !== 2) continue;
+        if (rep[i] !== i || bnb[i]?.length !== 2) continue;
         const [a, b] = bnb[i];
         for (let d = 0; d < 3; d++) Q[i * 3 + d] = P[i * 3 + d] * 0.4 + (P[a * 3 + d] + P[b * 3 + d]) * 0.3;
       }
@@ -658,10 +727,11 @@ function poolGeometry(pool: Pool, indices: number[], offset: number, uvScale: nu
     for (let it = 0; it < smooth; it++) {
       const Q = new Float32Array(P);
       for (let i = 0; i < n; i++) {
-        if (rep[i] !== i || boundary[i] || !nb[i].size) continue;
+        const s0 = start[i], s1 = start[i + 1];
+        if (rep[i] !== i || boundary[i] || s1 === s0) continue;
         let x = 0, y = 0, z = 0;
-        for (const j of nb[i]) { x += P[j * 3]; y += P[j * 3 + 1]; z += P[j * 3 + 2]; }
-        const k = nb[i].size;
+        for (let q = s0; q < s1; q++) { const j = adj[q]; x += P[j * 3]; y += P[j * 3 + 1]; z += P[j * 3 + 2]; }
+        const k = s1 - s0;
         Q[i * 3] = P[i * 3] * 0.5 + (x / k) * 0.5; Q[i * 3 + 1] = P[i * 3 + 1] * 0.5 + (y / k) * 0.5; Q[i * 3 + 2] = P[i * 3 + 2] * 0.5 + (z / k) * 0.5;
       }
       P.set(Q);
@@ -728,9 +798,40 @@ function topology(): Topology {
 
 const buildCache = new Map<string, HumanBuild>();
 
+/** new meshes for a rig sharing the template geometry and materials */
+function cloneTemplates(templates: THREE.Object3D[], skeleton: THREE.Skeleton): THREE.Object3D[] {
+  return templates.map((t) => {
+    let o: THREE.Object3D;
+    if ((t as THREE.SkinnedMesh).isSkinnedMesh) {
+      const src = t as THREE.SkinnedMesh;
+      const m = new THREE.SkinnedMesh(src.geometry, src.material);
+      m.castShadow = src.castShadow;
+      m.receiveShadow = true;
+      m.frustumCulled = false;
+      m.bind(skeleton, new THREE.Matrix4());
+      o = m;
+    } else {
+      const src = t as THREE.Mesh;
+      o = new THREE.Mesh(src.geometry, src.material);
+      o.castShadow = src.castShadow;
+      o.position.copy(src.position); o.rotation.copy(src.rotation); o.scale.copy(src.scale);
+    }
+    o.userData = { ...t.userData };
+    return o;
+  });
+}
+
+function remember(key: string, hb: HumanBuild) {
+  if (buildCache.size > 96) buildCache.delete(buildCache.keys().next().value!);
+  buildCache.set(key, hb);
+}
+
+export const appearanceKey = (a: Appearance) => JSON.stringify(a);
+export function hasHumanBuild(a: Appearance): boolean { return buildCache.has(appearanceKey(a)); }
+
 /** Cached per appearance: the body blend and garment cuts run once, later rigs share the geometry. */
 export function buildRealHuman(a: Appearance): HumanBuild {
-  const key = JSON.stringify(a);
+  const key = appearanceKey(a);
   const hit = buildCache.get(key);
   if (hit) return hit;
   const raw = buildRealHumanUncached(a);
@@ -739,28 +840,65 @@ export function buildRealHuman(a: Appearance): HumanBuild {
     joints: raw.joints,
     meshes: (skeleton) => {
       if (!templates) { templates = raw.meshes(skeleton); return templates; }
-      return templates.map((t) => {
-        let o: THREE.Object3D;
-        if ((t as THREE.SkinnedMesh).isSkinnedMesh) {
-          const src = t as THREE.SkinnedMesh;
-          const m = new THREE.SkinnedMesh(src.geometry, src.material);
-          m.castShadow = m.receiveShadow = true;
-          m.frustumCulled = false;
-          m.bind(skeleton, new THREE.Matrix4());
-          o = m;
-        } else {
-          const src = t as THREE.Mesh;
-          o = new THREE.Mesh(src.geometry, src.material);
-          o.position.copy(src.position); o.rotation.copy(src.rotation); o.scale.copy(src.scale);
-        }
-        o.userData = { ...t.userData };
-        return o;
-      });
+      return cloneTemplates(templates, skeleton);
     },
   };
-  if (buildCache.size > 96) buildCache.delete(buildCache.keys().next().value!);
-  buildCache.set(key, hb);
+  remember(key, hb);
   return hb;
+}
+
+// ------------------------------------------------------------------ building in a worker
+interface AttrData { array: ArrayLike<number>; itemSize: number; type: string }
+interface ObjData { skinned: boolean; attrs: Record<string, AttrData>; index: { array: ArrayLike<number>; type: string } | null; spec: MatSpec; castShadow: boolean; attach?: string; worldPos?: number[]; pos: number[]; rot: number[]; scale: number[] }
+export interface HumanData { joints: Record<string, number[]>; objs: ObjData[] }
+
+/** (worker) build a body and flatten it to plain arrays for the main thread */
+export function serializeHuman(a: Appearance): { data: HumanData; transfer: ArrayBuffer[] } {
+  const raw = buildRealHumanUncached(a);
+  const objs = raw.meshes(new THREE.Skeleton([]));
+  const transfer: ArrayBuffer[] = [];
+  const copy = (arr: ArrayLike<number> & { constructor: any; slice?: () => any }) => { const c = (arr as any).slice(); transfer.push(c.buffer); return c; };
+  const data: HumanData = { joints: Object.fromEntries(Object.entries(raw.joints).map(([k, v]) => [k, [v.x, v.y, v.z]])), objs: [] };
+  for (const o of objs) {
+    const m = o as THREE.Mesh;
+    const attrs: Record<string, AttrData> = {};
+    for (const [name, at] of Object.entries(m.geometry.attributes)) {
+      const ba = at as THREE.BufferAttribute;
+      attrs[name] = { array: copy(ba.array as any), itemSize: ba.itemSize, type: ba.array.constructor.name };
+    }
+    const ix = m.geometry.index;
+    const spec = ((m.material as any).userData?.spec ?? ['std', 'missing', { color: '#ff00ff' }]) as MatSpec;
+    data.objs.push({
+      skinned: !!(m as THREE.SkinnedMesh).isSkinnedMesh, attrs, index: ix ? { array: copy(ix.array as any), type: ix.array.constructor.name } : null, spec, castShadow: m.castShadow,
+      attach: o.userData.attach, worldPos: o.userData.worldPos ? (o.userData.worldPos as THREE.Vector3).toArray() : undefined,
+      pos: o.position.toArray(), rot: [o.rotation.x, o.rotation.y, o.rotation.z], scale: o.scale.toArray(),
+    });
+  }
+  return { data, transfer };
+}
+
+const ARRAYS: Record<string, any> = { Float32Array, Uint16Array, Uint32Array, Int16Array, Uint8Array, Int32Array, Int8Array };
+
+/** (main thread) take a body built in the worker into the cache */
+export function adoptHuman(a: Appearance, data: HumanData) {
+  const templates: THREE.Object3D[] = data.objs.map((d) => {
+    const g = new THREE.BufferGeometry();
+    for (const [name, at] of Object.entries(d.attrs)) {
+      const arr = at.array instanceof ARRAYS[at.type] ? at.array : new ARRAYS[at.type](at.array);
+      g.setAttribute(name, new THREE.BufferAttribute(arr, at.itemSize));
+    }
+    if (d.index) g.setIndex(new THREE.BufferAttribute(d.index.array instanceof ARRAYS[d.index.type] ? d.index.array : new ARRAYS[d.index.type](d.index.array), 1));
+    g.computeBoundingSphere();
+    const material = materialFromSpec(d.spec);
+    const o: THREE.Mesh = d.skinned ? new THREE.SkinnedMesh(g, material) : new THREE.Mesh(g, material);
+    o.castShadow = d.castShadow;
+    o.position.fromArray(d.pos); o.rotation.set(d.rot[0], d.rot[1], d.rot[2]); o.scale.fromArray(d.scale);
+    if (d.attach) o.userData.attach = d.attach;
+    if (d.worldPos) o.userData.worldPos = new THREE.Vector3().fromArray(d.worldPos);
+    return o;
+  });
+  const joints = Object.fromEntries(Object.entries(data.joints).map(([k, v]) => [k, new THREE.Vector3(v[0], v[1], v[2])]));
+  remember(appearanceKey(a), { joints, meshes: (skeleton) => cloneTemplates(templates, skeleton) });
 }
 
 function buildRealHumanUncached(a: Appearance): HumanBuild {
@@ -881,7 +1019,7 @@ function buildRealHumanUncached(a: Appearance): HumanBuild {
       out.push(m);
       return m;
     };
-    sk(poolGeometry(pool, visibleSkin, 0, 1, 0), skinMaterial(a.skin, a.hairColor, fem));
+    sk(poolGeometry(pool, visibleSkin, 0, 1, 0), mat('skin', a.skin, a.hairColor, fem));
     if (A.lashTris.length) {
       // the lash strips are long: draw them shorter and solid, so they read as a dark lash line
       const lg = poolGeometry(pool, Array.from(A.lashTris), 0, 1, 0);
@@ -896,34 +1034,34 @@ function buildRealHumanUncached(a: Appearance): HumanBuild {
         lp.setXYZ(i, e.c.x + d.x, e.c.y + d.y, e.c.z + d.z);
       }
       lp.needsUpdate = true;
-      sk(lg, lashMaterial(a.hairColor));
+      sk(lg, mat('lash', a.hairColor));
     }
     const shirt = cutBody(pos, nrm, [fTopLong], A.index);
     const shirtGeo = torsoOnly(poolGeometry(shirt.pool, shirt.buckets[0], 0.011, 6, 6, bridge), bi('neck'), bi('head'), bi('chest'));
-    sk(shirtGeo, cloth(g.top.color, g.top.tex));
+    sk(shirtGeo, mat('cloth', g.top.color, g.top.tex, 0.85));
     // ribbed neckband along the neckline
     const band = necklineBand(shirtGeo, neckBase - 0.12, 0.0075, bi('chest'));
-    if (band) sk(band, cloth(g.top.collar ?? g.top.color, g.top.tex, 0.9));
+    if (band) sk(band, mat('cloth', g.top.collar ?? g.top.color, g.top.tex, 0.9));
     void topTris;
-    sk(poolGeometry(pool, botTris, 0.008, 6, 8, bridge, legHang), cloth(g.bottom.color, g.bottom.tex, 0.9));
+    sk(poolGeometry(pool, botTris, 0.008, 6, 8, bridge, legHang), mat('cloth', g.bottom.color, g.bottom.tex, 0.9));
     const style = SHOE_STYLE[a.outfit] ?? 'shoe_trainer';
     const shoes = hasModel(style) ? shoeGeometries(style, pos, W.foot, [joints.footL.x, joints.footR.x], [bi('footL'), bi('footR')]) : [];
     if (shoes.length) {
       // real shoes replace the feet
-      for (const sh of shoes) sk(sh.geo, sh.paint ? cached(`shoe${g.shoes}`, () => new THREE.MeshStandardMaterial({ color: g.shoes, roughness: 0.45, metalness: 0.05 })) : cached(`shoepart${sh.color.getHexString()}`, () => new THREE.MeshStandardMaterial({ color: sh.color, roughness: 0.6 })));
-    } else sk(poolGeometry(pool, shoeTris, 0.011, 4, 10), cached(`shoe${g.shoes}`, () => new THREE.MeshStandardMaterial({ color: g.shoes, roughness: 0.4, metalness: 0.05 })));
+      for (const sh of shoes) sk(sh.geo, sh.paint ? mat('std', `shoe${g.shoes}`, { color: g.shoes, roughness: 0.45, metalness: 0.05 }) : mat('std', `shoepart${sh.color.getHexString()}`, { color: `#${sh.color.getHexString()}`, roughness: 0.6 }));
+    } else sk(poolGeometry(pool, shoeTris, 0.011, 4, 10), mat('std', `shoe${g.shoes}`, { color: g.shoes, roughness: 0.45, metalness: 0.05 }));
     if (ov?.kind === 'apron') {
-      const apronM = cloth(ov.color, 'twill', 0.85);
+      const apronM = mat('cloth', ov.color, 'twill', 0.85);
       const panel = apronPanel(pos, joints, shoulderY - 0.1, kneeY + 0.1, waist);
       sk(panel, apronM);
       for (const strap of apronStraps(pos, panel, joints, waist)) { strap.material = apronM; out.push(strap); }
     } else if (ov) {
       const over = cutBody(pos, nrm, [fOver], A.index);
       const thick = ov.kind === 'vest' ? 0.018 : 0.017;
-      sk(torsoOnly(poolGeometry(over.pool, over.buckets[0], thick, 6, 10, bridge), bi('neck'), bi('head'), bi('chest')), cloth(ov.color, ov.kind === 'vest' ? 'hivis' : 'suit', ov.kind === 'vest' ? 0.5 : 0.85));
+      sk(torsoOnly(poolGeometry(over.pool, over.buckets[0], thick, 6, 10, bridge), bi('neck'), bi('head'), bi('chest')), mat('cloth', ov.color, ov.kind === 'vest' ? 'hivis' : 'suit', ov.kind === 'vest' ? 0.5 : 0.85));
     }
     if (g.tie) {
-      const tieM = cached(`tie${g.tie}`, () => new THREE.MeshStandardMaterial({ color: g.tie!, roughness: 0.45, side: THREE.DoubleSide }));
+      const tieM = mat('std', `tie${g.tie}`, { color: g.tie!, roughness: 0.45, side: THREE.DoubleSide });
       const shape = new THREE.Shape();
       shape.moveTo(-0.018, 0); shape.lineTo(0.018, 0); shape.lineTo(0.034, -0.36); shape.lineTo(0, -0.4); shape.lineTo(-0.034, -0.36); shape.lineTo(-0.018, 0);
       const tie = new THREE.Mesh(new THREE.ShapeGeometry(shape), tieM);
@@ -939,14 +1077,14 @@ function buildRealHumanUncached(a: Appearance): HumanBuild {
     // hair: the scalp region cut along the hairline, lifted off the head per style
     if (style !== 'bald' && hairTris.length) {
       const thick = style === 'curly' ? 0.022 : style === 'long' ? 0.014 : style === 'bun' ? 0.008 : 0.007;
-      const hairM = cached(`hhair${a.hairColor}${style}`, () => new THREE.MeshStandardMaterial({ color: '#ffffff', map: hairTexture(a.hairColor, style === 'curly'), roughness: 0.5, side: THREE.DoubleSide }));
+      const hairM = mat('hair', a.hairColor, style);
       // the hair layer plus a hair-coloured scalp under it (so thin spots never show bare skin), as one mesh
       sk(mergeGeometries([poolGeometry(pool, hairTris, thick, 9, 3), poolGeometry(pool, hairTris, 0.001, 9, 0)])!, hairM);
       // strand shells: progressively sparser layers of loose strands above the hair, for a soft, fuzzy outline
       const shells = style === 'curly' ? 4 : 3;
       const step = style === 'curly' ? 0.006 : 0.0035;
       for (let k = 1; k <= shells; k++) {
-        const shellM = cached(`hshell${a.hairColor}${style}${k}`, () => new THREE.MeshStandardMaterial({ color: '#ffffff', map: strandTexture(a.hairColor, style === 'curly', k), roughness: 0.55, alphaTest: 0.35 + k * 0.1, side: THREE.DoubleSide }));
+        const shellM = mat('shell', a.hairColor, style, k);
         const shell = sk(poolGeometry(pool, hairTris, thick + k * step, 9, 3), shellM);
         shell.castShadow = false;
       }
@@ -970,7 +1108,7 @@ function buildRealHumanUncached(a: Appearance): HumanBuild {
     const eyeColor = ['#4a6b8a', '#5a4632', '#3b2a1c', '#4f6b3a'][Math.abs(hashStr(a.skin + a.hairColor)) % 4];
     // both eyeballs in one mesh on the head bone; texture centre faces +z
     const eyeGeo = mergeGeometries(eyes.map((e) => new THREE.SphereGeometry(e.r * 0.98, 20, 16).rotateY(-Math.PI / 2).translate(e.c.x - joints.head.x, e.c.y - joints.head.y, e.c.z - joints.head.z)))!;
-    const em = new THREE.Mesh(eyeGeo, cached(`eye${eyeColor}`, () => new THREE.MeshPhysicalMaterial({ map: irisTexture(eyeColor), roughness: 0.15, clearcoat: 1, clearcoatRoughness: 0.05 })));
+    const em = new THREE.Mesh(eyeGeo, mat('eye', eyeColor));
     em.userData.attach = 'head';
     em.userData.worldPos = joints.head.clone();
     out.push(em);

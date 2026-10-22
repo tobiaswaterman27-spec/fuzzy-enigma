@@ -10,6 +10,7 @@ import { buildingAt, getWorld, type Interactable, SHELF_LAYOUT, PALLET_X, SHOPS,
 import { ITEMS } from '../sim/items';
 import { count, total, firstItem } from '../sim/inventory';
 import { SHELF_CAPACITY } from '../sim/retail';
+import { buildOneOnMainThread, requestHuman, workerActive } from './humanBuilder';
 
 /** realistic bodies are costly to cut and drape, so outfit/body rebuilds are spread over frames */
 let buildBudget = 0;
@@ -78,7 +79,8 @@ class PersonView {
     if (this.binbag) this.binbag.visible = root.visible;
     if (!root.visible) { root.position.set(p.pos.x, 0, p.pos.z); return; }
     const key = JSON.stringify(p.appearance);
-    if (key !== this.outfitKey && buildBudget > 0) {
+    // a change of clothes waits for the new body (built in the background) and then swaps it in
+    if (key !== this.outfitKey && (requestHuman(p.appearance, true) || (!workerActive() && buildBudget > 0))) {
       buildBudget--;
       const prev = JSON.parse(this.outfitKey);
       if (prev.build !== p.appearance.build || prev.height !== p.appearance.height || prev.frame !== p.appearance.frame || prev.skin !== p.appearance.skin) {
@@ -677,7 +679,22 @@ export class Views {
     this.queueMarker.rotation.x = -Math.PI / 2;
     this.queueMarker.position.set(22, 0.1, -11.7);
     scene.add(this.queueMarker);
+    // stock drawn with instancing sits indoors: no sun shadows, and only drawn when you are near it or
+    // in the same building (there are thousands of small items in the shops and warehouse)
+    for (const o of scene.children) {
+      const m = o as THREE.InstancedMesh;
+      if (!m.isInstancedMesh) continue;
+      const c = new THREE.Vector3(), t = new THREE.Matrix4(), p = new THREE.Vector3();
+      const n = m.instanceMatrix.count;
+      for (let i = 0; i < n; i++) { m.getMatrixAt(i, t); c.add(p.setFromMatrixPosition(t)); }
+      c.divideScalar(Math.max(1, n));
+      m.castShadow = false;
+      this.stock.push({ mesh: m, x: c.x, z: c.z, bid: buildingAt({ x: c.x, z: c.z })?.id ?? null });
+    }
   }
+  /** instanced stock meshes, shown by distance */
+  private stock: { mesh: THREE.InstancedMesh; x: number; z: number; bid: string | null }[] = [];
+  private stockTick = 0;
 
   /** hygiene rating stickers in the shop and cafe windows, by the entrance */
   private updateStickers(state: GameState) {
@@ -710,6 +727,9 @@ export class Views {
 
   update(state: GameState, dt: number, viewer?: { x: number; z: number }, viewerInside?: string | null, speech?: Map<string, { text: string; until: number }>) {
     buildBudget = 1;
+    // without a worker, bodies are built here, one per frame at most
+    if (!workerActive() && buildOneOnMainThread()) buildBudget = 0;
+    if (viewer && this.stockTick++ % 10 === 0) for (const s of this.stock) s.mesh.visible = (!!viewerInside && viewerInside === s.bid) || Math.hypot(s.x - viewer.x, s.z - viewer.z) < 32;
     // personal space: people closer than ~0.6 m are drawn shuffled apart (the player never moves)
     const vis = Object.values(state.people).filter((p) => p.visible && (!viewer || Math.hypot(p.pos.x - viewer.x, p.pos.z - viewer.z) < 40));
     const want = new Map<string, { x: number; z: number }>();
@@ -733,7 +753,13 @@ export class Views {
     }
     for (const p of Object.values(state.people)) {
       let v = this.people.get(p.id);
-      if (!v) { v = new PersonView(p, this.scene); this.people.set(p.id, v); }
+      if (!v) {
+        // a new person is drawn once their body has been built (in the background); nearer people first
+        const close = !viewer || p.id === state.playerId || Math.hypot(p.pos.x - viewer.x, p.pos.z - viewer.z) < 40;
+        if (!p.visible || !requestHuman(p.appearance, close)) continue;
+        v = new PersonView(p, this.scene);
+        this.people.set(p.id, v);
+      }
       // people far away, or inside another building while we are elsewhere, are not drawn at all
       let near = true;
       if (viewer && p.id !== 'player') {

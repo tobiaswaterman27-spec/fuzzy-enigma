@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import type { GameState } from '../sim/types';
 import { PLOTS, STAGES, courses } from '../sim/construction';
-import { modelInstance, fitModel } from './models';
+import { modelInstance, fitModel, mergeChildren } from './models';
 import { tex, worldUV, normalOf } from './textures';
 
 const WALL_H = 5.2;
@@ -61,6 +61,7 @@ export class Sites {
       const g = this.groups[i];
       while (g.children.length) g.remove(g.children[0]);
       this.build(g, pl, stage, prog, courses(state, i));
+      mergeChildren(g);
     });
   }
 
