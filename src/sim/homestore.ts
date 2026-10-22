@@ -82,7 +82,7 @@ export function homeStoreTick(state: GameState) {
     state.homeDesigns.flat = o.design;
     setHomeDesign(o.design);
     state.pendingHome = undefined;
-    news(state, 'good', 'Your new things are in', 'Harbour Home delivered and fitted your order at Flat 1.', true);
+    news(state, 'good', 'Your new things are in', 'Harbour Home delivered and fitted your order at Flat 5.', true);
   }
 }
 

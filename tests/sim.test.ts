@@ -1,3 +1,4 @@
+import { levelOf } from '../src/sim/world/levels';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   createNewGame, step, transfer, auditLedger, moneySupply, getWorld, segIntersectsRect, planRoute, astar,
@@ -45,7 +46,7 @@ describe('world layout & navigation', () => {
   it('no navigation edge passes through a collider', () => {
     const bad: string[] = [];
     for (const [a, list] of Object.entries(w.edges)) for (const b of list) {
-      if (a > b) continue;
+      if (a > b || levelOf(w.nodes[a].x) !== levelOf(w.nodes[b].x)) continue; // a flight of stairs
       for (const r of w.colliders) if (segIntersectsRect(w.nodes[a], w.nodes[b], r, 0.2)) { bad.push(`${a}-${b}`); break; }
     }
     expect(bad).toEqual([]);

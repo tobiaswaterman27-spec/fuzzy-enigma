@@ -7,7 +7,7 @@ import { fmtMoney } from './core';
 import { transfer } from './ledger';
 import { news, lifeEvent } from './events';
 import { createContainer } from './inventory';
-import { locationOf } from './world/layout';
+import { getWorld, locationOf } from './world/layout';
 import { resolveCircle } from './world/nav';
 import { crime } from './health';
 
@@ -83,10 +83,39 @@ export function stealCar(state: GameState, personId: Id, pos: { x: number; z: nu
   return 'You drag the driver out and take the car. W/S to drive, A/D to steer, E to get out.';
 }
 
+export const PARKED_BODIES = ['car', 'saloon', 'suv', 'car', 'sports'];
+/** smash the window of a car parked at the kerb and drive it away (the alarm goes off) */
+export function stealParked(state: GameState, personId: Id, idx: number): string {
+  const w = getWorld();
+  const c = w.parked[idx];
+  if (!c || (state.takenParked ?? []).includes(idx)) return 'That car has gone.';
+  (state.takenParked ??= []).push(idx);
+  stealCar(state, personId, { ...c.pos }, c.rot, c.color, PARKED_BODIES[idx % PARKED_BODIES.length]);
+  return 'The glass goes in and the alarm wails. You reach in, get it started and go. W/S to drive, A/D to steer, E to get out.';
+}
+
+/** someone's own car, parked: break in and take it. They will know it was you if anyone saw */
+export function stealOwnedCar(state: GameState, personId: Id, carId: Id): string {
+  const v = state.vehicles[carId];
+  const p = state.people[personId];
+  if (!v || v.kind !== 'car' || v.state !== 'parked' || v.ownerId === personId) return 'You cannot take that.';
+  const owner = state.people[v.ownerId];
+  v.stolen = state.minute; v.state = 'manual_out'; v.driverId = personId;
+  p.where = 'vehicle'; p.visible = false; p.pos = { ...v.pos };
+  lifeEvent(state, p, `Stole ${owner ? `${owner.name}'s` : 'a'} ${v.name}`);
+  if (owner) { lifeEvent(state, owner, `Had their ${v.name} stolen`); owner.needs.mood = Math.max(0, owner.needs.mood - 20); }
+  const seen = Object.values(state.people).some((o) => !o.isPlayer && o.visible && !o.dead && Math.hypot(o.pos.x - v.pos.x, o.pos.z - v.pos.z) < 25);
+  if (seen && owner) owner.relations[personId] = 0;
+  crime(state, 'taking a vehicle without consent', 2);
+  return `You break into ${owner ? `${owner.name.split(' ')[0]}'s` : 'the'} ${v.name} and hot-wire it. W/S to drive, A/D to steer, E to get out.`;
+}
+
 /** abandoned stolen cars are recovered by the police after a day */
 export function stolenTick(state: GameState) {
   for (const v of Object.values(state.vehicles)) {
     if (!v.stolen || v.driverId || state.minute - v.stolen < 1440) continue;
+    // someone's own car is found and handed back to them where it was left
+    if (state.people[v.ownerId]) { v.stolen = undefined; v.state = 'parked'; continue; }
     delete state.containers[v.cargoId];
     delete state.vehicles[v.id];
   }

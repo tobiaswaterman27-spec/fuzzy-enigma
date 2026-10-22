@@ -1,11 +1,13 @@
 // NavigationAndTransport: A* over the pedestrian graph plus collision helpers.
 import type { Vec2 } from '../types';
 import { getWorld, segIntersectsRect, type Rect } from './layout';
+import { navDist, sameLevel } from './levels';
 
-const d = (a: Vec2, b: Vec2) => Math.hypot(a.x - b.x, a.z - b.z);
+const d = navDist;
 
 /** line of sight between two points against all colliders (with an agent radius) */
 export function clearLine(a: Vec2, b: Vec2, radius = 0.25): boolean {
+  if (!sameLevel(a, b)) return false;
   for (const r of getWorld().colliders) if (segIntersectsRect(a, b, r, radius)) return false;
   return true;
 }

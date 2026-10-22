@@ -13,13 +13,15 @@ import { createLease } from './housing';
 import { initObjectives } from './objectives';
 import { defaultDesign } from './world/homes';
 import { setHomeDesign } from './world/layout';
-import { getWorld, HOUSE_IDS } from './world/layout';
+import { DWELLING_IDS, getWorld, HOUSE_IDS } from './world/layout';
+
+const homeName = (id: string) => getWorld().buildings.find((b) => b.id === id)?.name ?? id;
 import { homeDoor } from './npc';
 import { rand, randInt, pick } from './core';
 import { news } from './events';
 import { spawnDirt, SHELF_CAPACITY, shelfId } from './retail';
 
-export const SAVE_VERSION = 10;
+export const SAVE_VERSION = 11;
 
 export interface PlayerSetup {
   name: string;
@@ -264,14 +266,14 @@ export function createNewGame(seed: number, setup: PlayerSetup): GameState {
   pl.needs = { energy: 85, satiety: 55, hygiene: 70, mood: 60 };
   addItems(state.containers[pl.pantryId!], 'bread', 1);
   addItems(state.containers[pl.pantryId!], 'pasta', 1);
-  createLease(state, 'player', 'estates', 'flat', 'Flat 1, Marlow Court', 14000, 7);
+  createLease(state, 'player', 'estates', 'flat', 'Flat 5, Marlow Court', 14000, 7);
 
   // ---------------------------------------------------------- NPCs
   const npcs: { id: string; name: string; home: string; cash: number; job?: [string, string]; rent?: number; retired?: boolean; traits?: Partial<Traits>; skills?: Record<string, number>; search?: number }[] = [
     { id: 'p_harlan', name: 'Harlan Price', home: 'house_1', cash: 250000, job: ['market', 'manager'], traits: { conscientiousness: 0.85 } },
-    { id: 'p_dana', name: 'Dana Okafor', home: 'flat_upper', cash: 60000, job: ['market', 'assistant_pm'], rent: 12500, skills: { retail: 300 } },
+    { id: 'p_dana', name: 'Dana Okafor', home: 'mc_1a', cash: 60000, job: ['market', 'assistant_pm'], rent: 12500, skills: { retail: 300 } },
     { id: 'p_kofi', name: 'Kofi Mensah', home: 'house_2', cash: 35000, job: ['market', 'stocker_am'], skills: { retail: 120, warehouse: 140 } },
-    { id: 'p_lena', name: 'Lena Novak', home: 'flat_upper', cash: 28000, job: ['market', 'cleaner'], rent: 11500, skills: { cleaning: 200 } },
+    { id: 'p_lena', name: 'Lena Novak', home: 'mc_1b', cash: 28000, job: ['market', 'cleaner'], rent: 11500, skills: { cleaning: 200 } },
     { id: 'p_gail', name: 'Gail Fenwick', home: 'house_2', cash: 400000, retired: true },
     { id: 'p_marcus', name: 'Marcus Bell', home: 'house_3', cash: 80000, job: ['wholesale', 'driver'], rent: 15000 },
     { id: 'p_priya', name: 'Priya Nair', home: 'house_4', cash: 70000, job: ['wholesale', 'operative'], rent: 14500 },
@@ -280,18 +282,20 @@ export function createNewGame(seed: number, setup: PlayerSetup): GameState {
     { id: 'p_ken', name: 'Ken Walsh', home: 'house_1', cash: 50000, job: ['port', 'dock_early'] },
     { id: 'p_aisha', name: 'Aisha Bello', home: 'house_2', cash: 65000, job: ['port', 'dock_late'], rent: 13000 },
     { id: 'p_lewis', name: 'Lewis Grant', home: 'house_3', cash: 45000, job: ['port', 'crane'] },
-    { id: 'p_mei', name: 'Mei Chen', home: 'flat_upper', cash: 90000, job: ['port', 'clerk'], rent: 12500 },
+    { id: 'p_mei', name: 'Mei Chen', home: 'mc_3a', cash: 90000, job: ['port', 'clerk'], rent: 12500 },
     { id: 'p_owen', name: 'Owen Hart', home: 'house_6', cash: 40000, job: ['port', 'dock_mid'] },
     { id: 'p_sam', name: 'Sam Ortiz', home: 'house_4', cash: 30000, rent: 11000, skills: { warehouse: 220 }, traits: { ambition: 0.7 } },
     { id: 'p_joan', name: 'Joan Pike', home: 'house_5', cash: 400000, retired: true, traits: { sociability: 0.9 } },
     { id: 'p_tom', name: 'Tom Reyes', home: 'house_6', cash: 25000, rent: 0, skills: { retail: 160 }, search: 3 },
-    { id: 'p_nadia', name: 'Nadia Haddad', home: 'flat_upper', cash: 40000, rent: 0, skills: { retail: 60, cleaning: 80 }, search: 3 },
+    { id: 'p_nadia', name: 'Nadia Haddad', home: 'mc_3b', cash: 40000, rent: 0, skills: { retail: 60, cleaning: 80 }, search: 3 },
     { id: 'p_ben', name: 'Ben Ashworth', home: 'house_1', cash: 15000, rent: 0, skills: {}, search: 4, traits: { conscientiousness: 0.4 } },
     { id: 'p_ivy', name: 'Ivy Marsh', home: 'house_5', cash: 55000, job: ['homestore', 'sales'], rent: 12500, traits: { sociability: 0.85 } },
     { id: 'p_raj', name: 'Raj Patel', home: 'house_3', cash: 20000, job: ['market', 'stocker_pm'], rent: 0, skills: { retail: 90, warehouse: 60 } },
     { id: 'p_eve', name: 'Eve Doyle', home: 'house_6', cash: 18000, rent: 0, skills: { retail: 40 }, search: 4 },
     { id: 'p_luca', name: 'Luca Romano', home: 'house_2', cash: 22000, rent: 0, skills: { cooking: 80 }, search: 3 },
     { id: 'p_hana', name: 'Hana Sato', home: 'house_5', cash: 26000, rent: 0, skills: { retail: 110 }, search: 5 },
+    { id: 'p_olu', name: 'Olu Adebayo', home: 'mc_0a', cash: 320000, retired: true, traits: { sociability: 0.75, patience: 0.8 } },
+    { id: 'p_cara', name: 'Cara Quinn', home: 'mc_0b', cash: 24000, rent: 12000, skills: { cooking: 60, retail: 50 }, search: 2, traits: { ambition: 0.75 } },
     { id: 'p_dev', name: 'Dev Malik', home: 'house_4', cash: 30000, job: ['builders', 'labourer'], rent: 0, skills: { construction: 200 } },
   ];
   for (const n of npcs) {
@@ -307,7 +311,7 @@ export function createNewGame(seed: number, setup: PlayerSetup): GameState {
       c.performance = 65 + randInt(state, 0, 25);
     }
     if (n.rent) {
-      const l = createLease(state, p.id, 'estates', n.home, `${n.home === 'flat_upper' ? 'Upper flat, Marlow Court' : n.home}`, n.rent, 7);
+      const l = createLease(state, p.id, 'estates', n.home, homeName(n.home), n.rent, 7);
       l.dueDay = randInt(state, 0, 6);
       l.paidThroughDay = l.dueDay === 0 ? 7 : l.dueDay;
     }
@@ -325,7 +329,7 @@ export function createNewGame(seed: number, setup: PlayerSetup): GameState {
   startConstruction(state);
   refreshVacancies(state);
   spawnDirt(state, 'market');
-  news(state, 'info', 'Welcome to Harbourside', 'You have just moved into Flat 1, Marlow Court with a little savings. Rent is due every Monday. Find work at the Job Centre across Main Street.', true);
+  news(state, 'info', 'Welcome to Harbourside', 'You have just moved into Flat 5, Marlow Court (second floor: the stairs are in the lobby) with a little savings. Rent is due every Monday. Find work at the Job Centre across Main Street.', true);
   return state;
 }
 
@@ -344,9 +348,9 @@ export function spawnResident(state: GameState, homeId: Id): Person {
   p.npc!.searchFrom = state.minute;
   const pantry = state.containers[p.pantryId!];
   for (let i = 0; i < 4; i++) addItems(pantry, pick(state, PRODUCTS.filter((k) => ITEMS[k].satiety > 0)), 1);
-  if ((HOUSE_IDS as readonly string[]).includes(homeId) || homeId === 'flat_upper') {
+  if (DWELLING_IDS.includes(homeId)) {
     const day = Math.floor(state.minute / 1440);
-    const l = createLease(state, p.id, 'estates', homeId, homeId === 'flat_upper' ? 'Upper flat, Marlow Court' : homeId, 12000 + randInt(state, 0, 4000), day + 7);
+    const l = createLease(state, p.id, 'estates', homeId, homeName(homeId), 12000 + randInt(state, 0, 4000), day + 7);
     l.dueDay = day % 7;
   }
   return p;

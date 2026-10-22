@@ -167,6 +167,7 @@ export type ActionType =
   | 'sell_catch'
   | 'lotto'
   | 'break_in'
+  | 'loot_till'
   | 'search'
   | 'eat'
   | 'change_outfit'
@@ -232,6 +233,8 @@ export interface MoveState {
   stuckTime: number;
   lastDist: number;
   replans: number;
+  /** metres climbed up (or down) the flight to the next waypoint, which is on another storey */
+  climb?: number;
 }
 
 export type PlanStep =
@@ -723,6 +726,8 @@ export interface GameState {
   lotto?: { owner: Id; draw: number; numbers: number[]; checked?: boolean }[];
   /** a hold-up in progress */
   robbery?: { robber: Id; clerk: Id; business: Id } | null;
+  /** kerbside parked cars (world.parked indices) that have been stolen */
+  takenParked?: number[];
   /** the player has died */
   gameOver?: { at: number; cause: string } | null;
   datingSince?: number;

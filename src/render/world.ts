@@ -3,7 +3,9 @@
 // street furniture and detailed interiors.
 import * as THREE from 'three';
 import { dartboardMesh } from './dartboard';
-import { getWorld, wallsFor, WALL_T, type BuildingDef, type Obstacle, type Rect } from '../sim/world/layout';
+import { LEVEL_DX, LEVEL_H, levelOf } from '../sim/world/levels';
+import { shopLocked } from '../sim/breakins';
+import { SHOP_IDS, getWorld, wallsFor, WALL_T, type BuildingDef, type Obstacle, type Rect } from '../sim/world/layout';
 import { fitModel, hasModel, modelInstance } from './models';
 import { FLOORS, WALLPAPERS } from '../sim/world/homes';
 import { tex, TILE, worldUV, planeUV, signTexture, normalOf } from './textures';
@@ -58,6 +60,9 @@ interface AnimDoor {
   t: number;
   /** a private house: the door only opens when someone answers it or it has been unlocked */
   house?: string;
+  /** a shop's public door: locked after hours, except to let people inside out */
+  shop?: string;
+  rect?: Rect;
 }
 
 export interface WorldView {
@@ -72,6 +77,7 @@ export interface WorldView {
   lightSpots: { x: number; y: number; z: number; intensity: number; distance: number; bid: string }[];
   occluders: THREE.Object3D[];
   doors: AnimDoor[];
+  parkedCars: THREE.Object3D[];
   update: (state: GameState, dt: number) => void;
 }
 
@@ -79,7 +85,7 @@ function facadeFor(b: BuildingDef): { mat: THREE.MeshStandardMaterial; tile: num
   const id = b.id;
   let t: THREE.CanvasTexture;
   let key: string;
-  if (id === 'flat' || id === 'terrace_w' || id === 'homestore') { t = tex.brick(b.color); key = `brick${b.color}`; }
+  if (id === 'marlow' || id === 'terrace_w' || id === 'homestore') { t = tex.brick(b.color); key = `brick${b.color}`; }
   else if (id === 'jobcentre' || id === 'chambers' || id === 'unit4' || id === 'wholesale' || id === 'warehouse_e' || id === 'garage_e') { t = tex.cladding(b.color); key = `clad${b.color}`; }
   else if (id.startsWith('house_')) { const hn = Number(id.slice(6)); if (hn % 2) { t = tex.brick(b.color); key = `brick${b.color}`; } else { t = tex.render(b.color); key = `render${b.color}`; } }
   else { t = tex.render(b.color); key = `render${b.color}`; }
@@ -152,10 +158,10 @@ export function buildWorld(scene: THREE.Scene): WorldView {
   for (const z of harbourZ) for (let i = -4; i <= 4; i++) g.add(box(0.55, 0.02, 2.6, paint, i * 1.05, 0.042, z, false));
 
   // ---------------- buildings
-  for (const b of w.buildings) buildBuilding(g, b, cutaway, windowsMat, doors);
+  for (const b of w.buildings) if (!b.unit) buildBuilding(g, b, cutaway, windowsMat, doors);
 
   // ---------------- furniture / props
-  for (const o of w.obstacles) g.add(buildObstacle(o));
+  for (const o of w.obstacles) g.add(o.kind === 'unitdoor' ? unitDoor(o, doors) : buildObstacle(o));
 
   // ---------------- street lamps
   const lampBulbs = M('#fff3c4', 0.4, { emissive: new THREE.Color('#ffcf70'), emissiveIntensity: 0 });
@@ -173,7 +179,8 @@ export function buildWorld(scene: THREE.Scene): WorldView {
   for (let i = 0; i < LIGHT_POOL; i++) { const pl = new THREE.PointLight('#ffcf80', 0, 18, 1.6); pl.position.y = 4.6; g.add(pl); lampLights.push(pl); }
 
   // ---------------- parked cars
-  w.parked.forEach((p, i) => g.add(buildCar(p.color, p.pos.x, p.pos.z, p.rot, false, ['car', 'saloon', 'suv', 'car', 'sports'][i % 5])));
+  // kept apart from the baked scenery: any of them can be stolen
+  const parkedCars = w.parked.map((p, i) => { const c = buildCar(p.color, p.pos.x, p.pos.z, p.rot, false, ['car', 'saloon', 'suv', 'car', 'sports'][i % 5]); c.traverse((o) => (o.userData.dynamic = true)); g.add(c); return c; });
 
   // ---------------- hedges and paths in front of houses
   const hedge = M('#3f6b37', 1);
@@ -186,10 +193,36 @@ export function buildWorld(scene: THREE.Scene): WorldView {
     g.add(box(Math.abs(fx - (east ? b.rect.x0 : b.rect.x1)) + 0.6, 0.04, 1.3, paving, (fx + (east ? b.rect.x0 : b.rect.x1)) / 2, 0.02, zc, false, TILE.paving));
   }
 
+  // upper storeys are built where they are simulated (LEVEL_DX east per floor): lift each piece onto
+  // its floor. Pieces not already in a building's cut-away set are grouped per storey, so the floors
+  // above you can be hidden while you look down into your own
+  {
+    g.updateMatrixWorld(true);
+    const inCut = new Set<THREE.Object3D>();
+    for (const c of cutaway.values()) { c.roof.forEach((o) => inCut.add(o)); c.walls.forEach((o) => inCut.add(o)); }
+    const bb = new THREE.Box3(), ctr = new THREE.Vector3();
+    for (const child of [...g.children]) {
+      if (!(child as THREE.Mesh).isMesh && !child.children.length) continue;
+      bb.setFromObject(child);
+      if (bb.isEmpty()) continue;
+      bb.getCenter(ctr);
+      const k = levelOf(ctr.x);
+      if (k <= 0) continue;
+      child.position.x -= k * LEVEL_DX;
+      child.position.y += k * LEVEL_H;
+      if (!inCut.has(child)) {
+        const key = `level:${k}`;
+        if (!cutaway.has(key)) cutaway.set(key, { roof: [], walls: [], fullH: 3.2 });
+        cutaway.get(key)!.roof.push(child);
+      }
+    }
+    for (const l of lightSpots) { const k = levelOf(l.x); if (k > 0) { l.x -= k * LEVEL_DX; l.y += k * LEVEL_H; } }
+  }
   bakeStatic(g, cutaway);
 
   const update = (state: GameState, dt: number) => {
     for (const f of fixtures) f(state, dt);
+    for (const i of state.takenParked ?? []) if (parkedCars[i]) parkedCars[i].visible = false;
     for (const d of doors) {
       let near = false;
       // a locked house door stays shut; it opens while someone is answering it
@@ -198,6 +231,7 @@ export function buildWorld(scene: THREE.Scene): WorldView {
         near = !!call && call.house === d.house && call.stage === 'open';
       } else for (const p of Object.values(state.people)) {
         if (!p.visible) continue;
+        if (d.shop && d.rect && shopLocked(state, d.shop) && !(p.pos.x > d.rect.x0 && p.pos.x < d.rect.x1 && p.pos.z > d.rect.z0 && p.pos.z < d.rect.z1)) continue;
         if (Math.hypot(p.pos.x - d.center.x, p.pos.z - d.center.z) < 2.6) { near = true; break; }
       }
       d.t = Math.max(0, Math.min(1, d.t + (near ? 1 : -1) * dt * 2.2));
@@ -208,7 +242,7 @@ export function buildWorld(scene: THREE.Scene): WorldView {
       }
     }
   };
-  return { group: g, cutaway, windowsMat, lampBulbs, lampLights, lightSpots, occluders: occ, doors, update };
+  return { group: g, cutaway, windowsMat, lampBulbs, lampLights, lightSpots, occluders: occ, doors, parkedCars, update };
 }
 
 /** world-space pieces of a mesh, one per material (multi-material boxes are split by their groups) */
@@ -405,126 +439,6 @@ function windowMesh(w: number, h: number, frameCol: string, lit: THREE.MeshStand
   return grp;
 }
 
-/** Marlow Court above the ground floor: a modern block of flats. Light render with charcoal cladding
- * framing the balcony bays, a glazed stair tower over the entrance, tall dark-framed windows, glass
- * balconies, a metal-capped parapet, a lift overrun and solar panels on the roof. */
-export const FLAT_CORE = { x0: 14.0, x1: 18.4 };
-function flatUpper(g: THREE.Group, b: BuildingDef, roofs: THREE.Object3D[], windowsMat: THREE.MeshStandardMaterial[]) {
-  const { x0, z0, x1, z1 } = b.rect;
-  const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, W = x1 - x0, D = z1 - z0;
-  const add = (o: THREE.Object3D) => { roofs.push(o); g.add(o); return o; };
-  const top = b.height, upH = top - 3.2;
-  const renderM = texMat(tex.render('#e9e6df'), 0.9);
-  const cladM = texMat(tex.cladding('#3c4146'), 0.55);
-  const frame = '#33373b';
-  const capM = metal('#a7adb2', 0.4);
-  const slabM = M('#d9d6cf', 0.8);
-  const railM = glassM();
-  const handM = metal('#2f3337', 0.4);
-  // the upper mass in render, with a thin shadow gap above the brick ground floor
-  add(box(W + WALL_T, upH, D + WALL_T, [renderM, renderM, M('#5b5f63', 0.9), M('#5b5f63', 0.9), renderM, renderM], cx, 3.2 + upH / 2, cz, true, TILE[`render#e9e6df`] ?? 2));
-  occ.push(roofs[roofs.length - 1]);
-  add(box(W + WALL_T + 0.06, 0.12, D + WALL_T + 0.06, M('#2c2f33', 0.7), cx, 3.26, cz));
-  // stair tower over the entrance: a glazed box standing proud of the facade, rising above the roof,
-  // with the flights and landings of the stairs visible behind the glass (lit at night)
-  const core = FLAT_CORE, coreW = core.x1 - core.x0, coreX = (core.x0 + core.x1) / 2, coreTop = top + 1.6;
-  const depth = 1.1, front = z0 - WALL_T / 2 - depth;
-  const coreH = coreTop - 3.2, coreY = 3.2 + coreH / 2;
-  add(box(0.25, coreH, depth, cladM, core.x0 + 0.125, coreY, front + depth / 2, true, 1.6));
-  add(box(0.25, coreH, depth, cladM, core.x1 - 0.125, coreY, front + depth / 2, true, 1.6));
-  add(box(coreW, 0.3, depth, cladM, coreX, coreTop - 0.15, front + depth / 2, true, 1.6));
-  add(box(coreW, 0.2, depth, cladM, coreX, 3.3, front + depth / 2, true, 1.6));
-  const well = M('#e7e3da', 0.85, { emissive: new THREE.Color('#000000') });
-  windowsMat.push(well);
-  add(box(coreW - 0.5, coreH - 0.5, 0.04, well, coreX, coreY, z0 - WALL_T / 2 - 0.02, false));
-  const treadM = M('#8c9196', 0.6), stringM = M('#5c6166', 0.5);
-  for (let f = 1; f <= 3; f++) {
-    const y0 = 3.2 * f;
-    // landing, then a flight rising across the tower and back
-    add(box(coreW - 0.5, 0.15, depth - 0.2, treadM, coreX, y0 + 0.1, front + depth / 2));
-    for (const [k, dir] of [[0, 1], [1, -1]] as const) {
-      const fl = new THREE.Mesh(new THREE.BoxGeometry((coreW - 0.5) / 2 + 0.3, 0.12, 0.42), stringM);
-      fl.position.set(coreX + dir * 0.3 - dir * 0.15, y0 + 0.9 + k * 1.6, front + 0.3 + k * 0.42);
-      fl.rotation.z = dir * 0.6;
-      fl.castShadow = false;
-      add(fl);
-      add(box(0.04, 0.9, 0.04, handM, coreX + dir * ((coreW - 0.5) / 2 - 0.1), y0 + 1.1 + k * 1.6, front + 0.3 + k * 0.42));
-    }
-  }
-  const coreGlass = new THREE.MeshPhysicalMaterial({ color: '#a9c2cf', roughness: 0.05, metalness: 0.1, transmission: 0, transparent: true, opacity: 0.38, depthWrite: false });
-  add(box(coreW - 0.5, coreH - 0.5, 0.03, coreGlass, coreX, coreY, front + 0.02, false));
-  for (let x = core.x0 + 0.25; x <= core.x1 - 0.2; x += (coreW - 0.5) / 4) add(box(0.07, coreH - 0.5, 0.1, M(frame, 0.5), x, coreY, front, false));
-  for (let f = 1; f <= 4; f++) add(box(coreW - 0.5, 0.09, 0.12, M(frame, 0.5), coreX, Math.min(3.2 * f + 0.25, coreTop - 0.3), front, false));
-  // lift overrun on the roof behind the tower
-  add(box(coreW + 0.3, 1.6, 3.2, cladM, coreX, top + 0.8, z0 + 1.6, true, 1.6));
-  // window bays on every side; balconies on the street front and the east (park) side
-  const rg = roomGlasses(windowsMat);
-  for (let f = 1; f < b.floors; f++) {
-    const fy = 3.2 * f;
-    for (const [side, len] of [['zmin', W], ['zmax', W], ['xmin', D], ['xmax', D]] as const) {
-      const n = Math.floor((len - 1.6) / 3.0);
-      const start = side === 'zmin' || side === 'zmax' ? x0 : z0;
-      for (let i = 0; i < n; i++) {
-        const along = start + 0.8 + 3.0 * (i + 0.5) + ((len - 1.6) - n * 3.0) / 2;
-        if (side === 'zmin' && along > core.x0 - 0.9 && along < core.x1 + 0.9) continue;
-        const balcony = (side === 'zmin' || side === 'xmax') && i % 2 === 1;
-        const ww = balcony ? 1.7 : 1.3, wh = balcony ? 2.25 : 1.8;
-        const wy = balcony ? fy + 0.08 + wh / 2 : fy + 0.55 + wh / 2;
-        const win = windowMesh(ww, wh, frame, rg[Math.abs(Math.floor(along * 7 + f * 13)) % rg.length]);
-        const off = WALL_T / 2 + 0.03;
-        const place = (o: THREE.Object3D, out: number, y: number) => {
-          if (side === 'zmin') { o.position.set(along, y, z0 - out); o.rotation.y = Math.PI; }
-          if (side === 'zmax') o.position.set(along, y, z1 + out);
-          if (side === 'xmin') { o.position.set(x0 - out, y, along); o.rotation.y = -Math.PI / 2; }
-          if (side === 'xmax') { o.position.set(x1 + out, y, along); o.rotation.y = Math.PI / 2; }
-          return add(o);
-        };
-        place(win, off, wy);
-        if (!balcony) continue;
-        // charcoal cladding fins framing the balcony bay, one storey high
-        for (const sgn of [-1, 1]) {
-          const fin = new THREE.Mesh(new THREE.BoxGeometry(0.22, 3.2, 1.3), cladM);
-          fin.castShadow = true;
-          const grp = new THREE.Group(); fin.position.set(sgn * 1.31, 0, 0.65); grp.add(fin);
-          place(grp, WALL_T / 2, fy + 1.6);
-        }
-        // the balcony: slab, glass balustrade, slim handrail, a light under the slab
-        const bal = new THREE.Group();
-        bal.add(box(2.4, 0.16, 1.25, slabM, 0, 0.08, 0.62));
-        bal.add(box(2.36, 0.95, 0.02, railM, 0, 0.62, 1.23, false));
-        bal.add(box(0.02, 0.95, 1.2, railM, -1.17, 0.62, 0.62, false));
-        bal.add(box(0.02, 0.95, 1.2, railM, 1.17, 0.62, 0.62, false));
-        bal.add(box(2.38, 0.04, 0.06, handM, 0, 1.11, 1.23));
-        bal.add(box(0.06, 0.04, 1.2, handM, -1.17, 1.11, 0.62));
-        bal.add(box(0.06, 0.04, 1.2, handM, 1.17, 1.11, 0.62));
-        const k = Math.abs(Math.floor(along + f * 5)) % 4;
-        if (k === 0) { bal.add(cyl(0.16, 0.12, 0.32, M('#9a5b3a', 0.8), 0.8, 0.32, 0.8, 10)); bal.add(cyl(0.22, 0.05, 0.4, M('#3f7f45', 0.9), 0.8, 0.65, 0.8, 8)); }
-        if (k === 1) { bal.add(box(0.45, 0.04, 0.45, handM, -0.6, 0.6, 0.7)); bal.add(box(0.45, 0.5, 0.04, handM, -0.6, 0.85, 0.48)); bal.add(cyl(0.25, 0.25, 0.03, handM, 0.2, 0.72, 0.75, 14)); }
-        if (k === 2) bal.add(box(1.4, 0.02, 0.9, M('#8a7a62', 0.9), 0, 0.17, 0.6, false));
-        place(bal, WALL_T / 2, fy);
-      }
-    }
-  }
-  // roof: membrane, metal-capped parapet, solar panels in rows
-  add(box(W + WALL_T, 0.1, D + WALL_T, M('#4d5155', 0.95), cx, top + 0.05, cz));
-  for (const [px, pz, pw, pd] of [[cx, z0 - WALL_T / 2, W + WALL_T + 0.1, 0.3], [cx, z1 + WALL_T / 2, W + WALL_T + 0.1, 0.3], [x0 - WALL_T / 2, cz, 0.3, D + WALL_T + 0.1], [x1 + WALL_T / 2, cz, 0.3, D + WALL_T + 0.1]] as const) {
-    add(box(pw, 0.55, pd, renderM, px, top + 0.27, pz, true, 2));
-    add(box(pw + 0.06, 0.06, pd + 0.08, capM, px, top + 0.58, pz));
-  }
-  const pv = M('#1d2a44', 0.25, { metalness: 0.4 });
-  const pvFrame = metal('#b9bec3', 0.4);
-  for (let row = 0; row < 3; row++) for (let col = 0; col < 5; col++) {
-    const px = x0 + 7.2 + col * 2.0, pz = z0 + 5 + row * 3.4;
-    const panel = new THREE.Group();
-    const face = box(1.8, 0.04, 1.1, pv, 0, 0, 0); face.castShadow = true; panel.add(face);
-    panel.add(box(1.84, 0.02, 1.14, pvFrame, 0, -0.03, 0));
-    panel.rotation.x = -0.45;
-    panel.position.set(px, top + 0.55, pz);
-    add(panel);
-    add(box(0.05, 0.5, 0.05, pvFrame, px, top + 0.3, pz + 0.4));
-  }
-}
-
 function buildBuilding(g: THREE.Group, b: BuildingDef, cutaway: WorldView['cutaway'], windowsMat: THREE.MeshStandardMaterial[], doors: AnimDoor[]) {
   const { x0, z0, x1, z1 } = b.rect;
   const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, W = x1 - x0, D = z1 - z0;
@@ -605,8 +519,7 @@ function buildBuilding(g: THREE.Group, b: BuildingDef, cutaway: WorldView['cutaw
       const sill = hz ? box(w.ww, 0.03, WALL_T, rev, w.along, w.wy - w.wh / 2 + 0.015, wz, false) : box(WALL_T, 0.03, w.ww, rev, wx, w.wy - w.wh / 2 + 0.015, w.along, false);
       g.add(sill);
     }
-    if (b.id === 'flat') flatUpper(g, b, roofs, windowsMat);
-    else if (b.height > 3.3) {
+    if (b.height > 3.3) {
       const upH = b.height - 3.2;
       const upper = box(W + WALL_T, upH, D + WALL_T, [facade.mat, facade.mat, M(b.roof), M(b.roof), facade.mat, facade.mat], cx, 3.2 + upH / 2, cz, true, facade.tile);
       roofs.push(upper);
@@ -664,7 +577,7 @@ function buildBuilding(g: THREE.Group, b: BuildingDef, cutaway: WorldView['cutaw
       }
     }
     const roofTop = b.height;
-    if (b.id !== 'flat') {
+    if (!b.stacked) {
       const roof = box(W + 0.6, 0.25, D + 0.6, texMat(tex.gravel(), 0.95), cx, roofTop + 0.12, cz, true, TILE.gravel);
       roofs.push(roof);
       g.add(roof);
@@ -674,7 +587,7 @@ function buildBuilding(g: THREE.Group, b: BuildingDef, cutaway: WorldView['cutaw
         g.add(par);
       }
     }
-    if (b.id !== 'flat') { const hv = box(1.6, 0.9, 1.1, metal('#9aa3a8'), x1 - 3, roofTop + 0.7, z0 + 3); roofs.push(hv); g.add(hv); }
+    if (!b.stacked) { const hv = box(1.6, 0.9, 1.1, metal('#9aa3a8'), x1 - 3, roofTop + 0.7, z0 + 3); roofs.push(hv); g.add(hv); }
     // a solid ceiling slab that also blocks sunlight, so no light leaks along the top of the walls
     const ceil = box(W + WALL_T, 0.08, D + WALL_T, M('#f3f1ec', 0.95), cx, 3.2, cz, true);
     ceil.receiveShadow = true;
@@ -687,7 +600,7 @@ function buildBuilding(g: THREE.Group, b: BuildingDef, cutaway: WorldView['cutaw
       lightSpots.push({ x: x0 + (W * (i + 0.5)) / nL, y: 2.9, z: cz, intensity: 7, distance: Math.max(W, D), bid: b.id });
     }
     for (const d of b.doors) addDoor(g, b, d.side, d.a, d.b, d.open, doors);
-    if (b.id === 'flat') {
+    if (b.id === 'marlow') {
       // entrance canopy, intercom panel and flat numbers by the communal door
       const main = b.doors[0];
       const mx = (main.a + main.b) / 2;
@@ -695,7 +608,7 @@ function buildBuilding(g: THREE.Group, b: BuildingDef, cutaway: WorldView['cutaw
       for (const sx of [-1, 1]) g.add(box(0.03, 0.5, 0.03, metal('#2f3337', 0.4), mx + sx * ((main.b - main.a) / 2 + 0.55), 3.0, z0 - 1.25));
       g.add(box(0.22, 0.38, 0.04, metal('#9aa1a8', 0.3), main.b + 0.4, 1.35, z0 - WALL_T / 2 - 0.03));
       for (let k = 0; k < 4; k++) g.add(box(0.05, 0.035, 0.02, M('#222', 0.4), main.b + 0.4, 1.47 - k * 0.07, z0 - WALL_T / 2 - 0.06, false));
-      const tag = signTexture('FLATS 1-8', '#222222', '#e6e1d6');
+      const tag = signTexture('FLATS 1-7', '#222222', '#e6e1d6');
       const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.5 * tag.aspect * 0.35, 0.5 * 0.35), new THREE.MeshStandardMaterial({ map: tag.tex, roughness: 0.6 }));
       plate.position.set(main.a - 0.55, 1.9, z0 - WALL_T / 2 - 0.02);
       plate.rotation.y = Math.PI;
@@ -792,7 +705,7 @@ function addDoor(g: THREE.Group, b: BuildingDef, side: string, a: number, c: num
       grp.add(leaf);
       parts.push({ obj: leaf, closed, open: new THREE.Vector3(s * (leafW / 2 + leafW * 0.95), 0, 0) });
     }
-    doors.push({ kind: 'slide', center, parts, t: 0 });
+    doors.push({ kind: 'slide', center, parts, t: 0, shop: SHOP_IDS.includes(b.id) ? b.id : undefined, rect: b.rect });
     grp.add(box(w + 1.2, 0.12, 1.2, M(b.trim, 0.6), 0, h + 0.5, out * 0.6));
   } else if (open) {
     // hinged wooden door that swings inward when someone approaches
@@ -802,7 +715,7 @@ function addDoor(g: THREE.Group, b: BuildingDef, side: string, a: number, c: num
     leaf.position.set(w / 2, 0, 0);
     pivot.add(leaf);
     grp.add(pivot);
-    doors.push({ kind: 'swing', center, parts: [{ obj: pivot, closed: new THREE.Vector3(0, 0, 0), open: -out * 1.4 }], t: 0, house: b.id.startsWith('house_') ? b.id : undefined });
+    doors.push({ kind: 'swing', center, parts: [{ obj: pivot, closed: new THREE.Vector3(0, 0, 0), open: -out * 1.4 }], t: 0, house: b.id.startsWith('house_') ? b.id : undefined, shop: SHOP_IDS.includes(b.id) ? b.id : undefined, rect: b.rect });
     grp.add(box(w + 0.8, 0.1, 0.9, M(b.trim, 0.6), 0, h + 0.35, out * 0.45));
   } else if (b.id === 'wholesale' && w > 4) {
     const rm = M('#9aa0a6', 0.6, { metalness: 0.4 });
@@ -816,6 +729,32 @@ function addDoor(g: THREE.Group, b: BuildingDef, side: string, a: number, c: num
   }
   grp.traverse((o) => (o.userData.dynamic = true));
   g.add(grp);
+}
+
+/** a flat's front door off the landing: a painted panel door in a frame that swings in when someone
+ * comes through. Other people's stay shut unless they let you in or you force them */
+function unitDoor(o: Obstacle, doors: AnimDoor[]): THREE.Object3D {
+  const r = o.rect;
+  const along = r.x1 - r.x0 > r.z1 - r.z0;
+  const w = along ? r.x1 - r.x0 : r.z1 - r.z0, h = 2.1;
+  const grp = new THREE.Group();
+  grp.position.set((r.x0 + r.x1) / 2, 0, (r.z0 + r.z1) / 2);
+  if (!along) grp.rotation.y = Math.PI / 2;
+  const frameM = M('#f3f0ea', 0.5);
+  grp.add(box(0.08, h + 0.05, 0.36, frameM, -w / 2 - 0.04, (h + 0.05) / 2, 0), box(0.08, h + 0.05, 0.36, frameM, w / 2 + 0.04, (h + 0.05) / 2, 0), box(w + 0.16, 0.1, 0.36, frameM, 0, h + 0.05, 0));
+  const pivot = new THREE.Group();
+  pivot.position.set(-w / 2 + 0.02, 0, 0);
+  const leaf = new THREE.Group();
+  const paint = o.ref === 'flat' ? '#2f4a5f' : ['#5b2a2a', '#2e4a3a', '#3a3f5a', '#6a5a3a', '#2f2f33', '#5a3a5a'][Math.abs((o.ref ?? '').charCodeAt(3) + (o.ref ?? '').charCodeAt(4)) % 6];
+  leaf.add(box(w - 0.04, h - 0.04, 0.045, M(paint, 0.45), (w - 0.04) / 2, (h - 0.04) / 2, 0));
+  leaf.add(box(0.12, 0.04, 0.05, metal('#c9b26b', 0.25), w - 0.15, 1.02, 0.04));
+  leaf.add(box(0.12, 0.04, 0.05, metal('#c9b26b', 0.25), w - 0.15, 1.02, -0.04));
+  leaf.add(box(0.14, 0.05, 0.01, metal('#c9b26b', 0.25), (w - 0.04) / 2, 1.55, 0.03));
+  pivot.add(leaf);
+  grp.add(pivot);
+  grp.traverse((x) => (x.userData.dynamic = true));
+  doors.push({ kind: 'swing', center: new THREE.Vector3(grp.position.x, 0, grp.position.z), parts: [{ obj: pivot, closed: new THREE.Vector3(), open: -1.45 }], t: 0, house: o.ref === 'flat' ? undefined : o.ref });
+  return grp;
 }
 
 function panelDoor(w: number, h: number) {
@@ -1002,7 +941,7 @@ function buildObstacle(o: Obstacle): THREE.Object3D {
       // line every wall face that bounds this room (doorways stay open)
       const wp = WALLPAPERS[o.color ?? 'cream'] ?? WALLPAPERS.cream;
       const mat = texMat(wallpaperTexture(o.color ?? 'cream'), wp.pattern === 'plain' ? 0.92 : 0.8);
-      const b = getWorld().buildings.find((bb) => bb.interior && r.x0 >= bb.rect.x0 - 0.5 && r.x1 <= bb.rect.x1 + 0.5 && r.z0 >= bb.rect.z0 - 0.5 && r.z1 <= bb.rect.z1 + 0.5);
+      const b = getWorld().buildings.find((bb) => bb.interior && !bb.unit && r.x0 >= bb.rect.x0 - 0.5 && r.x1 <= bb.rect.x1 + 0.5 && r.z0 >= bb.rect.z0 - 0.5 && r.z1 <= bb.rect.z1 + 0.5);
       if (!b) return grp;
       const H = 3.18;
       for (const wr of wallsFor(b)) {
@@ -1269,6 +1208,40 @@ function buildObstacle(o: Obstacle): THREE.Object3D {
           (geo.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
         }
       });
+      break;
+    }
+    case 'stairwell': {
+      // one storey of the stair core: the flight up to the next floor (from the front landing on even
+      // floors, the back landing on odd ones), the well wall between the two flights, and a balustrade
+      const level = Math.round(o.rot ?? 0), top = o.color === 'top';
+      const stepM = M('#b9b2a6', 0.8), noseM = M('#3a3a3a', 0.6), railM = metal('#2f3337', 0.4), wallM = M('#e6e0d6', 0.9);
+      const laneW = W / 2, n = 16, rise = 3.2 / n, go = D / n;
+      const up = level % 2 === 0 ? 1 : -1;
+      const laneX = level % 2 === 0 ? r.x0 + laneW / 2 : r.x1 - laneW / 2;
+      if (!top) for (let k = 0; k < n; k++) {
+        const h1 = rise * (k + 1), z = up > 0 ? r.z0 + go * (k + 0.5) : r.z1 - go * (k + 0.5);
+        grp.add(box(laneW - 0.06, 0.16, go + 0.02, stepM, laneX, h1 - 0.08, z));
+        grp.add(box(laneW - 0.06, 0.02, 0.04, noseM, laneX, h1, z - up * go / 2, false));
+      }
+      if (!top) {
+        // the sloping soffit under the flight
+        const soffit = box(laneW - 0.06, 0.12, Math.hypot(D, 3.2), wallM, laneX, 1.5, cz);
+        soffit.rotation.x = -up * Math.atan2(3.2, D);
+        grp.add(soffit);
+      }
+      // the well wall between the lanes, and handrails on posts
+      grp.add(box(0.1, 1.0, D, wallM, cx, 0.5, cz));
+      grp.add(box(0.14, 0.05, D + 0.04, M('#6b4a32', 0.5), cx, 1.02, cz));
+      const otherX = level % 2 === 0 ? r.x1 - 0.05 : r.x0 + 0.05;
+      grp.add(box(0.05, 0.05, D, railM, otherX, 1.0, cz, false));
+      for (let k = 0; k <= 4; k++) grp.add(box(0.04, 1.0, 0.04, railM, otherX, 0.5, r.z0 + (D * k) / 4, false));
+      if (!top) {
+        const rail = box(0.05, 0.05, Math.hypot(D, 3.2), railM, level % 2 === 0 ? r.x0 + 0.05 : r.x1 - 0.05, 1.6 + 0.9, cz, false);
+        rail.rotation.x = -up * Math.atan2(3.2, D);
+        grp.add(rail);
+      }
+      // the camera stays out of the flights
+      occ.push(grp);
       break;
     }
     case 'stairs': {

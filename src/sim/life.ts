@@ -9,7 +9,7 @@ import { lifeEvent, news } from './events';
 import { activeLease } from './housing';
 import { endContract } from './employment';
 import { ageOf } from './persona';
-import { HOUSE_IDS } from './world/layout';
+import { DWELLING_IDS } from './world/layout';
 import { spawnResident } from './newgame';
 import { lifeGatherings } from './gatherings';
 
@@ -99,7 +99,7 @@ export function split(state: GameState, a: Person, b: Person, divorce: boolean) 
 /** a house nobody lives in, if any */
 export function freeHome(state: GameState): Id | null {
   const lived = new Set(Object.values(state.people).filter(alive).map((p) => p.homeId));
-  return (HOUSE_IDS as readonly string[]).find((h) => !lived.has(h)) ?? null;
+  return DWELLING_IDS.find((h) => !lived.has(h)) ?? null;
 }
 
 export function die(state: GameState, p: Person, cause: string, keepBody = false) {

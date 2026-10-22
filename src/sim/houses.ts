@@ -9,7 +9,7 @@ import { minuteOfDay, dayIndex } from './clock';
 import { transfer } from './ledger';
 import { crime, flee } from './health';
 import { goTo } from './npc';
-import { getWorld, HOUSE_IDS, locationOf } from './world/layout';
+import { DWELLING_IDS, dwellingDoor, getWorld, locationOf } from './world/layout';
 
 export const houseOf = (id: string) => id.replace(/_(door|valuables)$/, '');
 const residentsHome = (state: GameState, houseId: Id): Person[] =>
@@ -43,16 +43,17 @@ export function doorTick(state: GameState) {
   const c = state.doorCall;
   if (!c || c.stage === 'done' || !c.answerer) return;
   const p = state.people[c.answerer];
-  const idx = HOUSE_IDS.indexOf(c.house) + 1;
-  const door = getWorld().nodes[`door_house_${idx}`], inside = getWorld().nodes[`in_house_${idx}`];
-  if (!p || !door || !inside || p.dead || p.away) { c.stage = 'done'; return; }
+  const dd = dwellingDoor(c.house);
+  if (!p || !dd || p.dead || p.away) { c.stage = 'done'; return; }
+  const door = dd.out, inside = dd.inside;
   const t = state.minute - c.at;
-  const east = inside.x > door.x;
+  // the way into the home from the doorstep
+  const ux = inside.x - door.x, uz = inside.z - door.z, ul = Math.hypot(ux, uz) || 1, ix = ux / ul, iz = uz / ul;
   if (c.stage === 'waiting' && t > 0.8) {
     // they come to the door: standing just inside the open door, facing out
     p.visible = true; p.move = null; p.action = null;
-    p.pos = { x: door.x + (east ? 1.25 : -1.25), z: door.z };
-    p.facing = east ? -Math.PI / 2 : Math.PI / 2;
+    p.pos = { x: door.x + ix * 1.25, z: door.z + iz * 1.25 };
+    p.facing = Math.atan2(-ix, -iz);
     (p.npc as any).shownIn = c.house;
     if (p.npc) { p.npc.plan = [{ kind: 'wait', until: state.minute + 3 }]; }
     c.stage = 'open';
@@ -62,7 +63,7 @@ export function doorTick(state: GameState) {
     // let in: they step back into the front room; not: they close the door and go back inside
     c.stage = 'done';
     if (p.npc) p.npc.plan = [];
-    if (c.letIn) goTo(state, p, { x: inside.x + (east ? 2.4 : -2.4), z: inside.z + 1 }, 'front room');
+    if (c.letIn) goTo(state, p, { x: inside.x + ix * 2.4 - iz * 1, z: inside.z + iz * 2.4 + ix * 1 }, 'front room');
     else { p.visible = false; (p.npc as any).shownIn = undefined; p.pos = { x: door.x, z: door.z }; }
   }
 }
@@ -78,14 +79,13 @@ export function breakIn(state: GameState, personId: Id, houseId: Id): { ok: bool
     crime(state, 'burglary', 3);
     for (const p of home) { p.relations[me.id] = 0; p.sleeping = false; lifeEvent(state, p, `Burgled by ${me.name}`); }
     // whoever is in comes into the hall, frightened, phone in hand
-    const idx = HOUSE_IDS.indexOf(houseId) + 1;
-    const door = getWorld().nodes[`door_house_${idx}`], inside = getWorld().nodes[`in_house_${idx}`];
+    const dd = dwellingDoor(houseId);
     const p = home[0];
-    if (p && door && inside) {
-      const east = inside.x > door.x;
+    if (p && dd) {
+      const ux = dd.inside.x - dd.out.x, uz = dd.inside.z - dd.out.z, ul = Math.hypot(ux, uz) || 1;
       p.visible = true; p.move = null; p.action = null; (p.npc as any).shownIn = houseId;
-      p.pos = { x: door.x + (east ? 3.2 : -3.2), z: door.z - 0.6 };
-      p.facing = east ? -Math.PI / 2 : Math.PI / 2;
+      p.pos = { x: dd.out.x + (ux / ul) * 3.2, z: dd.out.z + (uz / ul) * 3.2 };
+      p.facing = Math.atan2(-ux, -uz);
       p.gesture = { clip: 'scared', until: state.minute + 1.2 };
       if (p.npc) p.npc.plan = [{ kind: 'wait', until: state.minute + 4 }];
     }
@@ -122,15 +122,19 @@ export function housesTick(state: GameState) {
   const here = me.visible ? locationOf(me.pos) : null;
   for (const p of Object.values(state.people)) {
     const id = p.homeId;
-    if (p.isPlayer || !id || !(id.startsWith('house_') || id === 'flat') || p.dead || p.left || p.away || p.where !== id) continue;
+    if (p.isPlayer || !id || !(id === 'flat' || DWELLING_IDS.includes(id)) || p.dead || p.left || p.away || p.where !== id) continue;
     const inside = here === id;
     if (inside && !p.visible && !p.sleeping) {
-      // your own flat: whoever lives with you is about the living room
-      const n = getWorld().nodes[id === 'flat' ? 'fl_k' : `in_house_${HOUSE_IDS.indexOf(id) + 1}`];
+      // your own flat: whoever lives with you is about the living room; elsewhere, in the front room
+      const n = getWorld().nodes[id === 'flat' ? 'fl_k' : `in_${id}`];
+      const dd = id === 'flat' ? null : dwellingDoor(id);
       if (!n) continue;
       p.visible = true;
-      // clear floor in the front room, between the coffee table and the drawers
-      p.pos = id === 'flat' ? { x: n.x + 0.4, z: n.z - 1.2 - residentsHome(state, id).indexOf(p) * 1.0 } : { x: n.x + (n.x > 0 ? 2.8 : -2.8), z: n.z + 0.8 - residentsHome(state, id).indexOf(p) * 1.2 };
+      const k = residentsHome(state, id).indexOf(p);
+      if (dd) {
+        const ux = dd.inside.x - dd.out.x, uz = dd.inside.z - dd.out.z, ul = Math.hypot(ux, uz) || 1, ix = ux / ul, iz = uz / ul;
+        p.pos = { x: n.x + ix * 2.8 - iz * (0.8 - k * 1.2), z: n.z + iz * 2.8 + ix * (0.8 - k * 1.2) };
+      } else p.pos = { x: n.x + 0.4, z: n.z - 1.2 - k * 1.0 };
       p.facing = Math.atan2(me.pos.x - p.pos.x, me.pos.z - p.pos.z);
       (p.npc as any).shownIn = id;
     } else if (!inside && p.visible && (p.npc as any)?.shownIn === id && !p.move && !p.action && !p.combat && !(state.doorCall?.answerer === p.id && state.doorCall.stage !== 'done') && !(p.gesture && state.minute < p.gesture.until)) {

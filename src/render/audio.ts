@@ -60,6 +60,17 @@ export class Audio {
     const v = Math.min(0.9, 30 / Math.max(10, dist));
     setTimeout(() => { this.thud(180, 0.9, v); this.thud(900, 0.25, v * 0.4); }, Math.min(400, dist * 3));
   }
+  /** a car window going in, then the alarm whooping for a few seconds */
+  smash() {
+    if (!this.ctx || this.muted) return;
+    this.thud(4200, 0.35, 0.7); this.thud(2600, 0.5, 0.4);
+    const c = this.ctx, t = c.currentTime + 0.25;
+    const o = c.createOscillator(); o.type = 'square';
+    const g = c.createGain(); g.gain.value = 0;
+    for (let i = 0; i < 12; i++) { o.frequency.setValueAtTime(880, t + i * 0.5); o.frequency.linearRampToValueAtTime(1320, t + i * 0.5 + 0.25); o.frequency.linearRampToValueAtTime(880, t + i * 0.5 + 0.5); }
+    g.gain.setValueAtTime(0.05, t); g.gain.setValueAtTime(0.05, t + 5.8); g.gain.linearRampToValueAtTime(0, t + 6);
+    o.connect(g).connect(this.master); o.start(t); o.stop(t + 6.05);
+  }
   private thud(freq: number, dur: number, vol: number) {
     const c = this.ctx!;
     const t = c.currentTime;

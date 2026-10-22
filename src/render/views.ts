@@ -4,6 +4,7 @@ import type { GameState, Person } from '../sim/types';
 import { AnimationController, buildRig, dress, type Rig } from './character';
 import { buildCar } from './world';
 import { DogView } from './dog';
+import { LEVEL_DX, LEVEL_H, levelOf, STAIR_RUN } from '../sim/world/levels';
 import { boat as harbourBoat } from './harbour';
 import { CAR_MODELS } from '../sim/cars';
 import { modelInstance } from './models';
@@ -120,6 +121,25 @@ export function walkStyleFor(p: Person): string {
   return BASE_WALKS[h % BASE_WALKS.length];
 }
 
+/** the group for a storey: what is inside it is placed in simulation coordinates (see levels.ts) */
+const levelGroups = new Map<number, THREE.Group>();
+export function levelGroup(scene: THREE.Scene, k: number): THREE.Object3D {
+  if (k === 0) return scene;
+  let g = levelGroups.get(k);
+  if (!g || g.parent !== scene) {
+    g = new THREE.Group();
+    g.position.set(-k * LEVEL_DX, k * LEVEL_H, 0);
+    scene.add(g);
+    levelGroups.set(k, g);
+  }
+  return g;
+}
+/** move an object (and its hangers-on) into the group for the storey it should be drawn on */
+function toLevel(scene: THREE.Scene, k: number, ...objs: (THREE.Object3D | null | undefined)[]) {
+  const g = levelGroup(scene, k);
+  for (const o of objs) if (o && o.parent !== g) { o.parent?.remove(o); g.add(o); }
+}
+
 class PersonView {
   rig: Rig;
   anim: AnimationController;
@@ -142,18 +162,28 @@ class PersonView {
   nudge = { x: 0, z: 0 };
   shadow = true;
 
-  constructor(public p: Person, scene: THREE.Scene) {
+  constructor(public p: Person, private scene: THREE.Scene) {
     this.rig = buildRig(p.appearance);
     this.anim = new AnimationController(this.rig);
     this.outfitKey = JSON.stringify(p.appearance);
-    scene.add(this.rig.root);
+    levelGroup(scene, levelOf(p.pos.x)).add(this.rig.root);
     this.rig.root.position.set(p.pos.x, 0, p.pos.z);
     this.lastPos.copy(this.rig.root.position);
   }
 
+  /** a world-space point into the coordinates of the storey this person is drawn on */
+  private toLocal(v: THREE.Vector3) { this.rig.root.parent?.worldToLocal(v); return v; }
+
   update(state: GameState, p: Person, dt: number) {
     this.p = p;
     const root = this.rig.root;
+    // drawn on the storey they are on (props and all)
+    const lv = levelOf(p.pos.x);
+    if (root.parent !== levelGroup(this.scene, lv)) {
+      toLevel(this.scene, lv, root, this.mop, this.binbag, this.tool, this.handItem, this.plate, this.rod?.rod, this.rod?.line, this.rod?.float);
+      root.position.set(p.pos.x, 0, p.pos.z);
+      this.lastPos.copy(root.position);
+    }
     root.visible = p.visible && !this.culled;
     if (this.mop) this.mop.visible = root.visible;
     if (this.binbag) this.binbag.visible = root.visible;
@@ -179,6 +209,12 @@ class PersonView {
     }
     const stage = this.staging(state, p, dt);
     const target = stage ? new THREE.Vector3(stage.pos.x, 0, stage.pos.z) : new THREE.Vector3(p.pos.x + this.nudge.x, 0, p.pos.z + this.nudge.z);
+    // on the stairs: partway up (or down) the flight to the next storey
+    const m = p.move, nxt = m?.path[m.idx];
+    if (m && nxt && (m.climb ?? 0) > 0 && levelOf(nxt.x) !== lv) {
+      const dk = levelOf(nxt.x) - lv, f = Math.min(1, (m.climb ?? 0) / STAIR_RUN);
+      target.set(p.pos.x + (nxt.x - dk * LEVEL_DX - p.pos.x) * f, dk * LEVEL_H * f, p.pos.z + (nxt.z - p.pos.z) * f);
+    }
     // smooth presentation, but snap on large jumps (teleports, loading)
     if (root.position.distanceTo(target) > 3) root.position.copy(target);
     else root.position.lerp(target, Math.min(1, dt * 20));
@@ -379,8 +415,8 @@ class PersonView {
     // keep the feet on the floor: whatever the animation does, the lower foot rests on the ground
     if (!this.bedIt && !floored && this.rig.joints) {
       this.rig.root.updateMatrixWorld(true);
-      this.rig.bones.footL.getWorldPosition(FOOT_A);
-      this.rig.bones.footR.getWorldPosition(FOOT_B);
+      this.toLocal(this.rig.bones.footL.getWorldPosition(FOOT_A));
+      this.toLocal(this.rig.bones.footR.getWorldPosition(FOOT_B));
       const rest = this.rig.joints.footL.y * this.rig.body.scale.y;
       const target = Math.max(-0.3, Math.min(0.3, rest - (Math.min(FOOT_A.y, FOOT_B.y) - root.position.y)));
       this.ground += (target - this.ground) * Math.min(1, dt * 14);
@@ -472,7 +508,7 @@ class PersonView {
   private placeProps(action: string | null, facing: number) {
     if (!this.mop && !this.carried && !this.binbag && !this.handItem && !this.plate && !this.tool) return;
     this.rig.root.updateMatrixWorld(true);
-    const hl = this.rig.bones.handL.getWorldPosition(HAND_L), hr = this.rig.bones.handR.getWorldPosition(HAND_R);
+    const hl = this.toLocal(this.rig.bones.handL.getWorldPosition(HAND_L)), hr = this.toLocal(this.rig.bones.handR.getWorldPosition(HAND_R));
     if (this.tool) {
       // long tools run from the gripping hand down towards the ground in front; hand tools sit in the fist
       const long = this.toolName === 'tool_spade' || this.toolName === 'tool_shovel';
@@ -558,7 +594,7 @@ class PersonView {
       this.rod = { rod, line, float };
     } else if (!on && this.rod) { for (const o of [this.rod.rod, this.rod.line, this.rod.float]) o.parent?.remove(o); this.rod = null; }
     if (!this.rod) return;
-    const hr = this.rig.bones.handR.getWorldPosition(new THREE.Vector3());
+    const hr = this.toLocal(this.rig.bones.handR.getWorldPosition(new THREE.Vector3()));
     const f = p.facing;
     this.rod.rod.position.copy(hr);
     const dir = new THREE.Vector3(Math.sin(f) * 0.8, 0.6, Math.cos(f) * 0.8).normalize();
@@ -666,7 +702,7 @@ class PersonView {
     }
   }
 
-  dispose(scene: THREE.Scene) { scene.remove(this.rig.root); this.tool?.parent?.remove(this.tool); this.mop?.parent?.remove(this.mop); this.binbag?.parent?.remove(this.binbag); this.handItem?.parent?.remove(this.handItem); this.plate?.parent?.remove(this.plate); }
+  dispose(_scene: THREE.Scene) { this.rig.root.parent?.remove(this.rig.root); this.tool?.parent?.remove(this.tool); this.mop?.parent?.remove(this.mop); this.binbag?.parent?.remove(this.binbag); this.handItem?.parent?.remove(this.handItem); this.plate?.parent?.remove(this.plate); }
 }
 
 interface StageStep { until: number; at: { x: number; z: number }; face: number; clip: string }
@@ -832,7 +868,7 @@ export class Views {
       scene.add(bm);
       this.bayMeshes.set(bid, bm);
     }
-    scene.add(this.home);
+    levelGroup(scene, 2).add(this.home);
     // warehouse: cases on each pick-face pallet (live stock) and picked cases in the staging lanes
     const caseGeo = new THREE.BoxGeometry(0.4, 0.26, 0.3);
     const caseMat = new THREE.MeshStandardMaterial({ color: '#b8925d', roughness: 0.9 });
@@ -1018,16 +1054,14 @@ export class Views {
       if (!d) {
         const view = new DogView(dog.color, dog.size);
         view.pos.set(o.pos.x - 0.6, o.pos.z - 0.5);
-        this.scene.add(view.root);
         let lead: THREE.Line | null = null;
-        if (!o.isPlayer) {
-          lead = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), new THREE.LineBasicMaterial({ color: '#7a2318' }));
-          this.scene.add(lead);
-        }
+        if (!o.isPlayer) lead = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), new THREE.LineBasicMaterial({ color: '#7a2318' }));
+        toLevel(this.scene, levelOf(o.pos.x), view.root, lead);
         d = { view, lead, seen: true };
         this.dogs.set(o.id, d);
       }
       d.seen = true;
+      if (d.view.root.parent !== levelGroup(this.scene, levelOf(o.pos.x))) { toLevel(this.scene, levelOf(o.pos.x), d.view.root, d.lead); d.view.pos.set(o.pos.x, o.pos.z); }
       // at heel: just ahead and to the left of the owner
       const side = -0.55, ahead = 0.35;
       const tx = o.pos.x + Math.cos(o.facing) * side + Math.sin(o.facing) * ahead, tz = o.pos.z - Math.sin(o.facing) * side + Math.cos(o.facing) * ahead;
@@ -1035,6 +1069,7 @@ export class Views {
       const pv = this.people.get(o.id);
       if (d.lead && pv) {
         const hand = pv.rig.bones.handL.getWorldPosition(new THREE.Vector3());
+        d.lead.parent?.worldToLocal(hand);
         const collar = new THREE.Vector3(d.view.pos.x + Math.sin(d.view.facing) * 0.2 * (o.dog?.size ?? 1), 0.45 * (o.dog?.size ?? 1), d.view.pos.y + Math.cos(d.view.facing) * 0.2 * (o.dog?.size ?? 1));
         const mid = hand.clone().add(collar).multiplyScalar(0.5); mid.y -= 0.15;
         (d.lead.geometry as THREE.BufferGeometry).setFromPoints([hand, mid, collar]);
@@ -1063,7 +1098,7 @@ export class Views {
         d.view.update(dt, tx, tz, near ? -Math.PI / 2 : d.view.facing);
       });
     }
-    for (const [id, d] of this.dogs) if (!d.seen) { this.scene.remove(d.view.root); if (d.lead) this.scene.remove(d.lead); this.dogs.delete(id); }
+    for (const [id, d] of this.dogs) if (!d.seen) { d.view.root.parent?.remove(d.view.root); d.lead?.parent?.remove(d.lead); this.dogs.delete(id); }
   }
 
   private blood = new Map<string, THREE.Mesh>();
@@ -1334,12 +1369,12 @@ export class Views {
     for (let k = 0; k < Math.min(c.dishes, 12); k++) {
       if (k < 6) {
         const pl = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.1, 0.018, 20), plate);
-        pl.position.set(16.35 + (k % 2) * 0.01, top + 0.01 + k * 0.02, 25.45);
+        pl.position.set(2 * LEVEL_DX + 16.35 + (k % 2) * 0.01, top + 0.01 + k * 0.02, 25.45);
         add(pl);
-        if (k % 2 === 0) { const g = new THREE.Mesh(new THREE.CircleGeometry(0.05, 10), grime); g.rotation.x = -Math.PI / 2; g.position.set(16.33, top + 0.021 + k * 0.02, 25.44); this.home.add(g); }
+        if (k % 2 === 0) { const g = new THREE.Mesh(new THREE.CircleGeometry(0.05, 10), grime); g.rotation.x = -Math.PI / 2; g.position.set(2 * LEVEL_DX + 16.33, top + 0.021 + k * 0.02, 25.44); this.home.add(g); }
       } else if (k < 10) {
         const mug = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.035, 0.1, 14), mugMat);
-        mug.position.set(16.75 + ((k - 6) % 2) * 0.1, top + 0.05, 25.35 + Math.floor((k - 6) / 2) * 0.12);
+        mug.position.set(2 * LEVEL_DX + 16.75 + ((k - 6) % 2) * 0.1, top + 0.05, 25.35 + Math.floor((k - 6) / 2) * 0.12);
         add(mug);
       } else {
         const pan = new THREE.Group();
@@ -1347,14 +1382,14 @@ export class Views {
         const handle = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.02, 0.03), new THREE.MeshStandardMaterial({ color: '#111', roughness: 0.5 }));
         handle.position.set(0.22, 0.02, 0);
         pan.add(bowl, handle);
-        pan.position.set(17.85 + (k - 10) * 0.05, top + 0.04, 25.5 - (k - 10) * 0.1);
+        pan.position.set(2 * LEVEL_DX + 17.85 + (k - 10) * 0.05, top + 0.04, 25.5 - (k - 10) * 0.1);
         add(pan);
       }
     }
     // clutter: things left lying about on the furniture the designer placed
     const spots: { kind: string; at: THREE.Vector3; rot: number }[] = [];
     const center = (r: { x0: number; z0: number; x1: number; z1: number }) => new THREE.Vector3((r.x0 + r.x1) / 2, 0, (r.z0 + r.z1) / 2);
-    const find = (k: string) => w.obstacles.filter((o) => o.kind === k && o.rect.x0 > 12 && o.rect.x1 < 30 && o.rect.z0 > 13 && o.rect.z1 < 26);
+    const find = (k: string) => w.obstacles.filter((o) => o.kind === k && o.rect.x0 > 2 * LEVEL_DX + 12 && o.rect.x1 < 2 * LEVEL_DX + 30 && o.rect.z0 > 10 && o.rect.z1 < 26);
     for (const o of find('coffee_table')) { const m = center(o.rect); spots.push({ kind: 'mug', at: m.clone().setY(0.47), rot: 0 }, { kind: 'magazine', at: m.clone().add(new THREE.Vector3(0.18, 0.46, 0.05)), rot: 0.4 }); }
     for (const o of find('bed')) { const m = center(o.rect); spots.push({ kind: 'clothes', at: m.clone().setY(0.62), rot: 0.7 }, { kind: 'clothes', at: new THREE.Vector3(o.rect.x0 - 0.25, 0.04, m.z + 0.4), rot: 2.1 }); }
     for (const o of find('sofa')) { const m = center(o.rect); spots.push({ kind: 'clothes', at: m.clone().setY(0.62), rot: 1.2 }); }

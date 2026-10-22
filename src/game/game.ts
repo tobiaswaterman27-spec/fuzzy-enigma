@@ -13,7 +13,9 @@ import type { GameState } from '../sim/types';
 import { step } from '../sim/sim';
 import { cancelAction, focusInteractable, optionsFor, startAction, enforceLocationRules, type ActionOption } from '../sim/actions';
 import { resolveCircle } from '../sim/world/nav';
-import { buildingAt, getWorld, HOUSE_IDS, setHomeDesign } from '../sim/world/layout';
+import { buildingAt, DWELLING_IDS, dwellingDoor, FLIGHTS, getWorld, publicDoors, setHomeDesign, shellAt, SHOP_IDS } from '../sim/world/layout';
+import { shopLocked } from '../sim/breakins';
+import { levelOf, planX, sceneOf } from '../sim/world/levels';
 import { houseOpen } from '../sim/houses';
 import { capability } from '../sim/needs';
 import { daylight, hourOfDay } from '../sim/clock';
@@ -33,7 +35,7 @@ import { MarketStalls } from '../render/marketStalls';
 import { raining, seasonOf, snowCover, snowing } from '../sim/weather';
 import { safeWrite, loadSlot, type KV } from '../sim/save';
 import { news } from '../sim/events';
-import { CAR_MODELS, exitCar, stealCar } from '../sim/cars';
+import { CAR_MODELS, exitCar, stealCar, stealOwnedCar, stealParked } from '../sim/cars';
 import { forkliftAction } from '../sim/forklift';
 import { attack, attackTarget, crime, hitByVehicle, nextWeapon } from '../sim/health';
 import { fitnessFactor, trainRun } from '../sim/leisure';
@@ -165,6 +167,8 @@ export class Game {
   composer: EffectComposer | null = null;
   quality: 'high' | 'medium' | 'low' = 'high';
   private cutawayOn = false;
+  /** a car break-in under way: the window goes at `at` (sim minutes) */
+  private theft: { at: number; kerb: number | null; car: string | null } | null = null;
   frameMs = 0;
 
   constructor(public canvas: HTMLCanvasElement, public state: GameState) {
@@ -359,8 +363,20 @@ export class Game {
       if (e.code === 'KeyG' && !this.drivingVan()) {
         const p = this.player;
         if (p.down != null || p.away || p.dead || p.sleeping || p.action) return;
+        // a parked car (at the kerb, or someone's own): go to the driver's door and smash the window
+        const w = getWorld();
+        const near = (x: number, z: number) => Math.hypot(x - p.pos.x, z - p.pos.z);
+        const kerb = w.parked.map((c, i) => ({ i, c })).filter(({ i, c }) => !(this.state.takenParked ?? []).includes(i) && near(c.pos.x, c.pos.z) < 3.4).sort((a, b) => near(a.c.pos.x, a.c.pos.z) - near(b.c.pos.x, b.c.pos.z))[0];
+        const owned = Object.values(this.state.vehicles).filter((v) => v.kind === 'car' && v.state === 'parked' && v.ownerId !== p.id && near(v.pos.x, v.pos.z) < 3.4)[0];
+        if (kerb || owned) {
+          const at = kerb ? { x: kerb.c.pos.x, z: kerb.c.pos.z } : owned!.pos;
+          p.facing = Math.atan2(at.x - p.pos.x, at.z - p.pos.z);
+          p.gesture = { clip: 'fight', until: this.state.minute + 0.45 };
+          this.theft = { at: this.state.minute + 0.4, kerb: kerb?.i ?? null, car: owned?.id ?? null };
+          return;
+        }
         const c = this.traffic.take(p.pos.x, p.pos.z);
-        if (!c) { this.onToast('No car close enough (walk up to a slow or stopped car and press G).'); return; }
+        if (!c) { this.onToast('No car close enough (walk up to a car and press G).'); return; }
         this.onToast(stealCar(this.state, p.id, { x: c.x, z: c.z }, c.heading, c.color, c.body));
         return;
       }
@@ -537,16 +553,16 @@ export class Game {
 
   /** the static colliders plus any privately owned parked cars (they move, so they are not in the layout) */
   private collidersWithCars(except?: string, noPolice = false) {
-    const base = getWorld().colliders;
+    const taken = new Set((this.state.takenParked ?? []).map((i) => getWorld().obstacles.filter((o) => o.kind === 'car')[i]?.rect));
+    const base = taken.size ? getWorld().colliders.filter((r) => !taken.has(r)) : getWorld().colliders;
     // parked private cars, the delivery van and the forklift when nobody is driving them, and traffic
     const cars = Object.values(this.state.vehicles).filter((v) => v.id !== except && (v.state === 'parked' || v.state === 'loaded' || (v.driverId && v.driverId !== this.player.id)));
     const pc = noPolice ? null : this.police?.rect();
     // locked front doors on Harbour Road (open once you are let in or force them)
-    const locked = HOUSE_IDS.filter((h) => !houseOpen(this.state, h)).map((h) => {
-      const b = getWorld().buildings.find((x) => x.id === h)!;
-      const zc = (b.rect.z0 + b.rect.z1) / 2, x = b.rect.x0 > 0 ? b.rect.x0 : b.rect.x1;
-      return { x0: x - 0.15, z0: zc - 0.65, x1: x + 0.15, z1: zc + 0.65 };
-    });
+    const locked = DWELLING_IDS.filter((h) => !houseOpen(this.state, h)).map((h) => dwellingDoor(h)?.lock).filter((r): r is NonNullable<typeof r> => !!r);
+    // shops shut for the night: their doors are locked from outside (you can always let yourself out)
+    const here = shellAt(this.player.pos)?.id;
+    for (const id of SHOP_IDS) if (id !== here && shopLocked(this.state, id)) { const b = getWorld().buildings.find((x) => x.id === id); if (b) for (const d of publicDoors(b)) locked.push(d.lock); }
     return [...base, ...locked, ...this.traffic.rects(), ...(pc ? [pc] : []), ...cars.map((v) => {
       const ew = Math.abs(Math.sin(v.heading)) > 0.7;
       const hx = ew ? 2.1 : 0.95, hz = ew ? 0.95 : 2.1;
@@ -626,6 +642,15 @@ export class Game {
 
   private updatePlayer(dt: number) {
     const p = this.player;
+    if (this.theft && this.state.minute >= this.theft.at) {
+      const t = this.theft;
+      this.theft = null;
+      if (p.down == null && !p.dead && p.where !== 'vehicle') {
+        this.onToast(t.kerb != null ? stealParked(this.state, p.id, t.kerb) : stealOwnedCar(this.state, p.id, t.car!));
+        this.audio.smash();
+      }
+    }
+    if (this.theft) { this.vel.x = this.vel.z = 0; return; }
     if (this.drivingVan()) { this.updateDriving(dt); return; }
     this.vanSpeed = 0;
     if (this.uiOpen || p.sleeping || p.down != null || p.away || p.dead) { this.vel.x = this.vel.z = 0; return; }
@@ -638,6 +663,23 @@ export class Game {
     if (k.has('KeyA') || k.has('ArrowLeft')) turn += 1;
     if (k.has('KeyD') || k.has('ArrowRight')) turn -= 1;
     const run = k.has('ShiftLeft') || k.has('ShiftRight');
+    // on the stairs: the climb carries you to the next landing
+    if (p.move?.destLabel === 'stairs') { this.vel.x = this.vel.z = 0; return; }
+    // walking into the foot (or the head) of a flight takes it: up or down to the next floor
+    if (iz > 0 && !p.action) {
+      const w = getWorld();
+      for (const [lo, hi] of FLIGHTS) for (const [from, to] of [[lo, hi], [hi, lo]]) {
+        const a = w.nodes[from], b = w.nodes[to];
+        if (!a || !b || levelOf(a.x) !== levelOf(p.pos.x) || Math.hypot(a.x - p.pos.x, a.z - p.pos.z) > 0.7) continue;
+        // the flight runs away from the landing the node is on: south from the front landing, north from the back
+        const want = a.z < 13 ? 0 : Math.PI;
+        if (Math.abs(((p.facing - want + Math.PI * 3) % (Math.PI * 2)) - Math.PI) > 1.0) continue;
+        p.pos = { x: a.x, z: a.z };
+        p.move = { path: [{ x: b.x, z: b.z }], idx: 0, dest: { x: b.x, z: b.z }, destLabel: 'stairs', stuckTime: 0, lastDist: Infinity, replans: 0, climb: 0 };
+        this.vel.x = this.vel.z = 0;
+        return;
+      }
+    }
     if (turn) {
       if (p.action) cancelAction(this.state, p, 'moved');
       p.facing += turn * (iz ? 2.4 : 3.0) * dt;
@@ -686,11 +728,15 @@ export class Game {
 
   private updateCamera(dt: number) {
     const p = this.player;
-    const inside = buildingAt(p.pos)?.id ?? null;
+    const inside = shellAt(p.pos)?.id ?? null;
+    const lv = levelOf(p.pos.x);
     if (this.overview !== this.cutawayOn || inside !== this.insideId) {
-      // cut-away walls only in overview mode; in the normal camera rooms keep their walls and ceilings
+      // cut-away walls only in overview mode; in the normal camera rooms keep their walls and ceilings.
+      // Looking down into a storey, the floors above it are lifted away too
+      const levelOfCut = (id: string) => id.startsWith('level:') ? Number(id.slice(6)) : getWorld().buildings.find((b) => b.id === id)?.level ?? 0;
       for (const [id, c] of this.world.cutaway) {
-        const cut = this.overview && id === inside;
+        const above = this.overview && !!inside && levelOfCut(id) > lv && (lv > 0 || inside === 'marlow');
+        const cut = (this.overview && id === inside) || above;
         for (const r of c.roof) r.visible = !cut;
         for (const wm of c.walls) { wm.scale.y = cut ? 0.34 : 1; wm.position.y = wm.userData.anchored ? 0 : (cut ? 0.34 : 1) * c.fullH / 2; }
       }
@@ -726,8 +772,10 @@ export class Game {
       void dYaw;
     }
     // follow the drawn body (it may be acting out a multi-step action away from its sim spot)
-    const drawn = p.action ? this.views.people.get(p.id)?.rig.root.position : null;
-    const pivot = new THREE.Vector3(drawn?.x ?? p.pos.x, van ? (van.kind === 'forklift' ? 2.0 : van.kind === 'boat' ? 1.0 : 2.7) : p.sleeping ? 1.0 : 1.62, drawn?.z ?? p.pos.z);
+    const climbing = (p.move?.climb ?? 0) > 0;
+    const drawn = p.action || climbing ? this.views.people.get(p.id)?.rig.root.getWorldPosition(new THREE.Vector3()) : null;
+    const sp = sceneOf(p.pos);
+    const pivot = new THREE.Vector3(drawn?.x ?? sp.x, (drawn ? drawn.y : sp.y) + (van ? (van.kind === 'forklift' ? 2.0 : van.kind === 'boat' ? 1.0 : 2.7) : p.sleeping ? 1.0 : 1.62), drawn?.z ?? p.pos.z);
     const pitch = this.camPitch;
     const dir = new THREE.Vector3(Math.sin(this.camYaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(this.camYaw) * Math.cos(pitch));
     // over-the-shoulder offset to the right of the view direction
@@ -752,7 +800,7 @@ export class Game {
     this.camera.lookAt(origin.x - dir.x * 2, origin.y - dir.y * 2 + (this.overview ? 0 : 0.05), origin.z - dir.z * 2);
     // the shadow box follows the player in whole shadow-map texels, so shadow edges do not shimmer
     const texel = (this.sun.shadow.camera.right - this.sun.shadow.camera.left) / this.sun.shadow.mapSize.x;
-    this.sunAnchor.set(Math.round(p.pos.x / texel) * texel, 0, Math.round(p.pos.z / texel) * texel);
+    this.sunAnchor.set(Math.round(sp.x / texel) * texel, 0, Math.round(sp.z / texel) * texel);
     this.sun.target.position.copy(this.sunAnchor);
   }
 
@@ -773,7 +821,7 @@ export class Game {
     // sun direction drives the sky shader; the horizon colour feeds the fog so distance blends naturally
     const sunDir = new THREE.Vector3(Math.cos(ang), Math.sin(ang), 0.45).normalize();
     this.sky.material.uniforms.sunPosition.value.copy(sunDir);
-    this.sky.position.set(p.pos.x, 0, p.pos.z);
+    this.sky.position.set(planX(p.pos.x), 0, p.pos.z);
     const day = new THREE.Color('#b9cfdf'), dusk = new THREE.Color('#e8a878'), night = new THREE.Color('#0d1626');
     const horizon = d > 0.5 ? dusk.clone().lerp(day, (d - 0.5) * 2) : night.clone().lerp(dusk, d * 2);
     if (r > 0) horizon.lerp(new THREE.Color(d > 0.3 ? '#8f979e' : '#1a1f26'), 0.75 * r);
@@ -793,8 +841,9 @@ export class Game {
     // buildings in a power cut stay dark
     const dark = new Set(Object.values(s.businesses).filter((b) => inOutage(b, s.minute)).map((b) => b.locationId));
     // the light pool goes to the room you are in first, then whatever lights are nearest (street lamps only at night)
-    const inside = buildingAt(p.pos)?.id ?? null;
-    const near = (x: number, z: number) => Math.hypot(x - p.pos.x, z - p.pos.z);
+    const inside = shellAt(p.pos)?.id ?? null;
+    const ps = sceneOf(p.pos);
+    const near = (x: number, z: number) => Math.hypot(x - ps.x, z - ps.z);
     const cands = [
       ...this.world.lightSpots.filter((l) => !dark.has(l.bid)).map((l) => ({ x: l.x, y: l.y, z: l.z, i: l.intensity, d: l.distance, c: '#fff1dc', score: near(l.x, l.z) - (l.bid === inside ? 1000 : 0) })),
       ...(lit ? getWorld().lamps.map((l) => ({ x: l.x, y: 4.6, z: l.z, i: 18, d: 18, c: '#ffcf80', score: near(l.x, l.z) + (inside ? 30 : 0) })) : []),

@@ -106,6 +106,18 @@ const MIGRATIONS: Record<number, (s: any) => void> = {
       startConstruction(s);
     }
   },
+  10: (s) => {
+    // v10 -> v11: Marlow Court has a ground-floor lobby and stairs; your flat moved up to the second floor
+    // and the upstairs neighbours have flats of their own
+    const spawn = getWorld().playerSpawn;
+    const units = ['mc_1a', 'mc_1b', 'mc_3a', 'mc_3b', 'mc_0a', 'mc_0b'];
+    let u = 0;
+    for (const p of Object.values<any>(s.people ?? {})) {
+      if (p.homeId === 'flat_upper') { p.homeId = units[u++ % units.length]; if (p.where === 'flat_upper') p.where = p.homeId; }
+      if (p.where === 'flat' && p.visible) { p.pos = { ...spawn }; p.move = null; p.action = null; }
+    }
+    for (const l of Object.values<any>(s.leases ?? {})) if (l.locationId === 'flat_upper') l.locationId = Object.values<any>(s.people).find((p) => p.id === l.tenantId)?.homeId ?? 'mc_1a';
+  },
 };
 
 export function serialize(state: GameState, summary = ''): string {

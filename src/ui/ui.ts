@@ -456,7 +456,7 @@ export class UI {
     const atCounter = this.p.where === 'homestore';
     const staffed = storeStaffed(s);
     const pend = s.pendingHome;
-    let h = `<h3>Flat 1, Marlow Court</h3><p class="muted">Pick from the Harbour Home catalogue below. Buy at the store's counter, or order online for ${fmtMoney(ONLINE_DELIVERY)} delivery; it is fitted at your flat. Moving the furniture around is free.</p>
+    let h = `<h3>Flat 5, Marlow Court</h3><p class="muted">Pick from the Harbour Home catalogue below. Buy at the store's counter, or order online for ${fmtMoney(ONLINE_DELIVERY)} delivery; it is fitted at your flat. Moving the furniture around is free.</p>
       ${pend ? `<div class="card">Order on its way: fitting at ${fmtClock(pend.fitAt)}${dayIndex(pend.fitAt) > dayIndex(s.minute) ? ' tomorrow' : ''}.</div>` : ''}
       ${q.lines.length ? `<div class="card"><b>Your basket</b>${q.lines.map((l) => `<div class="line"><span>${esc(l.what)}</span><span>${fmtMoney(l.price)}</span></div>`).join('')}<div class="line"><b>Total</b><b>${fmtMoney(q.total)}</b></div>
         <div class="row"><button data-home-buy="counter" class="primary" ${atCounter && staffed && !pend ? '' : 'disabled'}>Pay at the counter</button><button data-home-buy="online" ${pend ? 'disabled' : ''}>Order online (+${fmtMoney(ONLINE_DELIVERY)})</button><button data-home-reset="1">Clear</button></div>
@@ -979,7 +979,7 @@ function setBar(sel: string, v: number) {
 }
 
 const ACTION_LABELS: Record<string, string> = {
-  rob: 'Holding up the till', buy_pint: 'Having a pint', buy_tackle: 'Buying tackle', sell_catch: 'Selling your catch', buy_weapon: 'Buying', hire_boat: 'Hiring a boat', knock: 'Knocking', break_in: 'Forcing the door', search: 'Going through the drawers', scratch: 'Scratching the card', lotto: 'Buying a ticket', buy_round: 'Getting a round in', grab: 'Grabbing them',
+  rob: 'Holding up the till', buy_pint: 'Having a pint', buy_tackle: 'Buying tackle', sell_catch: 'Selling your catch', buy_weapon: 'Buying', hire_boat: 'Hiring a boat', knock: 'Knocking', break_in: 'Forcing the door', loot_till: 'Prising the till open', search: 'Going through the drawers', scratch: 'Scratching the card', lotto: 'Buying a ticket', buy_round: 'Getting a round in', grab: 'Grabbing them',
   clock_in: 'Clocking in…', clock_out: 'Clocking out…', take_case: 'Picking up a case…', return_case: 'Returning stock…', stock_shelf: 'Stocking the shelf…',
   serve_customer: 'Scanning items…', self_checkout: 'Scanning and paying…', take_mop: 'Getting the mop…', return_mop: 'Putting the mop away…', clean: 'Mopping…',
   check_in_delivery: 'Counting the delivery in…', pick_item: 'Taking item…', sleep: 'Sleeping… (time is fast-forwarding)', eat: 'Eating…', store_food: 'Putting shopping away…',

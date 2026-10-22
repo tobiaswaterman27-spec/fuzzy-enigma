@@ -7,6 +7,7 @@ import { PLOTS } from './plots';
 //
 // Coordinate system: metres, x = east, z = south (so -z is "north").
 // Facing angle θ: forward direction = (sin θ, cos θ); θ = 0 faces +z.
+import { LEVEL_DX } from './levels';
 import type { Vec2 } from '../types';
 import { PRODUCTS } from '../items';
 
@@ -45,6 +46,12 @@ export interface BuildingDef {
   interior: boolean;
   floorColor?: string;
   internalWalls?: Rect[];
+  /** an upper storey (see levels.ts): simulated LEVEL_DX * level metres east, drawn that high up */
+  level?: number;
+  /** another storey sits on top: no roof of its own */
+  stacked?: boolean;
+  /** part of a storey (a flat off the landing): a location of its own, drawn by the storey around it */
+  unit?: boolean;
 }
 
 export type ObstacleKind =
@@ -72,6 +79,8 @@ export type ObstacleKind =
   | 'plant'
   | 'rug'
   | 'stairs'
+  | 'stairwell'
+  | 'unitdoor'
   | 'mailboxes'
   | 'flatdoor'
   | 'tilefloor'
@@ -137,6 +146,8 @@ export interface Obstacle {
   rot?: number;
   color?: string;
   solid: boolean;
+  /** what it belongs to (a flat's front door names the flat) */
+  ref?: string;
 }
 
 export type InteractKind =
@@ -179,6 +190,7 @@ export type InteractKind =
   | 'sink'
   | 'washer'
   | 'housedoor'
+  | 'shopdoor'
   | 'valuables'
   | 'fishing'
   | 'bait_shop'
@@ -262,37 +274,6 @@ const B: BuildingDef[] = [
     sign: { text: 'JOB CENTRE', side: 'zmax', color: '#ffffff', bg: '#1f4e79' },
     doors: [{ side: 'zmax', a: -26, b: -22, open: true }],
     interior: true, floorColor: '#cfd3d6',
-  },
-  {
-    id: 'flat', name: 'Marlow Court', category: 'functional', role: 'Block of flats - your Flat 1 is on the ground floor',
-    rect: { x0: 12, z0: 10, x1: 30, z1: 26 }, height: 12.8, floors: 4, color: '#9c5a44', trim: '#3a3e42', roof: '#3d3f42',
-    sign: { text: 'MARLOW COURT', side: 'zmin', color: '#f2f2f2', bg: '#2f3337' },
-    doors: [
-      { side: 'zmin', a: 15, b: 17, open: true },
-      { side: 'zmin', a: 26, b: 28, open: false },
-    ],
-    interior: true, floorColor: '#a07850',
-    // open-plan living/kitchen with a hall; bedroom and bathroom behind doorways;
-    // the bin store behind the service door (closed) is walled off
-    internalWalls: [
-      // communal entrance lobby with the stairs; Flat 1's front door opens off it
-      { x0: 12, z0: 13.45, x1: 16.2, z1: 13.75 },
-      { x0: 17.2, z0: 13.45, x1: 18.15, z1: 13.75 },
-      { x0: 17.85, z0: 10, x1: 18.15, z1: 13.45 },
-      { x0: 25.35, z0: 10, x1: 25.65, z1: 14.4 },
-      { x0: 25.35, z0: 15.6, x1: 25.65, z1: 17.65 },
-      { x0: 25.65, z0: 12.85, x1: 30, z1: 13.15 },
-      { x0: 22, z0: 17.35, x1: 22.9, z1: 17.65 },
-      { x0: 24.1, z0: 17.35, x1: 30, z1: 17.65 },
-      { x0: 21.85, z0: 17.65, x1: 22.15, z1: 26 },
-      // spare room / study off the living room
-      { x0: 15.9, z0: 13.75, x1: 16.2, z1: 15.4 },
-      { x0: 15.9, z0: 16.6, x1: 16.2, z1: 20.8 },
-      { x0: 12, z0: 20.5, x1: 15.9, z1: 20.8 },
-      // utility room in the front corner, off the hall
-      { x0: 18.15, z0: 13.45, x1: 23.0, z1: 13.75 },
-      { x0: 24.2, z0: 13.45, x1: 25.35, z1: 13.75 },
-    ],
   },
   {
     id: 'cafe', name: 'Tidewater Cafe', category: 'simplified', role: 'Cafe - buy a hot meal (simplified kitchen)',
@@ -394,6 +375,81 @@ for (const zc of houseZ) {
         : [{ x0: -15.25, z0: zc - 4.5, x1: -15, z1: zc - 0.7 }, { x0: -15.25, z0: zc + 0.7, x1: -15, z1: zc + 4.5 }],
     });
   }
+}
+
+// ------------------------------------------------------------ Marlow Court
+// Four storeys round one stair: the ground-floor lobby with the post boxes, Flats 1 and 2 and the bike
+// store; Flats 3 and 4 on the first floor; your Flat 5 takes the whole second floor but the stair hall;
+// Flats 6 and 7 at the top. Every floor has the same stair core: a flight up from the front landing on
+// the ground and second floors, from the back landing on the first.
+export const MARLOW = { x0: 12, z0: 10, x1: 30, z1: 26 };
+export const MARLOW_LEVELS = ['marlow', 'mc_1', 'flat', 'mc_3'] as const;
+export const STAIR_CORE = { x0: 12.15, z0: 11.3, x1: 14.75, z1: 16.3 };
+/** the buildings whose public doors lock when they close (see breakins.ts) */
+export const SHOP_IDS = ['market', 'cafe', 'homestore', 'pub', 'unit4', 'jobcentre'];
+/** a building's public doorways, as the strips of wall a locked door fills, with where you stand outside */
+export function publicDoors(b: BuildingDef): { lock: Rect; out: Vec2; facing: number; mid: Vec2 }[] {
+  const { x0, z0, x1, z1 } = b.rect, h = WALL_T / 2;
+  return b.doors.filter((d) => d.open).map((d) => {
+    const m = (d.a + d.b) / 2;
+    if (d.side === 'zmin') return { lock: { x0: d.a, z0: z0 - h, x1: d.b, z1: z0 + h }, out: { x: m, z: z0 - 1.0 }, facing: 0, mid: { x: m, z: z0 } };
+    if (d.side === 'zmax') return { lock: { x0: d.a, z0: z1 - h, x1: d.b, z1: z1 + h }, out: { x: m, z: z1 + 1.0 }, facing: Math.PI, mid: { x: m, z: z1 } };
+    if (d.side === 'xmin') return { lock: { x0: x0 - h, z0: d.a, x1: x0 + h, z1: d.b }, out: { x: x0 - 1.0, z: m }, facing: Math.PI / 2, mid: { x: x0, z: m } };
+    return { lock: { x0: x1 - h, z0: d.a, x1: x1 + h, z1: d.b }, out: { x: x1 + 1.0, z: m }, facing: -Math.PI / 2, mid: { x: x1, z: m } };
+  });
+}
+/** Marlow Court's flights of stairs, bottom node to top node */
+export const FLIGHTS: [string, string][] = [['st0_fa', 'st1_ba'], ['st1_bb', 'st2_fb'], ['st2_fa', 'st3_ba']];
+/** a copy of anything with coordinates, moved dx metres east (onto another storey) */
+export function shiftX<T>(o: T, dx: number): T {
+  if (Array.isArray(o)) return o.map((v) => shiftX(v, dx)) as T;
+  if (!o || typeof o !== 'object') return o;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(o)) out[k] = (k === 'x' || k === 'x0' || k === 'x1') && typeof v === 'number' ? v + dx : shiftX(v, dx);
+  return out as T;
+}
+export interface FlatUnit { id: string; name: string; level: number; side: 'a' | 'b'; rect: Rect; door: Rect; doorPos: Vec2; inPos: Vec2 }
+export const FLAT_UNITS: FlatUnit[] = [];
+for (const [level, sides] of [[0, ['a', 'b']], [1, ['a', 'b']], [3, ['a', 'b']]] as const) {
+  for (const side of sides) {
+    const n = FLAT_UNITS.length + (level === 3 ? 2 : 1);
+    const u: FlatUnit = side === 'a'
+      ? { id: `mc_${level}a`, name: `Flat ${n}, Marlow Court`, level, side, rect: { x0: 12, z0: 18.05, x1: 21.45, z1: 26 }, door: { x0: 18.4, z0: 17.9, x1: 19.4, z1: 18.2 }, doorPos: { x: 18.9, z: 17.2 }, inPos: { x: 18.9, z: 19.0 } }
+      : { id: `mc_${level}b`, name: `Flat ${n}, Marlow Court`, level, side, rect: { x0: 21.45, z0: level === 0 ? 13.45 : 10, x1: 30, z1: 26 }, door: { x0: 21.3, z0: 15.0, x1: 21.6, z1: 16.0 }, doorPos: { x: 20.6, z: 15.5 }, inPos: { x: 22.4, z: 15.5 } };
+    FLAT_UNITS.push(shiftX(u, level * LEVEL_DX));
+  }
+}
+export const FLAT_UNIT_IDS = FLAT_UNITS.map((u) => u.id);
+for (const u of FLAT_UNITS) {
+  B.push({ id: u.id, name: u.name, category: 'simplified', role: 'Private flat (residents simulated)', rect: u.rect, height: 3.2, floors: 1, color: '#e9e6df', trim: '#33373b', roof: '#5b5f63', doors: [], interior: true, unit: true, level: u.level, floorColor: '#a8865f' });
+}
+// the stair hall on your floor is not part of your flat
+B.push({ id: 'mc_2h', name: 'Marlow Court, second floor landing', category: 'simplified', role: 'Stair hall', rect: shiftX({ x0: 12, z0: 10, x1: 16.55, z1: 18.05 }, 2 * LEVEL_DX), height: 3.2, floors: 1, color: '#e9e6df', trim: '#33373b', roof: '#5b5f63', doors: [], interior: true, unit: true, level: 2 });
+{
+  const unitWalls = (level: number): Rect[] => [
+    { x0: 12, z0: 17.9, x1: 18.4, z1: 18.2 }, { x0: 19.4, z0: 17.9, x1: 21.6, z1: 18.2 },
+    { x0: 21.3, z0: 10, x1: 21.6, z1: 15.0 }, { x0: 21.3, z0: 16.0, x1: 21.6, z1: 26 },
+    // a stud wall closing each flat's bedroom off its living space
+    { x0: 15.2, z0: 18.2, x1: 15.5, z1: 22.4 }, { x0: 21.6, z0: 21.6, x1: 25.4, z1: 21.9 },
+    ...(level === 0 ? [{ x0: 21.6, z0: 13.3, x1: 30, z1: 13.6 }] : []),
+  ];
+  // your flat: hall off the stair hall, study and utility room at the front, bathroom, bedroom, and an
+  // open-plan living room, dining area and kitchen across the back
+  const flatWalls: Rect[] = [
+    { x0: 16.4, z0: 10, x1: 16.7, z1: 15.0 }, { x0: 16.4, z0: 16.2, x1: 16.7, z1: 18.2 }, { x0: 12, z0: 17.9, x1: 16.4, z1: 18.2 },
+    { x0: 16.7, z0: 13.3, x1: 18.5, z1: 13.6 }, { x0: 19.5, z0: 13.3, x1: 24.0, z1: 13.6 }, { x0: 25.0, z0: 13.3, x1: 30, z1: 13.6 },
+    { x0: 22.6, z0: 10, x1: 22.9, z1: 13.3 },
+    { x0: 25.7, z0: 13.6, x1: 26.0, z1: 14.8 }, { x0: 25.7, z0: 15.9, x1: 26.0, z1: 17.6 },
+    { x0: 22.6, z0: 17.6, x1: 23.6, z1: 17.9 }, { x0: 24.6, z0: 17.6, x1: 30, z1: 17.9 },
+    { x0: 22.6, z0: 17.9, x1: 22.9, z1: 26 },
+  ];
+  const common = { category: 'functional' as const, height: 3.2, floors: 1, trim: '#33373b', roof: '#3d3f42', interior: true };
+  B.push({ ...common, id: 'marlow', name: 'Marlow Court', role: 'Block of flats - lobby and stairs; your Flat 5 is on the second floor', rect: MARLOW, color: '#9c5a44', stacked: true,
+    sign: { text: 'MARLOW COURT', side: 'zmin', color: '#f2f2f2', bg: '#2f3337' },
+    doors: [{ side: 'zmin', a: 15, b: 17, open: true }, { side: 'zmin', a: 26, b: 28, open: false }], floorColor: '#8a8f94', internalWalls: unitWalls(0) });
+  B.push({ ...common, id: 'mc_1', name: 'Marlow Court, first floor', role: 'Landing - Flats 3 and 4', rect: shiftX(MARLOW, LEVEL_DX), color: '#e9e6df', level: 1, stacked: true, doors: [], floorColor: '#8a8f94', internalWalls: shiftX(unitWalls(1), LEVEL_DX) });
+  B.push({ ...common, id: 'flat', name: 'Flat 5, Marlow Court', role: 'Your flat - the whole second floor', rect: shiftX(MARLOW, 2 * LEVEL_DX), color: '#e9e6df', level: 2, stacked: true, doors: [], floorColor: '#a07850', internalWalls: shiftX(flatWalls, 2 * LEVEL_DX) });
+  B.push({ ...common, id: 'mc_3', name: 'Marlow Court, top floor', role: 'Landing - Flats 6 and 7', rect: shiftX(MARLOW, 3 * LEVEL_DX), color: '#e9e6df', level: 3, doors: [], floorColor: '#8a8f94', internalWalls: shiftX(unitWalls(3), 3 * LEVEL_DX) });
 }
 
 export const HOUSE_IDS = B.filter((b) => b.id.startsWith('house_')).map((b) => b.id);
@@ -603,42 +659,90 @@ function buildWorldData(homeDesign: HomeDesign): World {
   obstacles.push({ kind: 'dumpster', rect: { x0: 29.85, z0: -37.25, x1: 31.15, z1: -36.15 }, height: 1.3, solid: true, rot: Math.PI });
   add({ id: 'dumpster', kind: 'dumpster', label: 'Dumpster', pos: { x: 30.5, z: -38.1 }, facing: 0, obj: { x: 30.5, z: -36.7 }, locationId: 'outside', businessId: 'market', range: 1.8 });
 
-  // ---- Flat 1 interior: fixed fittings, then the occupant's design furnishes the rooms
+  // ---- Flat 5 interior (the second floor): fixed fittings, then the occupant's design furnishes the rooms
   {
+    const F = <T>(o: T): T => shiftX(o, 2 * LEVEL_DX);
     const kitchenRun: PlacedItem = { kind: 'kitchen', rect: { x0: 12.2, z0: 25.2, x1: 17.6, z1: 25.85 }, height: 0.92, solid: true, rot: Math.PI, room: 'kitchen' };
     const stove: PlacedItem = { kind: 'stove', rect: { x0: 17.6, z0: 25.2, x1: 18.2, z1: 25.85 }, height: 0.92, solid: true, rot: Math.PI, room: 'kitchen' };
-    const shower: PlacedItem = { kind: 'shower', rect: { x0: 28.85, z0: 13.2, x1: 29.85, z1: 14.2 }, height: 2.1, solid: true, rot: -Math.PI / 2, room: 'bathroom' };
-    const toilet: PlacedItem = { kind: 'toilet', rect: { x0: 29.2, z0: 16.0, x1: 29.85, z1: 16.7 }, height: 0.8, solid: true, rot: -Math.PI / 2, room: 'bathroom' };
+    const shower: PlacedItem = { kind: 'shower', rect: { x0: 28.85, z0: 13.65, x1: 29.85, z1: 14.65 }, height: 2.1, solid: true, rot: -Math.PI / 2, room: 'bathroom' };
+    const toilet: PlacedItem = { kind: 'toilet', rect: { x0: 29.2, z0: 16.6, x1: 29.85, z1: 17.3 }, height: 0.8, solid: true, rot: -Math.PI / 2, room: 'bathroom' };
     const washer: PlacedItem = { kind: 'washer', rect: { x0: 18.25, z0: 25.22, x1: 18.85, z1: 25.82 }, height: 0.85, solid: true, rot: Math.PI, room: 'kitchen' };
-    const basin: PlacedItem = { kind: 'basin', rect: { x0: 27.0, z0: 13.2, x1: 27.6, z1: 13.65 }, height: 0.85, solid: true, rot: 0, room: 'bathroom' };
-    const furnished = furnish({
+    const basin: PlacedItem = { kind: 'basin', rect: { x0: 27.0, z0: 13.65, x1: 27.6, z1: 14.1 }, height: 0.85, solid: true, rot: 0, room: 'bathroom' };
+    const furnished = furnish(F({
       rooms: [
-        { id: 'living', name: 'Living room', kind: 'living', rect: { x0: 16.2, z0: 13.75, x1: 21.85, z1: 23.6 }, doors: [{ x: 16.7, z: 13.75 }, { x: 16.2, z: 16.0 }], outside: [], open: [{ side: 'z1', from: 12, to: 22 }, { side: 'x1', from: 13.7, to: 17.7 }, { side: 'x0', from: 20.8, to: 23.6 }] },
-        { id: 'dining', name: 'Dining area', kind: 'dining', rect: { x0: 12.15, z0: 20.8, x1: 16.2, z1: 23.6 }, doors: [], outside: ['x0'], open: [{ side: 'x1', from: 20.8, to: 23.6 }, { side: 'z1', from: 12, to: 16.2 }] },
-        { id: 'spare', name: 'Spare room', kind: 'spare', rect: { x0: 12.15, z0: 13.75, x1: 15.9, z1: 20.5 }, doors: [{ x: 15.9, z: 16.0 }], outside: ['x0'] },
-        { id: 'utility', name: 'Utility room', kind: 'utility', rect: { x0: 18.15, z0: 10.15, x1: 25.35, z1: 13.45 }, doors: [{ x: 23.6, z: 13.45 }], outside: ['z0'] },
-        { id: 'kitchen', name: 'Kitchen', kind: 'kitchen', rect: { x0: 12.15, z0: 23.6, x1: 21.85, z1: 25.85 }, doors: [], outside: ['x0', 'z1'] },
-        { id: 'hall', name: 'Hall', kind: 'hall', rect: { x0: 21.85, z0: 13.75, x1: 25.35, z1: 17.35 }, doors: [{ x: 23.5, z: 17.5 }, { x: 25.5, z: 15.0 }, { x: 23.6, z: 13.75 }], outside: [], open: [{ side: 'x0', from: 13.7, to: 17.7 }] },
-        { id: 'bedroom', name: 'Bedroom', kind: 'bedroom', rect: { x0: 22.15, z0: 17.65, x1: 29.85, z1: 25.85 }, doors: [{ x: 23.5, z: 17.65 }], outside: ['x1', 'z1'] },
-        { id: 'bathroom', name: 'Bathroom', kind: 'bathroom', rect: { x0: 25.65, z0: 13.15, x1: 29.85, z1: 17.35 }, doors: [{ x: 25.65, z: 15.0 }], outside: ['x1'] },
+        { id: 'living', name: 'Living room', kind: 'living', rect: { x0: 16.7, z0: 17.6, x1: 22.6, z1: 23.6 }, doors: [], outside: [], open: [{ side: 'z0', from: 16.7, to: 22.6 }, { side: 'x0', from: 18.2, to: 23.6 }, { side: 'z1', from: 16.7, to: 22.6 }] },
+        { id: 'dining', name: 'Dining area', kind: 'dining', rect: { x0: 12.15, z0: 18.2, x1: 16.7, z1: 23.6 }, doors: [], outside: ['x0'], open: [{ side: 'x1', from: 18.2, to: 23.6 }, { side: 'z1', from: 12, to: 16.7 }] },
+        { id: 'spare', name: 'Study', kind: 'spare', rect: { x0: 16.7, z0: 10.15, x1: 22.6, z1: 13.3 }, doors: [{ x: 19.0, z: 13.3 }], outside: ['z0'] },
+        { id: 'utility', name: 'Utility room', kind: 'utility', rect: { x0: 22.9, z0: 10.15, x1: 29.85, z1: 13.3 }, doors: [{ x: 24.5, z: 13.3 }], outside: ['z0', 'x1'] },
+        { id: 'kitchen', name: 'Kitchen', kind: 'kitchen', rect: { x0: 12.15, z0: 23.6, x1: 22.6, z1: 25.85 }, doors: [], outside: ['x0', 'z1'], open: [{ side: 'z0', from: 12, to: 22.6 }] },
+        { id: 'hall', name: 'Hall', kind: 'hall', rect: { x0: 16.7, z0: 13.6, x1: 25.7, z1: 17.6 }, doors: [{ x: 16.7, z: 15.6 }, { x: 19.0, z: 13.6 }, { x: 24.5, z: 13.6 }, { x: 25.7, z: 15.35 }, { x: 24.1, z: 17.6 }], outside: [], open: [{ side: 'z1', from: 16.7, to: 22.6 }] },
+        { id: 'bedroom', name: 'Bedroom', kind: 'bedroom', rect: { x0: 22.9, z0: 17.9, x1: 29.85, z1: 25.85 }, doors: [{ x: 24.1, z: 17.9 }], outside: ['x1', 'z1'] },
+        { id: 'bathroom', name: 'Bathroom', kind: 'bathroom', rect: { x0: 26.0, z0: 13.6, x1: 29.85, z1: 17.6 }, doors: [{ x: 26.0, z: 15.35 }], outside: ['x1'] },
       ],
       routes: [
-        [{ x: 16.7, z: 12.9 }, { x: 16.7, z: 14.4 }], [{ x: 16.7, z: 14.4 }, { x: 23.5, z: 14.5 }], [{ x: 23.5, z: 14.5 }, { x: 23.5, z: 19.5 }],
-        [{ x: 16.7, z: 14.4 }, { x: 17.2, z: 20.8 }], [{ x: 23.5, z: 14.5 }, { x: 27.2, z: 15 }], [{ x: 17.2, z: 20.8 }, { x: 15.0, z: 24.4 }], [{ x: 17.2, z: 20.8 }, { x: 17.9, z: 24.4 }], [{ x: 17.2, z: 20.8 }, { x: 18.6, z: 24.5 }],
-        [{ x: 16.7, z: 14.4 }, { x: 16.7, z: 16.0 }], [{ x: 16.7, z: 16.0 }, { x: 15.1, z: 16.0 }], [{ x: 23.5, z: 14.5 }, { x: 23.6, z: 12.6 }],
+        [{ x: 15.6, z: 15.6 }, { x: 17.2, z: 15.6 }], [{ x: 17.2, z: 15.6 }, { x: 21.0, z: 15.6 }], [{ x: 21.0, z: 15.6 }, { x: 24.1, z: 16.6 }], [{ x: 24.1, z: 16.6 }, { x: 24.1, z: 19.5 }],
+        [{ x: 21.0, z: 15.6 }, { x: 19.0, z: 13.45 }], [{ x: 19.0, z: 13.45 }, { x: 19.6, z: 11.8 }], [{ x: 21.0, z: 15.6 }, { x: 24.5, z: 13.45 }], [{ x: 24.5, z: 13.45 }, { x: 25.5, z: 11.8 }],
+        [{ x: 21.0, z: 15.6 }, { x: 27.3, z: 15.35 }], [{ x: 17.2, z: 15.6 }, { x: 17.2, z: 20.8 }], [{ x: 17.2, z: 20.8 }, { x: 15.0, z: 24.4 }], [{ x: 17.2, z: 20.8 }, { x: 17.9, z: 24.4 }], [{ x: 17.2, z: 20.8 }, { x: 18.6, z: 24.5 }],
       ],
       fixed: [kitchenRun, stove, washer, shower, toilet, basin],
       fixedUses: [
         { id: 'kitchen', kind: 'kitchen', label: 'Kitchen', pos: { x: 15.0, z: 24.4 }, facing: 0, obj: { x: 15.0, z: 25.5 } },
         { id: 'stove', kind: 'stove', label: 'Cooker', pos: { x: 17.9, z: 24.4 }, facing: 0, obj: { x: 17.9, z: 25.5 } },
         { id: 'washer', kind: 'washer', label: 'Washing machine', pos: { x: 18.6, z: 24.5 }, facing: 0, obj: { x: 18.55, z: 25.5 } },
-        { id: 'shower', kind: 'shower', label: 'Shower', pos: { x: 28.2, z: 14.7 }, facing: Math.PI / 2, obj: { x: 29.35, z: 13.7 } },
+        { id: 'shower', kind: 'shower', label: 'Shower', pos: { x: 28.3, z: 15.2 }, facing: Math.PI / 2, obj: { x: 29.35, z: 14.15 } },
       ],
-      hubs: { living: 'fl_k', dining: 'fl_k', spare: 'fl_door_i', utility: 'fl_c', bedroom: 'fl_bed', bathroom: 'fl_bath', hall: 'fl_c', kitchen: 'fl_k' },
-    }, homeDesign);
+      hubs: { living: 'fl_k', dining: 'fl_k', spare: 'fl_study', utility: 'fl_util', bedroom: 'fl_bed', bathroom: 'fl_bath', hall: 'fl_c', kitchen: 'fl_k' },
+    }), homeDesign);
     for (const it of furnished.items) obstacles.push({ kind: it.kind as ObstacleKind, rect: it.rect, height: it.height, solid: it.solid, rot: it.rot, color: it.color });
     for (const u of furnished.uses) add({ ...u, kind: u.kind as InteractKind, locationId: 'flat' });
     homeNodes = furnished.nodes;
+    obstacles.push({ kind: 'unitdoor', rect: F({ x0: 16.4, z0: 15.0, x1: 16.7, z1: 16.2 }), height: 2.1, solid: false, ref: 'flat' });
+  }
+  // ---- shop doors: after hours they are locked, and can be forced
+  for (const id of SHOP_IDS) {
+    const b = B.find((x) => x.id === id);
+    if (!b) continue;
+    publicDoors(b).forEach((d, i) => add({ id: `${id}_door${i ? i + 1 : ''}`, kind: 'shopdoor', label: `${b.name} (locked)`, pos: d.out, facing: d.facing, obj: d.mid, locationId: 'outside', range: 1.3 }));
+  }
+  // ---- Marlow Court: the stair core on every floor, and the other flats (locked: knock, or force the door)
+  for (let k = 0; k < 4; k++) obstacles.push({ kind: 'stairwell', rect: shiftX(STAIR_CORE, k * LEVEL_DX), height: 3.2, solid: true, rot: k, color: k === 3 ? 'top' : undefined });
+  for (const u of FLAT_UNITS) {
+    const P = <T>(o: T): T => shiftX(o, u.level * LEVEL_DX);
+    const hue = ['#5b6b7a', '#7a4f3a', '#4f6d60', '#6a5a7a', '#8a7a5a', '#3f5a6f'][FLAT_UNITS.indexOf(u) % 6];
+    const furniture: Obstacle[] = u.side === 'a' ? [
+      { kind: 'bed', rect: { x0: 12.2, z0: 18.4, x1: 14.4, z1: 20.6 }, height: 0.6, solid: true, rot: 0 },
+      { kind: 'bedside', rect: { x0: 14.5, z0: 18.3, x1: 15.0, z1: 18.8 }, height: 0.5, solid: true, rot: 0 },
+      { kind: 'wardrobe', rect: { x0: 12.2, z0: 21.0, x1: 12.8, z1: 22.4 }, height: 2.0, solid: true, rot: Math.PI / 2 },
+      { kind: 'sofa', rect: { x0: 20.5, z0: 21.5, x1: 21.25, z1: 23.7 }, height: 0.85, solid: true, rot: -Math.PI / 2, color: hue },
+      { kind: 'coffee_table', rect: { x0: 19.2, z0: 22.1, x1: 19.9, z1: 23.1 }, height: 0.42, solid: true, rot: Math.PI / 2 },
+      { kind: 'tv', rect: { x0: 15.55, z0: 22.6, x1: 16.0, z1: 24.0 }, height: 0.55, solid: true, rot: Math.PI / 2 },
+      { kind: 'kitchen', rect: { x0: 12.2, z0: 25.2, x1: 16.4, z1: 25.85 }, height: 0.92, solid: true, rot: Math.PI },
+      { kind: 'stove', rect: { x0: 16.4, z0: 25.2, x1: 17.0, z1: 25.85 }, height: 0.92, solid: true, rot: Math.PI },
+      { kind: 'dining_table', rect: { x0: 18.6, z0: 24.0, x1: 19.8, z1: 25.0 }, height: 0.75, solid: true },
+      { kind: 'drawers', rect: { x0: 20.75, z0: 18.6, x1: 21.25, z1: 19.4 }, height: 0.9, solid: true, rot: -Math.PI / 2 },
+      { kind: 'plant', rect: { x0: 15.6, z0: 18.3, x1: 16.1, z1: 18.8 }, height: 1.1, solid: true },
+      { kind: 'rug', rect: { x0: 17.6, z0: 21.6, x1: 20.2, z1: 23.6 }, height: 0.01, solid: false, color: '#8a3a2e' },
+    ] : [
+      { kind: 'sofa', rect: { x0: 22.2, z0: 17.6, x1: 24.4, z1: 18.5 }, height: 0.85, solid: true, rot: 0, color: hue },
+      { kind: 'coffee_table', rect: { x0: 22.8, z0: 19.2, x1: 23.8, z1: 19.8 }, height: 0.42, solid: true },
+      { kind: 'tv', rect: { x0: 22.5, z0: 21.15, x1: 24.0, z1: 21.55 }, height: 0.55, solid: true, rot: Math.PI },
+      { kind: 'kitchen', rect: { x0: 29.2, z0: 17.5, x1: 29.85, z1: 21.4 }, height: 0.92, solid: true, rot: -Math.PI / 2 },
+      { kind: 'stove', rect: { x0: 29.2, z0: 16.9, x1: 29.85, z1: 17.5 }, height: 0.92, solid: true, rot: -Math.PI / 2 },
+      { kind: 'dining_table', rect: { x0: 26.8, z0: 14.4, x1: 28.0, z1: 15.4 }, height: 0.75, solid: true },
+      { kind: 'bed', rect: { x0: 21.7, z0: 23.6, x1: 23.9, z1: 25.8 }, height: 0.6, solid: true, rot: Math.PI },
+      { kind: 'bedside', rect: { x0: 24.0, z0: 25.3, x1: 24.5, z1: 25.8 }, height: 0.5, solid: true, rot: Math.PI },
+      { kind: 'wardrobe', rect: { x0: 26.0, z0: 25.25, x1: 27.6, z1: 25.85 }, height: 2.0, solid: true, rot: Math.PI },
+      { kind: 'drawers', rect: { x0: 21.65, z0: 22.2, x1: 22.15, z1: 23.0 }, height: 0.9, solid: true, rot: Math.PI / 2 },
+      { kind: 'plant', rect: { x0: 29.3, z0: 24.6, x1: 29.8, z1: 25.1 }, height: 1.1, solid: true },
+      { kind: 'rug', rect: { x0: 22.2, z0: 18.8, x1: 24.6, z1: 20.6 }, height: 0.01, solid: false, color: '#3f5a6f' },
+    ];
+    for (const o of furniture) obstacles.push(P(o));
+    obstacles.push({ kind: 'unitdoor', rect: u.door, height: 2.1, solid: false, ref: u.id });
+    const corridor = MARLOW_LEVELS[u.level];
+    const toDoor = Math.atan2((u.door.x0 + u.door.x1) / 2 - u.doorPos.x, (u.door.z0 + u.door.z1) / 2 - u.doorPos.z);
+    add({ id: `${u.id}_door`, kind: 'housedoor', label: `${u.name.split(',')[0]} (front door)`, pos: u.doorPos, facing: toDoor, obj: { x: (u.door.x0 + u.door.x1) / 2, z: (u.door.z0 + u.door.z1) / 2 }, locationId: corridor, range: 1.6 });
+    if (u.side === 'a') add({ id: `${u.id}_valuables`, kind: 'valuables', label: 'Chest of drawers', pos: P({ x: 20.1, z: 19.0 }), facing: Math.PI / 2, obj: P({ x: 21.0, z: 19.0 }), locationId: u.id });
+    else add({ id: `${u.id}_valuables`, kind: 'valuables', label: 'Chest of drawers', pos: P({ x: 22.9, z: 22.6 }), facing: -Math.PI / 2, obj: P({ x: 21.9, z: 22.6 }), locationId: u.id });
   }
   // ---- the houses on Harbour Road: a furnished ground floor, the door locked unless you are let in
   for (const id of HOUSE_IDS) {
@@ -692,11 +796,11 @@ function buildWorldData(homeDesign: HomeDesign): World {
   obstacles.push({ kind: 'planter', rect: { x0: 18.4, z0: 8.6, x1: 24.6, z1: 9.6 }, height: 0.55, solid: true });
   obstacles.push({ kind: 'bin_store', rect: { x0: 25.2, z0: 8.2, x1: 29.6, z1: 9.8 }, height: 1.5, solid: true });
   obstacles.push({ kind: 'bike_shelter', rect: { x0: 30.7, z0: 11.0, x1: 32.4, z1: 15.6 }, height: 2.1, solid: true });
-  // communal lobby
-  obstacles.push({ kind: 'stairs', rect: { x0: 12.2, z0: 10.2, x1: 14.6, z1: 12.4 }, height: 3.2, solid: true });
-  obstacles.push({ kind: 'mailboxes', rect: { x0: 17.4, z0: 11.0, x1: 17.85, z1: 12.6 }, height: 1.5, solid: true });
-  obstacles.push({ kind: 'flatdoor', rect: { x0: 16.2, z0: 13.45, x1: 17.2, z1: 13.75 }, height: 2.1, solid: false });
-  obstacles.push({ kind: 'plant', rect: { x0: 14.9, z0: 12.8, x1: 15.4, z1: 13.3 }, height: 1.2, solid: true });
+  // communal lobby: post boxes by the door, a noticeboard and a bench
+  obstacles.push({ kind: 'mailboxes', rect: { x0: 20.85, z0: 10.6, x1: 21.3, z1: 12.4 }, height: 1.5, solid: true });
+  obstacles.push({ kind: 'plant', rect: { x0: 17.4, z0: 10.2, x1: 17.9, z1: 10.7 }, height: 1.2, solid: true });
+  obstacles.push({ kind: 'bench', rect: { x0: 18.2, z0: 10.2, x1: 19.9, z1: 10.75 }, height: 0.9, solid: true });
+  for (const k of [1, 3]) obstacles.push({ kind: 'plant', rect: shiftX({ x0: 20.7, z0: 10.2, x1: 21.2, z1: 10.7 }, k * LEVEL_DX), height: 1.2, solid: true });
 
   // ---- Job centre interior
   obstacles.push({ kind: 'board', rect: { x0: -27, z0: -27.85, x1: -21, z1: -27.5 }, height: 2.2, solid: true });
@@ -890,6 +994,7 @@ function buildWorldData(homeDesign: HomeDesign): World {
   // ---- colliders
   const colliders: Rect[] = [];
   for (const b of B) {
+    if (b.unit) continue; // walled by the storey around it
     if (b.interior) colliders.push(...wallsFor(b));
     else colliders.push(b.rect);
   }
@@ -1058,26 +1163,53 @@ function buildWorldData(homeDesign: HomeDesign): World {
   N('cf_term', -32.8, 22, 'cafe'); L('cf_kitchen', 'cf_term');
   N('cf_grill', -26, 24.4, 'cafe'); L('cf_back', 'cf_grill'); L('cf_kitchen', 'cf_grill');
   N('cf_pass', -24, 21.3, 'cafe'); L('cf_back', 'cf_pass');
-  // Flat (player only, but graph allows player-follow tests)
-  N('fl_out', 16, 8.6); N('fl_in', 16, 11.6, 'flat');
+  // Marlow Court: in at the street door, the lobby, and the stairs up through every floor
+  N('fl_out', 16, 8.6); N('fl_in', 16, 11.0, 'marlow');
   L('se_16', 'fl_out', 'fl_in');
-  N('fl_c', 23.5, 14.5, 'flat'); N('fl_k', 17.2, 20.8, 'flat'); N('fl_bed', 23.5, 19.5, 'flat'); N('fl_bath', 27.2, 15.0, 'flat');
-  N('fl_door_o', 16.7, 12.9, 'flat'); N('fl_door_i', 16.7, 14.4, 'flat');
-  L('fl_in', 'fl_door_o', 'fl_door_i', 'fl_c', 'fl_bed'); L('fl_door_i', 'fl_k'); L('fl_c', 'fl_bath');
+  for (let k = 0; k < 4; k++) {
+    const X = k * LEVEL_DX, loc = k === 2 ? 'mc_2h' : MARLOW_LEVELS[k];
+    // front and back landings either side of the stair core, joined by the aisle beside it
+    N(`st${k}_fa`, X + 12.8, 10.75, loc); N(`st${k}_fb`, X + 14.1, 10.75, loc); N(`st${k}_af`, X + 15.6, 10.9, loc);
+    N(`st${k}_ba`, X + 12.8, 17.1, loc); N(`st${k}_bb`, X + 14.1, 17.1, loc); N(`st${k}_ab`, X + 15.6, 17.1, loc);
+    L(`st${k}_fa`, `st${k}_fb`, `st${k}_af`, `st${k}_ab`, `st${k}_bb`, `st${k}_ba`);
+    if (k !== 2) { N(`mc${k}_c`, X + 18.0, 14.2, loc); L(`st${k}_af`, `mc${k}_c`, `st${k}_ab`); }
+  }
+  // the flights: up from the front landing on the ground and second floors, from the back on the first
+  for (const [a, b] of FLIGHTS) L(a, b);
+  L('fl_in', 'st0_af'); L('fl_in', 'mc0_c');
+  for (const u of FLAT_UNITS) {
+    const X = u.level * LEVEL_DX;
+    N(`door_${u.id}`, u.doorPos.x, u.doorPos.z, MARLOW_LEVELS[u.level]); N(`in_${u.id}`, u.inPos.x, u.inPos.z, u.id);
+    L(`mc${u.level}_c`, `door_${u.id}`, `in_${u.id}`);
+    if (u.side === 'a') { N(`${u.id}_m`, X + 17.0, 24.6, u.id); N(`${u.id}_t`, X + 13.8, 24.6, u.id); N(`${u.id}_bed`, X + 13.8, 21.4, u.id); N(`${u.id}_v`, X + 20.1, 19.0, u.id); L(`in_${u.id}`, `${u.id}_m`, `${u.id}_t`, `${u.id}_bed`); L(`in_${u.id}`, `${u.id}_v`); }
+    else { N(`${u.id}_m`, X + 26.5, 17.0, u.id); N(`${u.id}_o`, X + 27.0, 21.75, u.id); N(`${u.id}_bed`, X + 25.0, 23.0, u.id); N(`${u.id}_v`, X + 22.9, 22.6, u.id); L(`in_${u.id}`, `${u.id}_m`, `${u.id}_o`, `${u.id}_bed`, `${u.id}_v`); }
+  }
+  // your flat, off the second-floor stair hall
+  {
+    const F = (x: number) => x + 2 * LEVEL_DX;
+    N('fl_door_o', F(15.6), 15.6, 'mc_2h'); N('fl_door_i', F(17.2), 15.6, 'flat');
+    N('fl_c', F(21.0), 15.6, 'flat'); N('fl_k', F(17.2), 20.8, 'flat'); N('fl_bed', F(24.1), 19.5, 'flat'); N('fl_bath', F(27.3), 15.35, 'flat');
+    N('fl_study', F(19.6), 11.8, 'flat'); N('fl_util', F(25.5), 11.8, 'flat');
+    N('fl_sd', F(19.0), 13.45, 'flat'); N('fl_ud', F(24.5), 13.45, 'flat'); N('fl_bd', F(24.1), 17.75, 'flat'); N('fl_bad', F(25.85), 15.35, 'flat');
+    N('fl_sdi', F(19.0), 14.4, 'flat'); N('fl_udi', F(24.5), 14.4, 'flat'); N('fl_bdi', F(24.1), 16.6, 'flat');
+    L('st2_af', 'fl_door_o', 'st2_ab'); L('fl_door_o', 'fl_door_i', 'fl_c', 'fl_bdi', 'fl_bd', 'fl_bed'); L('fl_door_i', 'fl_k');
+    L('fl_c', 'fl_sdi', 'fl_sd', 'fl_study'); L('fl_c', 'fl_udi', 'fl_ud', 'fl_util'); L('fl_c', 'fl_bad', 'fl_bath');
+  }
   // designed furniture: a node in front of each thing you use, linked to its room's hub
   // the home's furniture changes with its design, so its floor gets a fine walking grid: every free
   // spot links to its neighbours, and fixed nodes and the designed furniture's stand points join it
   {
-    const H = { x0: 12.2, z0: 10.2, x1: 29.8, z1: 25.8 };
+    const H = shiftX({ x0: 12.2, z0: 10.2, x1: 29.8, z1: 25.8 }, 2 * LEVEL_DX);
     const step = 0.6;
     const blocked = (x: number, z: number) => colliders.some((r) => x > r.x0 - 0.28 && x < r.x1 + 0.28 && z > r.z0 - 0.28 && z < r.z1 + 0.28);
     const clear = (a: Vec2, b: Vec2) => !colliders.some((r) => segIntersectsRect(a, b, r, 0.2));
     const grid: string[] = [];
-    for (let x = H.x0 + 0.3; x < H.x1; x += step) for (let z = H.z0 + 0.3; z < H.z1; z += step) {
+    for (let i = 0; H.x0 + 0.3 + i * step < H.x1; i++) for (let j = 0; H.z0 + 0.3 + j * step < H.z1; j++) {
+      const x = H.x0 + 0.3 + i * step, z = H.z0 + 0.3 + j * step;
       if (blocked(x, z)) continue;
-      // the communal lobby and the bin store are not part of the flat
-      if (z < 13.45 && (x < 18.15 || x > 25.35)) continue;
-      const id = `flg_${Math.round(x * 10)}_${Math.round(z * 10)}`;
+      // the stair hall is not part of the flat
+      if (x < 2 * LEVEL_DX + 16.55 && z < 18.05) continue;
+      const id = `flg_${i}_${j}`;
       N(id, x, z, 'flat');
       grid.push(id);
     }
@@ -1087,7 +1219,7 @@ function buildWorldData(homeDesign: HomeDesign): World {
       if (d < step * 1.5 && clear(A, B)) L(grid[a], grid[b]);
     }
     for (const hn of homeNodes) N(hn.id, hn.pos.x, hn.pos.z, 'flat');
-    const joiners = [...homeNodes.map((h) => h.id), 'fl_door_i', 'fl_c', 'fl_k', 'fl_bed', 'fl_bath'];
+    const joiners = [...homeNodes.map((h) => h.id), 'fl_door_i', 'fl_c', 'fl_k', 'fl_bed', 'fl_bath', 'fl_study', 'fl_util'];
     for (const id of joiners) {
       const nd = nodes[id];
       if (!nd) continue;
@@ -1105,8 +1237,6 @@ function buildWorldData(homeDesign: HomeDesign): World {
       delete nodes[g];
     }
   }
-  // upstairs residents use the communal entrance
-  N('door_upper', 16.6, 9.3, 'flat_upper'); L('se_16', 'door_upper');
   // Harbour Home: in through the door, down the aisle to the counter
   N('hh_out', -51, -9.0); N('hh_in', -51, -13.2, 'homestore'); N('hh_mid', -51, -22, 'homestore'); N('hh_counter', -51, -30.6, 'homestore');
   L('nw_-50', 'hh_out', 'hh_in', 'hh_mid', 'hh_counter');
@@ -1179,15 +1309,36 @@ function buildWorldData(homeDesign: HomeDesign): World {
   cached = {
     buildings: B, obstacles, colliders, interactables: I, nodes, edges, roads,
     vanRouteOut, vanRouteBack, depot, bayParking, dropZone: { x: 24, z: -38.7 },
-    playerSpawn: { x: 20, z: 15 },
+    playerSpawn: { x: 2 * LEVEL_DX + 21, z: 15.6 },
     spawnPoints: ['bus_w', 'bus_e', 'nend', 'hs_e_72'],
     bounds, lamps, parked,
   };
   return cached;
 }
 
+/** every private home you can knock at or break into: Harbour Road's houses and the other flats in Marlow Court */
+export const DWELLING_IDS: string[] = [...HOUSE_IDS, ...FLAT_UNIT_IDS];
+/** a home's front door: where you stand outside it, just inside it, and the doorway (shut while it is locked) */
+export function dwellingDoor(id: string): { out: Vec2; inside: Vec2; lock: Rect } | null {
+  const w = getWorld();
+  const o = w.nodes[`door_${id}`], i = w.nodes[`in_${id}`];
+  if (!o || !i) return null;
+  const u = FLAT_UNITS.find((f) => f.id === id);
+  if (u) return { out: o, inside: i, lock: u.door };
+  const b = w.buildings.find((x) => x.id === id);
+  if (!b) return null;
+  const zc = (b.rect.z0 + b.rect.z1) / 2, x = b.rect.x0 > 0 ? b.rect.x0 : b.rect.x1;
+  return { out: o, inside: i, lock: { x0: x - 0.15, z0: zc - 0.65, x1: x + 0.15, z1: zc + 0.65 } };
+}
+
 export function buildingAt(p: Vec2): BuildingDef | null {
   for (const b of getWorld().buildings) if (b.interior && insideRect(b.rect, p)) return b;
+  return null;
+}
+
+/** the drawn building around a point (a flat's storey rather than the flat itself) */
+export function shellAt(p: Vec2): BuildingDef | null {
+  for (const b of getWorld().buildings) if (b.interior && !b.unit && insideRect(b.rect, p)) return b;
   return null;
 }
 

@@ -18,6 +18,7 @@ import { pickNeed, pickQueue } from './logistics';
 import { CAFE_PATIENCE, cafeQueueSlot } from './cafe';
 import { currentPlot, currentStage, PLOTS } from './construction';
 import { planRoute, resolveCircle, routeLength } from './world/nav';
+import { planX, sameLevel, STAIR_RUN } from './world/levels';
 import { capability } from './needs';
 import { npcLog } from './events';
 import { raining } from './weather';
@@ -65,7 +66,7 @@ export function workplaceOf(bid: Id, positionId?: Id): Workplace {
 
 export function homeDoor(homeId: Id | null): Vec2 {
   const w = getWorld();
-  const id = homeId === 'flat_upper' ? 'door_upper' : `door_${homeId}`;
+  const id = homeId === 'flat' ? 'fl_door_i' : `door_${homeId}`;
   const n = w.nodes[id] ?? w.nodes.bus_e;
   return { x: n.x, z: n.z };
 }
@@ -104,7 +105,7 @@ export function tickMovement(state: GameState, p: Person, dt: number) {
   let step = WALK * capability(p).move * hurry * pace(p) * dt;
   // personal space: someone just ahead slows you down and you step round them (keeping left)
   const tgt0 = m.path[m.idx];
-  if (tgt0) {
+  if (tgt0 && sameLevel(p.pos, tgt0)) {
     const d0 = dist(p.pos, tgt0);
     if (d0 > 0.3) {
       const hx = (tgt0.x - p.pos.x) / d0, hz = (tgt0.z - p.pos.z) / d0;
@@ -123,6 +124,15 @@ export function tickMovement(state: GameState, p: Person, dt: number) {
   }
   while (step > 0 && m.idx < m.path.length) {
     const tgt = m.path[m.idx];
+    if (!sameLevel(p.pos, tgt)) {
+      // a flight of stairs: walked over STAIR_RUN metres, arriving on the other storey
+      const c = Math.min(step, STAIR_RUN - (m.climb ?? 0));
+      m.climb = (m.climb ?? 0) + c;
+      step -= c;
+      p.facing = Math.atan2(planX(tgt.x) - planX(p.pos.x), tgt.z - p.pos.z);
+      if (m.climb >= STAIR_RUN - 1e-6) { p.pos = { ...tgt }; m.climb = 0; m.idx++; }
+      continue;
+    }
     const d = dist(p.pos, tgt);
     if (d < 0.02) { m.idx++; continue; }
     const mv = Math.min(step, d);
@@ -132,7 +142,7 @@ export function tickMovement(state: GameState, p: Person, dt: number) {
     step -= mv;
     if (mv >= d - 1e-6) m.idx++;
   }
-  const remaining = dist(p.pos, m.dest);
+  const remaining = sameLevel(p.pos, m.dest) ? dist(p.pos, m.dest) : Infinity;
   const moved = WALK * capability(p).move * hurry * pace(p) * dt - step;
   if (moved < 0.01 * dt) m.stuckTime += dt;
   else m.stuckTime = 0;

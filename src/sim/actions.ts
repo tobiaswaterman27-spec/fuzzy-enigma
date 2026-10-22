@@ -4,6 +4,7 @@
 import { useEnergy } from './bills';
 import { buyWeapon, finishRob, startRob, WEAPONS } from './health';
 import { breakIn, houseOf, houseOpen, knock, searchValuables } from './houses';
+import { forceShop, lootTill, SHOP_IDS, shopLocked, shopOf, shopOpenNow } from './breakins';
 import { grabShoplifter } from './incidents';
 import { buyRound, PUB_PINT, pubOpen } from './pub';
 import { ADOPTION, adoptFromKennel, rescueDogs } from './rescue';
@@ -22,7 +23,7 @@ import { dist, fmtMoney, clamp } from './core';
 import { count, firstItem, isEmpty, moveAll, moveItems, removeItems, spaceFor, total } from './inventory';
 import { CLOTHING, ITEMS, isFood, itemName } from './items';
 import { clockIn, clockOut, hostingInterview, interviewOpen, isOnShift, openAttendance } from './employment';
-import { basketValue, BIN_CAPACITY, completeSale, completeTask, isOpen, isStaff, leaveQueue, priceOf, productAt, queueSlot, RESTOCK_DONE } from './retail';
+import { basketValue, BIN_CAPACITY, completeSale, completeTask, isOpen, isStaff, leaveQueue, priceOf, productAt, queueSlot, RESTOCK_DONE, staffOnDuty } from './retail';
 import { checkInDeliveries, pickDemand, pickQueue, stageFromHands, STAGING } from './logistics';
 import { hasHomeAccess } from './housing';
 import { addXp, capability, skillLevel } from './needs';
@@ -104,6 +105,7 @@ export function focusInteractable(state: GameState, actor: Person): Interactable
   let bestScore = Infinity;
   for (const it of allInteractables(state)) {
     if (!canReach(actor, it)) continue;
+    if (it.kind === 'shopdoor' && !shopLocked(state, shopOf(it.id))) continue;
     const dPos = dist(actor.pos, it.pos);
     const dObj = dist(actor.pos, it.obj);
     const d = Math.min(dPos, dObj);
@@ -184,7 +186,8 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
       const head = till.queue[0] ? state.people[till.queue[0]] : null;
       const atTill = head && dist(head.pos, queueSlot(bid!, 0)) < 1.2;
       out.push(opt('serve_customer', head ? `Serve ${head.name} (${total(state.containers[head.basketId])} items)` : 'Serve customers', !onShift ? 'Staff only' : !isEmpty(h) ? 'Put down what you are carrying' : !head ? 'No customer waiting' : !atTill ? 'Customer is still walking up' : undefined));
-      if (p.isPlayer && !onShift && bid) out.push(opt('rob', p.weapon ? `Hold up the till (${p.weapon === 'knife' ? 'knife' : 'bat'} out)` : 'Demand the cash from the till'));
+      if (p.isPlayer && bid && !shopOpenNow(state, state.businesses[bid]?.locationId ?? bid) && !staffOnDuty(state, bid).length) out.push(opt('loot_till', 'Prise the till open'));
+      else if (p.isPlayer && !onShift && bid) out.push(opt('rob', p.weapon ? `Hold up the till (${p.weapon === 'knife' ? 'knife' : 'bat'} out)` : 'Demand the cash from the till'));
       break;
     }
     case 'kiosk': {
@@ -366,6 +369,12 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
       }
       out.push({ type: 'ui', label: 'Browse furniture, wallpaper, flooring and rugs for your home', enabled: true, ui: 'homestore', reason: staffed ? undefined : 'Counter closed - you can still order online' });
       for (const k of ['bat', 'knife'] as const) out.push(opt('buy_weapon', `Buy a ${WEAPONS[k].label} · ${fmtMoney(WEAPONS[k].price)}`, !staffed ? 'Counter closed' : count(state.containers[p.bagId], WEAPONS[k].item) ? 'You already have one' : undefined, k));
+      break;
+    }
+    case 'shopdoor': {
+      const id = shopOf(it.id);
+      if (!shopLocked(state, id)) break;
+      out.push(opt('break_in', 'Force the door (the alarm will go off)'));
       break;
     }
     case 'housedoor': {
@@ -639,6 +648,8 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
       return { ok: true, msg: grabShoplifter(state, p.id, itId.slice(7)) };
     case 'break_in':
       begin(p, type, itId, { duration: 1.2 }, now); break;
+    case 'loot_till':
+      begin(p, type, itId, { duration: 1.4 }, now); break;
     case 'search':
       begin(p, type, itId, { duration: 1.5 }, now); break;
     case 'buy_round': {
@@ -933,7 +944,8 @@ export function tickAction(state: GameState, p: Person, dt: number): string | nu
     case 'fish': if (!p.isPlayer) npcCatch(state, p); msg = null; break;
     case 'buy_tackle': case 'sell_catch': msg = null; break;
     case 'lotto': msg = null; break;
-    case 'break_in': msg = breakIn(state, p.id, houseOf(a.target)).msg || null; break;
+    case 'break_in': msg = SHOP_IDS.includes(shopOf(a.target)) ? forceShop(state, p.id, shopOf(a.target)) : breakIn(state, p.id, houseOf(a.target)).msg || null; break;
+    case 'loot_till': msg = lootTill(state, p.id, interactable(state, a.target)?.businessId ?? ''); break;
     case 'search': msg = searchValuables(state, p.id, houseOf(a.target)).msg; break;
     case 'sit':
     case 'watch_tv':

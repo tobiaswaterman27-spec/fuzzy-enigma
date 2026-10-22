@@ -7,7 +7,7 @@ import { lifeEvent, news } from './events';
 import { addItems, count, removeItems } from './inventory';
 import { itemName } from './items';
 import { transfer } from './ledger';
-import { HOUSE_IDS } from './world/layout';
+import { DWELLING_IDS, getWorld } from './world/layout';
 
 export type FavourKind = 'fetch' | 'deliver' | 'fish' | 'walk_dog';
 export interface Favour { id: Id; from: Id; kind: FavourKind; item?: string; to?: Id; reward: number; until: number; status: 'open' | 'done' | 'failed'; since: number; text: string }
@@ -37,12 +37,12 @@ export function askFavour(state: GameState, playerId: Id, fromId: Id): { ok: boo
     f.reward = 800;
     f.text = `Fetch ${first(p)} some ${itemName(f.item).toLowerCase()} from Corner Market`;
   } else if (kind === 'deliver') {
-    const others = Object.values(state.people).filter((o) => o.homeId && HOUSE_IDS.includes(o.homeId) && o.id !== fromId && !o.dead && !o.left && !o.isPlayer);
+    const others = Object.values(state.people).filter((o) => o.homeId && DWELLING_IDS.includes(o.homeId) && o.id !== fromId && !o.dead && !o.left && !o.isPlayer);
     const to = others[hash(p.id + 'd' + day) % Math.max(1, others.length)];
     if (!to) return { ok: false, msg: `${first(p)} can't think of anything.` };
     f.to = to.id; f.item = 'parcel'; f.reward = 600;
     addItems(state.containers[me.bagId], 'parcel', 1);
-    f.text = `Take ${first(p)}'s parcel to ${to.name} (${to.homeId!.replace('house_', 'No. ')} Harbour Road, or wherever they are)`;
+    f.text = `Take ${first(p)}'s parcel to ${to.name} (${getWorld().buildings.find((b) => b.id === to.homeId)?.name ?? 'their place'}, or wherever they are)`;
   } else if (kind === 'fish') {
     f.reward = 1200;
     f.text = `Catch ${first(p)} a fresh fish for their tea (the quay)`;
