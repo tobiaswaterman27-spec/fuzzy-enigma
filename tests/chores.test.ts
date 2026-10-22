@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createNewGame, step, startAction, optionsFor, getWorld, choresOf, isDirty, retailTick, openTasks, addItems, auditLedger, hire, at, homeQueueSlot, creditLimit, takeLoan, transfer, loansTick, canBuyHome, mortgageTerms, HOME_PRICES, buyProperty, activeLease, hasHomeAccess, ownedHome, propertyTick, sellHome, inviteForCoffee, plannedMeetup, blockPrice, buyStake, sellStake, stakeOf, dividendsReceived, BLOCK, dailyEconomy, buyOut, holdings, inspect, hygieneOf, isOpen, inspectionsTick, buyCar, playerCar, enterCar, exitCar, carsTick, sellCar, FUEL_PER_KM, CAR_WEEKLY, allInteractables, enrol, marketOn, stallPrice, raining, forSale, buyNewBuild, sellNewBuild, NEW_BUILD_PRICE, lettingsTick, billAccount, billEstimate, billsTick, type GameState } from '../src/sim/index';
+import { createNewGame, step, startAction, optionsFor, getWorld, choresOf, isDirty, retailTick, openTasks, addItems, auditLedger, hire, at, homeQueueSlot, creditLimit, takeLoan, transfer, loansTick, canBuyHome, mortgageTerms, HOME_PRICES, buyProperty, activeLease, hasHomeAccess, ownedHome, propertyTick, sellHome, inviteForCoffee, plannedMeetup, blockPrice, buyStake, sellStake, stakeOf, dividendsReceived, BLOCK, dailyEconomy, buyOut, holdings, inspect, hygieneOf, isOpen, inspectionsTick, buyCar, playerCar, enterCar, exitCar, carsTick, sellCar, FUEL_PER_KM, CAR_WEEKLY, allInteractables, enrol, marketOn, stallPrice, raining, forSale, buyNewBuild, sellNewBuild, NEW_BUILD_PRICE, lettingsTick, billAccount, billEstimate, billsTick, netWorth, wealthDaily, type GameState } from '../src/sim/index';
 import { buyHome, ONLINE_DELIVERY, quoteHome } from '../src/sim/homestore';
 
 const setup = { name: 'Tester', appearance: { skin: '#e3b48f', hair: 'short' as const, hairColor: '#3b2416', build: 'average' as const } };
@@ -371,5 +371,21 @@ describe('Household bills', () => {
     expect(a.kwh).toBe(0);
     expect(s.ledger.accounts[p.accountId].balance).toBeLessThan(before + est.total + 10000);
     expect(auditLedger(s)).toEqual([]);
+  });
+});
+
+describe('Net worth', () => {
+  it('adds up cash, property, shares and car, less loans; milestones are announced once', () => {
+    const s = createNewGame(7, setup);
+    const p = s.people.player;
+    const w0 = netWorth(s, 'player').total;
+    transfer(s, { from: s.externalId, to: p.accountId, amount: 1500000, reason: 'transfer', memo: 'test funds', key: 'nw_funds' });
+    expect(netWorth(s, 'player').total).toBe(w0 + 1500000);
+    expect(buyStake(s, 'player', 'cafe').ok).toBe(true);
+    expect(netWorth(s, 'player').lines.some((l) => l.label.startsWith('Shares'))).toBe(true);
+    wealthDaily(s);
+    expect(s.wealthMilestone).toBe(1);
+    wealthDaily(s);
+    expect(s.news.filter((n) => n.title.includes('net worth over')).length).toBe(1);
   });
 });

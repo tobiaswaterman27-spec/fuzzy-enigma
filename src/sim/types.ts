@@ -605,6 +605,8 @@ export interface GameState {
   newBuilds?: Record<Id, import('./lettings').NewBuild>;
   /** metered household bills (bills.ts) */
   bills?: Record<Id, import('./bills').BillAccount>;
+  /** net-worth milestones already announced (wealth.ts) */
+  wealthMilestone?: number;
   creditBans?: Record<Id, boolean>;
   /** homes owned outright or with a mortgage (property.ts), by location */
   ownership?: Record<Id, import('./property').Ownership>;

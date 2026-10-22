@@ -2,6 +2,7 @@
 // Fine-grained movement/actions run in sub-steps; economic and scheduled
 // systems run once per whole game minute so nothing is skipped when the
 // clock is accelerated (sleeping, fast-forward).
+import { wealthDaily } from './wealth';
 import { billsTick } from './bills';
 import { lettingsTick } from './lettings';
 import { goodsInTick } from './forklift';
@@ -115,6 +116,7 @@ export function minuteTick(state: GameState) {
   if (mod >= 23 * 60 + 30 && once(state, `close:${day}`)) {
     homeStoreDaily(state);
     socialDaily(state);
+    wealthDaily(state);
     for (const b of Object.values(state.businesses)) dailyClose(state, b);
     dailyEconomy(state);
     compactLedger(state, 14 * MIN_PER_DAY);

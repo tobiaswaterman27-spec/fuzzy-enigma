@@ -15,6 +15,7 @@ import { buyProperty as buyHomeProperty, canBuyHome, mortgageTerms, ownedHome, o
 import { blockPrice, BLOCK, buyOut, buyOutPrice, holdings, TAKEOVER_AT, buyStake, canInvestIn, dividendsReceived, MAX_STAKE, sellStake, stakeOf, valuation, weeklyProfit } from '../sim/invest';
 import { hygieneOf, RATING_LABEL } from '../sim/inspections';
 import { billAccount, billEstimate } from '../sim/bills';
+import { MILESTONES, netWorth, wealthTitle } from '../sim/wealth';
 import { AGENT_FEE, buyNewBuild, forSale, NEW_BUILD_PRICE, NEW_BUILD_RENT, ownedBuilds, RESALE_SHARE, sellNewBuild } from '../sim/lettings';
 import { PLOTS } from '../sim/world/plots';
 import { bookRetest, COURSES, enrol } from '../sim/training';
@@ -290,6 +291,7 @@ export class UI {
     const pantry = p.pantryId ? s.containers[p.pantryId] : null;
     const inv = (c: typeof bag | null) => c && total(c) ? Object.entries(c.items).map(([k, n]) => `${n}× ${itemName(k)}`).join(', ') : 'empty';
     return `<div class="card"><b>${esc(p.name)}</b><br>Energy ${p.needs.energy.toFixed(0)} · Food ${p.needs.satiety.toFixed(0)} · Hygiene ${p.needs.hygiene.toFixed(0)} · Mood ${p.needs.mood.toFixed(0)}<br><span class="muted">${conditionLabel(p).join(' · ') || 'Feeling fine'}</span><br>${choreStatus(s, p).length ? `<span class="muted">Home: ${esc(choreStatus(s, p).join(' · '))}</span><br>` : ''}Professional reputation ${p.reputation.toFixed(0)}/100</div>
+      ${(() => { const w = netWorth(s, p.id); return `<h3>Net worth · ${esc(wealthTitle(w.total))}</h3><div class="card"><div class="big">${fmtMoney(w.total)}</div>${w.lines.map((l) => `<div class="line"><span>${esc(l.label)}</span><span class="${l.amount < 0 ? 'neg' : ''}">${fmtMoney(l.amount)}</span></div>`).join('')}${(() => { const next = MILESTONES.find((m) => m > w.total); return next ? `<p class="muted">Next milestone: ${fmtMoney(next)}</p>` : ''; })()}</div>`; })()}
       <h3>Effects</h3><p class="muted">Below 25 energy you move and work 20% slower (36% below 10). Starving slows work. Sleep in your bed to recover. Eat food from your kitchen or a cafe meal.</p>
       <h3>Skills</h3>${['retail', 'cleaning', 'warehouse', 'cooking', 'construction'].map((k) => `<div class="line"><span>${k}</span><span>level ${skillLevel(p.skills[k] ?? 0)} (${p.skills[k] ?? 0} xp)</span></div>`).join('')}
       <p class="muted">Each level makes related work 6% faster and improves job applications.</p>
