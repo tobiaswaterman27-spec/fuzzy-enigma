@@ -19,6 +19,7 @@ import { daylight, hourOfDay } from '../sim/clock';
 import { buildWorld, type WorldView } from '../render/world';
 import { Views } from '../render/views';
 import { Traffic } from '../render/traffic';
+import { PoliceCar } from '../render/police';
 import { Rain } from '../render/rain';
 import { Audio } from '../render/audio';
 import { Sites } from '../render/sites';
@@ -60,6 +61,7 @@ export class Game {
   world: WorldView;
   views: Views;
   traffic: Traffic;
+  police: PoliceCar;
   rain: Rain;
   audio: Audio;
   sites: Sites;
@@ -141,6 +143,7 @@ export class Game {
     this.world = buildWorld(this.scene);
     this.views = new Views(this.scene);
     this.traffic = new Traffic(this.scene);
+    this.police = new PoliceCar(this.scene);
     this.rain = new Rain(this.scene);
     this.sites = new Sites(this.scene);
     this.market = new MarketStalls(this.scene);
@@ -374,6 +377,13 @@ export class Game {
     if (!this.paused) { this.chatter(); this.approaches(); }
     this.views.update(s, this.paused ? 0 : dt, this.player.pos, this.insideId, this.speech);
     this.traffic.update(s, this.paused ? 0 : dt);
+    if (s.wanted || this.police.active) {
+      // the patrol car steers round everything, the car you are driving included
+      const mine = this.drivingVan();
+      const cols = this.collidersWithCars(undefined, true);
+      if (mine) cols.push({ x0: mine.pos.x - 1.6, z0: mine.pos.z - 1.6, x1: mine.pos.x + 1.6, z1: mine.pos.z + 1.6 });
+      this.police.update(s, this.paused ? 0 : dt, mine ? this.vanSpeed : Math.hypot(this.vel.x, this.vel.z), cols);
+    }
     this.sites.update(s);
     this.market.update(s, this.paused ? 0 : dt, this.player.pos);
     this.audio.update(s, this.paused ? 0 : dt, Math.hypot(this.vel.x, this.vel.z), this.drivingVan() ? this.vanSpeed : null);
@@ -434,11 +444,12 @@ export class Game {
   }
 
   /** the static colliders plus any privately owned parked cars (they move, so they are not in the layout) */
-  private collidersWithCars(except?: string) {
+  private collidersWithCars(except?: string, noPolice = false) {
     const base = getWorld().colliders;
     // parked private cars, the delivery van and the forklift when nobody is driving them, and traffic
     const cars = Object.values(this.state.vehicles).filter((v) => v.id !== except && (v.state === 'parked' || v.state === 'loaded' || (v.driverId && v.driverId !== this.player.id)));
-    return [...base, ...this.traffic.rects(), ...cars.map((v) => {
+    const pc = noPolice ? null : this.police?.rect();
+    return [...base, ...this.traffic.rects(), ...(pc ? [pc] : []), ...cars.map((v) => {
       const ew = Math.abs(Math.sin(v.heading)) > 0.7;
       const hx = ew ? 2.1 : 0.95, hz = ew ? 0.95 : 2.1;
       return { x0: v.pos.x - hx, z0: v.pos.z - hz, x1: v.pos.x + hx, z1: v.pos.z + hz };
