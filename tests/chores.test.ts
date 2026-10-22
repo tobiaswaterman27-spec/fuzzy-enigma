@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createNewGame, step, startAction, optionsFor, getWorld, choresOf, isDirty, retailTick, openTasks, addItems, auditLedger, hire, at, homeQueueSlot, creditLimit, takeLoan, transfer, loansTick, canBuyHome, mortgageTerms, HOME_PRICES, buyProperty, activeLease, hasHomeAccess, ownedHome, propertyTick, sellHome, inviteForCoffee, plannedMeetup, blockPrice, buyStake, sellStake, stakeOf, dividendsReceived, BLOCK, dailyEconomy, buyOut, holdings, inspect, hygieneOf, isOpen, inspectionsTick, buyCar, playerCar, enterCar, exitCar, carsTick, sellCar, FUEL_PER_KM, CAR_WEEKLY, allInteractables, enrol, marketOn, stallPrice, raining, type GameState } from '../src/sim/index';
+import { createNewGame, step, startAction, optionsFor, getWorld, choresOf, isDirty, retailTick, openTasks, addItems, auditLedger, hire, at, homeQueueSlot, creditLimit, takeLoan, transfer, loansTick, canBuyHome, mortgageTerms, HOME_PRICES, buyProperty, activeLease, hasHomeAccess, ownedHome, propertyTick, sellHome, inviteForCoffee, plannedMeetup, blockPrice, buyStake, sellStake, stakeOf, dividendsReceived, BLOCK, dailyEconomy, buyOut, holdings, inspect, hygieneOf, isOpen, inspectionsTick, buyCar, playerCar, enterCar, exitCar, carsTick, sellCar, FUEL_PER_KM, CAR_WEEKLY, allInteractables, enrol, marketOn, stallPrice, raining, forSale, buyNewBuild, sellNewBuild, NEW_BUILD_PRICE, lettingsTick, type GameState } from '../src/sim/index';
 import { buyHome, ONLINE_DELIVERY, quoteHome } from '../src/sim/homestore';
 
 const setup = { name: 'Tester', appearance: { skin: '#e3b48f', hair: 'short' as const, hairColor: '#3b2416', build: 'average' as const } };
@@ -329,6 +329,29 @@ describe('Saturday market', () => {
       expect(s.ledger.accounts[p.accountId].balance).toBe(before - stallPrice('apples'));
       expect(s.containers[p.bagId].items.apples).toBe(1);
     }
+    expect(auditLedger(s)).toEqual([]);
+  });
+});
+
+describe('Buy to let', () => {
+  it('a finished new build is bought, let to a tenant, pays rent weekly and can be sold', () => {
+    const s = createNewGame(7, setup);
+    const p = s.people.player;
+    expect(forSale(s).length).toBe(0);
+    s.build!.plot = 2; // both houses finished
+    expect(forSale(s).length).toBe(2);
+    transfer(s, { from: s.externalId, to: p.accountId, amount: NEW_BUILD_PRICE, reason: 'transfer', memo: 'test funds', key: 'let_funds' });
+    expect(buyNewBuild(s, 'player', 'plot_w').ok).toBe(true);
+    expect(forSale(s).length).toBe(1);
+    const before = s.ledger.accounts[p.accountId].balance;
+    const b = s.newBuilds!.plot_w;
+    s.minute = b.boughtAt + 3 * 1440 + 1;
+    lettingsTick(s);
+    expect(b.tenant).toBeTruthy();
+    s.minute = b.nextRent!;
+    lettingsTick(s);
+    expect(s.ledger.accounts[p.accountId].balance).toBeGreaterThan(before);
+    expect(sellNewBuild(s, 'player', 'plot_w').ok).toBe(true);
     expect(auditLedger(s)).toEqual([]);
   });
 });

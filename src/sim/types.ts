@@ -601,6 +601,8 @@ export interface GameState {
   loans?: Record<Id, import('./bank').Loan>;
   /** food-hygiene ratings and inspection history per business (inspections.ts) */
   hygiene?: Record<Id, import('./inspections').HygieneRecord>;
+  /** new houses bought to let (lettings.ts) */
+  newBuilds?: Record<Id, import('./lettings').NewBuild>;
   creditBans?: Record<Id, boolean>;
   /** homes owned outright or with a mortgage (property.ts), by location */
   ownership?: Record<Id, import('./property').Ownership>;

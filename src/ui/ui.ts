@@ -14,6 +14,8 @@ import { FRIEND_AT, inviteForCoffee, plannedMeetup, relationLabel } from '../sim
 import { buyProperty as buyHomeProperty, canBuyHome, mortgageTerms, ownedHome, ownershipLines, redemption, sellHome, SELL_SHARE, SERVICE_CHARGE } from '../sim/property';
 import { blockPrice, BLOCK, buyOut, buyOutPrice, holdings, TAKEOVER_AT, buyStake, canInvestIn, dividendsReceived, MAX_STAKE, sellStake, stakeOf, valuation, weeklyProfit } from '../sim/invest';
 import { hygieneOf, RATING_LABEL } from '../sim/inspections';
+import { AGENT_FEE, buyNewBuild, forSale, NEW_BUILD_PRICE, NEW_BUILD_RENT, ownedBuilds, RESALE_SHARE, sellNewBuild } from '../sim/lettings';
+import { PLOTS } from '../sim/world/plots';
 import { bookRetest, COURSES, enrol } from '../sim/training';
 import { buyCar, CAR_MODELS, CAR_WEEKLY, FUEL_PER_KM, playerCar, RESALE, sellCar } from '../sim/cars';
 import { creditLimit, LOAN_APR_FLAT, LOAN_SIZES, LOAN_WEEKS, repayLoan, takeLoan } from '../sim/bank';
@@ -47,7 +49,7 @@ export class UI {
   constructor(private game: Game) {
     game.onToast = (m) => this.toast(m);
     game.onUi = (w, arg) => (w === 'jobs' || w === 'laptop' ? this.openPhone(w === 'laptop' ? this.tab : 'jobs') : w === 'homestore' ? this.openPhone('home') : w === 'invite' ? this.toast(inviteForCoffee(this.s, this.p.id, arg!).msg) : w === 'interview' ? this.interviewInPerson(arg!) : this.advisor());
-    game.onQualityAuto = () => this.toast('Graphics switched to Low for smoother play (Menu > Graphics to change).');
+    game.onQualityAuto = () => this.toast(`Graphics lowered to ${game.quality === 'medium' ? 'Medium' : 'Low'} for smoother play (Menu > Graphics to change).`);
     game.onFrame = () => this.frame();
     window.addEventListener('keydown', (e) => {
       if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
@@ -270,6 +272,13 @@ export class UI {
       })()}
       <h3>Invest</h3><p class="muted">Buy shares in local businesses ${BLOCK}% at a time (outsiders may hold up to ${MAX_STAKE}%). Shareholders get their part of the owner's draw every Sunday.${dividendsReceived(s, p.id) ? ` Dividends so far: ${fmtMoney(dividendsReceived(s, p.id))}.` : ''}</p>
       ${Object.values(s.businesses).filter((b) => canInvestIn(b) && b.ownerId !== p.id).map((b) => { const mine = stakeOf(b, p.id); const wp = weeklyProfit(s, b); return `<div class="card${mine ? ' good' : ''}"><b>${esc(b.name)}</b>${mine ? ` <span class="tag">you hold ${mine}%</span>` : ''}<div class="line"><span>Valued at</span><span>${fmtMoney(valuation(s, b))}</span></div><div class="line"><span>Weekly profit (recent)</span><span class="${wp >= 0 ? 'pos' : 'neg'}">${fmtMoney(wp)}</span></div><div class="row"><button data-stakebuy="${b.id}">Buy ${BLOCK}% · ${fmtMoney(blockPrice(s, b))}</button>${mine ? `<button data-stakesell="${b.id}">Sell ${BLOCK}%</button>` : ''}${mine >= TAKEOVER_AT ? `<button class="primary" data-buyout="${b.id}">Buy the rest · ${fmtMoney(buyOutPrice(s, b, p.id))}</button>` : ''}</div></div>`; }).join('')}
+      ${(() => {
+        const mine = ownedBuilds(s, p.id), sale = forSale(s);
+        if (!mine.length && !sale.length) return '';
+        return `<h3>Property to let</h3><p class="muted">New houses on Harbour Road, let through Harbourside Lettings: ${fmtMoney(NEW_BUILD_RENT)} a week less ${Math.round(AGENT_FEE * 100)}%.</p>`
+          + mine.map((b) => { const pl = PLOTS.find((x) => x.id === b.plotId)!; return `<div class="card good"><b>${esc(pl.name)}</b><div class="line"><span>Tenant</span><span>${b.tenant ? esc(b.tenant) : 'being found'}</span></div>${b.nextRent ? `<div class="line"><span>Next rent</span><span>${fmtDate(b.nextRent)}</span></div>` : ''}<div class="row"><button data-letsell="${b.plotId}">Sell (${fmtMoney(Math.round(b.price * RESALE_SHARE))})</button></div></div>`; }).join('')
+          + sale.map(({ plot }) => `<div class="card"><b>${esc(plot.name)}</b> · new build · ${fmtMoney(NEW_BUILD_PRICE)}<div class="row"><button data-letbuy="${plot.id}" ${s.ledger.accounts[p.accountId].balance >= NEW_BUILD_PRICE ? '' : 'disabled'}>Buy to let</button></div></div>`).join('');
+      })()}
       <h3>Transactions</h3>${txns.map((t) => `<div class="line"><span><span class="muted">${fmtDate(t.time).split(',')[1]} ${fmtClock(t.time)}</span> ${esc(t.memo)}</span><span class="${t.to === acc.id ? 'pos' : 'neg'}">${t.to === acc.id ? '+' : '-'}${fmtMoney(t.amount).replace('Cr ', '')}</span></div>`).join('') || '<p class="muted">No transactions yet.</p>'}`;
   }
 
@@ -507,6 +516,8 @@ export class UI {
     if (d.stakebuy) { this.toast(buyStake(s, this.p.id, d.stakebuy).msg); this.lastBody = ''; this.renderPhone(); return; }
     if (d.enrol) { this.toast(enrol(s, this.p.id, d.enrol).msg); this.lastBody = ''; this.renderPhone(); return; }
     if (d.retest) { this.toast(bookRetest(s, this.p.id).msg); this.lastBody = ''; this.renderPhone(); return; }
+    if (d.letbuy) { this.toast(buyNewBuild(s, this.p.id, d.letbuy).msg); this.lastBody = ''; this.renderPhone(); return; }
+    if (d.letsell) { this.toast(sellNewBuild(s, this.p.id, d.letsell).msg); this.lastBody = ''; this.renderPhone(); return; }
     if (d.carbuy) { const [m, c] = d.carbuy.split('|'); this.toast(buyCar(s, this.p.id, m, c).msg); this.lastBody = ''; this.renderPhone(); return; }
     if (d.carsell) { this.toast(sellCar(s, this.p.id).msg); this.lastBody = ''; this.renderPhone(); return; }
     if (d.buyout) { this.toast(buyOut(s, this.p.id, d.buyout).msg); this.lastBody = ''; this.renderPhone(); return; }
@@ -640,7 +651,7 @@ export class UI {
       <button data-m="loadauto">Load autosave <span class="muted">(${esc(sum(auto))})</span></button>
       <button data-m="new">New game</button>
       <button data-m="sound">Sound: ${this.game.audio.muted ? 'Off' : 'On'} - click to switch</button>
-      <button data-m="gfx">Graphics: ${this.game.quality === 'high' ? 'High (ambient occlusion, bloom, anti-aliasing)' : 'Low (faster)'} - click to switch</button>
+      <button data-m="gfx">Graphics: ${this.game.quality === 'high' ? 'High (ambient occlusion, bloom, anti-aliasing)' : this.game.quality === 'medium' ? 'Medium (anti-aliasing, no ambient occlusion)' : 'Low (fastest)'} · resolution ${Math.round(this.game.resScale * 100)}% - click to switch</button>
       <h3>Controls</h3><p class="muted">WASD or arrows: walk in that direction (relative to the camera) · Shift: run · E: use · 1-6: other options · Tab or P: phone · Esc: pause. The camera follows you automatically; drag to look around, scroll to zoom.</p>
       <p class="muted">Day ${dayIndex(this.s.minute) + 1}. Time passes at ${this.game.speedMult}× (1× = 20 game minutes per real minute). Sleeping fast-forwards.</p>`;
   }
@@ -652,7 +663,7 @@ export class UI {
     if (m === 'save') { const r = this.game.save(); this.renderMenu(r.ok ? 'Saved.' : r.error ?? 'Save failed'); }
     if (m === 'load' || m === 'loadauto') { const r = this.game.load(m === 'load' ? 'bigshot.slot1' : 'bigshot.auto'); this.renderMenu(r.ok ? 'Loaded.' : (r as any).error); }
     if (m === 'sound') { const a = this.game.audio; a.muted = !a.muted; try { localStorage.setItem('bigshot.sound', a.muted ? 'off' : 'on'); } catch { /* */ } a.start(); this.renderMenu(); return; }
-    if (m === 'gfx') { this.game.setQuality(this.game.quality === 'high' ? 'low' : 'high'); this.renderMenu(); return; }
+    if (m === 'gfx') { this.game.setQuality(this.game.quality === 'high' ? 'medium' : this.game.quality === 'medium' ? 'low' : 'high'); this.renderMenu(); return; }
     if (m === 'new') { if (b.dataset.confirm) location.reload(); else { b.dataset.confirm = '1'; b.textContent = 'Click again: unsaved progress will be lost'; } }
   }
 }

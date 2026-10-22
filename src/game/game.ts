@@ -94,7 +94,7 @@ export class Game {
   insideId: string | null = null;
   sky!: Sky;
   composer: EffectComposer | null = null;
-  quality: 'high' | 'low' = 'high';
+  quality: 'high' | 'medium' | 'low' = 'high';
   private cutawayOn = false;
   frameMs = 0;
 
@@ -126,7 +126,7 @@ export class Game {
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     this.renderer.toneMappingExposure = 0.95;
-    this.quality = (() => { try { return (localStorage.getItem('bigshot.gfx') as 'high' | 'low') ?? 'high'; } catch { return 'high'; } })();
+    this.quality = (() => { try { return (localStorage.getItem('bigshot.gfx') as 'high' | 'medium' | 'low') ?? 'high'; } catch { return 'high'; } })();
     this.setupComposer();
     this.world = buildWorld(this.scene);
     this.views = new Views(this.scene);
@@ -167,15 +167,20 @@ export class Game {
   }
 
   setupComposer() {
-    if (this.quality !== 'high') { this.composer = null; return; }
+    // shadows: sharp and wide on high, cheaper further down
+    const size = this.quality === 'low' ? 1024 : 2048;
+    if (this.sun.shadow.mapSize.x !== size) { this.sun.shadow.mapSize.set(size, size); this.sun.shadow.map?.dispose(); this.sun.shadow.map = null; }
+    if (this.quality === 'low') { this.composer = null; return; }
     const w = this.canvas.clientWidth || window.innerWidth, h = this.canvas.clientHeight || window.innerHeight;
     const c = new EffectComposer(this.renderer);
     c.addPass(new RenderPass(this.scene, this.camera));
-    const ao = new GTAOPass(this.scene, this.camera, w, h);
-    ao.updateGtaoMaterial({ radius: 0.35, distanceExponent: 1.5, thickness: 1.2, scale: 1.0 });
-    ao.blendIntensity = 0.85;
-    c.addPass(ao);
-    c.addPass(new UnrealBloomPass(new THREE.Vector2(w, h), 0.12, 0.4, 0.985));
+    if (this.quality === 'high') {
+      const ao = new GTAOPass(this.scene, this.camera, w, h);
+      ao.updateGtaoMaterial({ radius: 0.35, distanceExponent: 1.5, thickness: 1.2, scale: 1.0 });
+      ao.blendIntensity = 0.85;
+      c.addPass(ao);
+      c.addPass(new UnrealBloomPass(new THREE.Vector2(w, h), 0.12, 0.4, 0.985));
+    }
     c.addPass(new OutputPass());
     c.addPass(new SMAAPass());
     this.composer = c;
@@ -206,18 +211,22 @@ export class Game {
   private watchFrameRate(dt: number) {
     this.frameCount++;
     this.adaptResolution(dt);
-    if (this.quality !== 'high' || this.autoLowered || document.hidden) return;
+    if (this.quality === 'low' || this.autoLowered || document.hidden) return;
     if (this.frameCount < 120) return; // ignore start-up and shader compilation
     this.slowFrames = dt > 0.035 ? this.slowFrames + 1 : Math.max(0, this.slowFrames - 2);
     // only once lowering the resolution has not been enough
     if (this.slowFrames > 150 && this.resScale <= 0.6) {
-      this.autoLowered = true;
-      this.setQuality('low');
+      // one step down at a time; stop adjusting once at low
+      this.setQuality(this.quality === 'high' ? 'medium' : 'low');
+      this.autoLowered = (this.quality as string) === 'low';
+      this.slowFrames = 0;
+      this.resScale = 1;
+      this.resize();
       this.onQualityAuto();
     }
   }
 
-  setQuality(q: 'high' | 'low') {
+  setQuality(q: 'high' | 'medium' | 'low') {
     this.quality = q;
     try { localStorage.setItem('bigshot.gfx', q); } catch { /* ignore */ }
     this.setupComposer();
@@ -226,7 +235,7 @@ export class Game {
 
   resize() {
     // post-processing already anti-aliases, so high quality caps the pixel ratio; low renders at CSS pixels
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.quality === 'high' ? 1.5 : 1) * this.resScale);
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.quality === 'low' ? 1 : 1.5) * this.resScale);
     const w = this.canvas.clientWidth || window.innerWidth;
     const h = this.canvas.clientHeight || window.innerHeight;
     this.renderer.setSize(w, h, false);
