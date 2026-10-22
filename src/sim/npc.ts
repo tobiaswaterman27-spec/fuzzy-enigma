@@ -2,6 +2,7 @@
 // Decision layer: a priority/utility choice of goal every few minutes.
 // Execution layer: a plan of move/act/wait steps using the same validated
 // actions as the player. Arrival is verified by distance, never by a timer.
+import { GOODS_IN_SPOT } from './forklift';
 import { marketOn, STALLS } from './streetmarket';
 import type { GameState, Id, NpcGoal, Person, PlanStep, Task, Vec2 } from './types';
 import { dayIndex, minuteOfDay } from './clock';
@@ -45,7 +46,8 @@ export function workplaceOf(bid: Id, positionId?: Id): Workplace {
     case 'homestore': return { mode: 'post', pos: { x: -51, z: -33.45 }, facing: 0 };
     case 'council': return { mode: 'post', pos: n('jc_desk_back'), facing: 0 };
     case 'wholesale':
-      // operatives work the warehouse floor; drivers go out with the van
+      // operatives work the warehouse floor; drivers go out with the van; the forklift driver works goods-in
+      if (positionId === 'forklift') return { mode: 'post', pos: { x: GOODS_IN_SPOT.x - 1.6, z: GOODS_IN_SPOT.z - 2.4 }, facing: 0 };
       if (positionId !== 'driver' && w.interactables.wh_terminal) return { mode: 'warehouse', pos: w.interactables.wh_terminal.pos, facing: w.interactables.wh_terminal.facing };
       return { mode: 'hidden', pos: n('door_wholesale'), facing: 0 };
     default: return { mode: 'hidden', pos: n('bus_w'), facing: 0 };

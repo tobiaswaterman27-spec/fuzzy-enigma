@@ -1,5 +1,6 @@
 // Builds a brand-new, internally consistent world. Every opening balance is
 // a recorded transfer from the external economy so total money sums to zero.
+import { FORKLIFT_ID, FORKLIFT_PARK, GOODS_IN } from './forklift';
 import { npcQuals } from './training';
 import type { Appearance, Business, GameState, Id, Person, Position, ShiftTemplate, Traits } from './types';
 import { at } from './clock';
@@ -18,7 +19,7 @@ import { rand, randInt, pick } from './core';
 import { news } from './events';
 import { spawnDirt, SHELF_CAPACITY, shelfId } from './retail';
 
-export const SAVE_VERSION = 9;
+export const SAVE_VERSION = 10;
 
 export interface PlayerSetup {
   name: string;
@@ -165,6 +166,7 @@ export function createNewGame(seed: number, setup: PlayerSetup): GameState {
     id: 'wholesale', name: 'Harbour Wholesale', kind: 'wholesale', ownerId: 'p_gail', locationId: 'wholesale', open: [sh(MON_SAT, 6, 18)],
     positions: [
       pos({ id: 'driver', title: 'Delivery Driver', wage: 1450, shifts: [sh(MON_SAT, 6, 14)], uniform: 'uniform_wholesale', headcount: 2, playable: true, quals: ['driving'], duties: ['Collect the loaded van at the depot', 'Drive it to the shop\'s loading bay', 'Bring the van back and park it'], description: 'Drives the loaded delivery van from the depot to the shops and back.' }),
+      pos({ id: 'forklift', title: 'Forklift Driver', wage: 1500, shifts: [sh(MON_SAT, 5, 13)], uniform: 'uniform_wholesale', headcount: 1, playable: true, quals: ['forklift'], duties: ['Lift the imported pallets at goods-in', 'Drive each one to its bay in the racking', 'Set it down so the pickers can reach it'], description: 'Early shift: puts the morning imports away into the racking with the forklift truck.' }),
       pos({ id: 'operative', title: 'Warehouse Operative', wage: 1350, shifts: [sh(MON_SAT, 14, 22)], uniform: 'uniform_wholesale', headcount: 2, requires: {}, playable: true, duties: ['Pick order lines from the racking', 'Stage cases for the morning van', 'Put back stock not on the pick list'], description: 'Evening shift: picks the day\'s shop orders from the racking into the staging lanes for the morning van.' }),
     ],
     prices: Object.fromEntries([...PRODUCTS, 'cafe_supplies'].map((k) => [k, ITEMS[k].wholesale])), reputation: 60, supplierId: null,
@@ -222,6 +224,9 @@ export function createNewGame(seed: number, setup: PlayerSetup): GameState {
   // picked orders wait in the staging lanes by the loading door for the van
   createContainer(state, 'warehouse', 'wholesale', 'wholesale', 3000, undefined, 'wholesale_staging');
   wholesale.stockContainers.push('wholesale_staging');
+  // imports arrive on pallets at goods-in and are put away into the racking (forklift.ts)
+  createContainer(state, 'warehouse', 'wholesale', 'wholesale', 8000, undefined, GOODS_IN);
+  wholesale.stockContainers.push(GOODS_IN);
   createContainer(state, 'supplies', 'builders', 'outside', 1000, 'bricks', 'site_bricks');
   const cs = createContainer(state, 'supplies', 'cafe', 'cafe', 400, undefined, 'cafe_supplies');
   addItems(cs, 'cafe_supplies', 60);
@@ -234,6 +239,11 @@ export function createNewGame(seed: number, setup: PlayerSetup): GameState {
   state.vehicles.van_1 = {
     id: 'van_1', name: 'Harbour Wholesale van', ownerId: 'wholesale', kind: 'van', pos: { ...w.depot }, heading: Math.PI, route: [], routeIdx: 0,
     speed: 15, state: 'parked', cargoId: cargo.id, shipmentId: null, waitUntil: 0, condition: 92, odometer: 18234,
+  };
+  const forks = createContainer(state, 'van', 'wholesale', FORKLIFT_ID, 400, undefined, `${FORKLIFT_ID}_forks`);
+  state.vehicles[FORKLIFT_ID] = {
+    id: FORKLIFT_ID, name: 'Forklift truck', ownerId: 'wholesale', kind: 'forklift', pos: { ...FORKLIFT_PARK }, heading: Math.PI, route: [], routeIdx: 0,
+    speed: 0, state: 'parked', driverId: null, cargoId: forks.id, shipmentId: null, waitUntil: 0, condition: 90, odometer: 3120,
   };
 
   // ---------------------------------------------------------- district

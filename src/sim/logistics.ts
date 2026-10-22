@@ -117,8 +117,10 @@ export function placeOrder(state: GameState, buyerId: Id, supplierId: Id, items:
 /** Wholesaler keeps its warehouse stocked by importing from the rest of the country. */
 export function wholesaleImports(state: GameState, w: Business) {
   const wh = state.containers[w.stockContainers[0]];
+  // imports are delivered to goods-in (when the warehouse has one) and put away from there
+  const gi = state.containers.wholesale_goodsin;
   for (const [item, rule] of Object.entries(w.reorder)) {
-    const have = count(wh, item);
+    const have = count(wh, item) + (gi ? count(gi, item) : 0);
     if (have >= rule.min) continue;
     if (state.flags[`disrupt_${item}`]) {
       news(state, 'bad', `Supply problem: ${itemName(item)}`, `${w.name} could not import ${itemName(item)} - national shortage.`);
@@ -128,7 +130,7 @@ export function wholesaleImports(state: GameState, w: Business) {
     const cost = qty * ITEMS[item].importCost;
     const r = transfer(state, { from: w.accountId, to: state.externalId, amount: cost, reason: 'import', memo: `Import ${qty} ${itemName(item)}`, key: `import:${w.id}:${item}:${dayIndex(state.minute)}` });
     if (!r.ok) continue;
-    addItems(wh, item, qty);
+    addItems(gi ?? wh, item, qty);
     const prevN = have;
     const prevC = w.unitCost[item] ?? ITEMS[item].importCost;
     w.unitCost[item] = Math.round((prevN * prevC + qty * ITEMS[item].importCost) / Math.max(1, prevN + qty));
@@ -163,7 +165,7 @@ function collectAtDepot(state: GameState, s: Shipment) {
 export function logisticsTick(state: GameState, dt: number) {
   const w = getWorld();
   for (const v of Object.values(state.vehicles)) {
-    if (v.kind === 'car') continue;
+    if (v.kind !== 'van') continue;
     if (v.state === 'parked') {
       const due = Object.values(state.shipments)
         .filter((s) => s.supplierId === v.ownerId && s.status === 'ordered' && s.dispatchAt <= state.minute)

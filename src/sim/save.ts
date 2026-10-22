@@ -4,6 +4,7 @@ import { makeBusiness, SAVE_VERSION } from './newgame';
 import { startConstruction } from './construction';
 import { auditLedger } from './ledger';
 import { npcQuals } from './training';
+import { FORKLIFT_ID, FORKLIFT_PARK, GOODS_IN } from './forklift';
 import { getWorld, setHomeDesign } from './world/layout';
 import { defaultDesign } from './world/homes';
 
@@ -23,6 +24,17 @@ export interface KV {
 
 /** migrations from version N to N+1 */
 const MIGRATIONS: Record<number, (s: any) => void> = {
+  9: (s) => {
+    // v9 -> v10: goods-in and the forklift at Harbour Wholesale, and the Forklift Driver job
+    const w = s.businesses?.wholesale;
+    if (!w) return;
+    if (!s.containers[GOODS_IN]) { s.containers[GOODS_IN] = { id: GOODS_IN, kind: 'warehouse', ownerId: 'wholesale', locationId: 'wholesale', capacity: 8000, items: {} }; w.stockContainers.push(GOODS_IN); }
+    if (!s.vehicles[FORKLIFT_ID]) {
+      s.containers[`${FORKLIFT_ID}_forks`] = { id: `${FORKLIFT_ID}_forks`, kind: 'van', ownerId: 'wholesale', locationId: FORKLIFT_ID, capacity: 400, items: {} };
+      s.vehicles[FORKLIFT_ID] = { id: FORKLIFT_ID, name: 'Forklift truck', ownerId: 'wholesale', kind: 'forklift', pos: { ...FORKLIFT_PARK }, heading: Math.PI, route: [], routeIdx: 0, speed: 0, state: 'parked', driverId: null, cargoId: `${FORKLIFT_ID}_forks`, shipmentId: null, waitUntil: 0, condition: 90, odometer: 3120 };
+    }
+    if (!w.positions.some((p: any) => p.id === 'forklift')) w.positions.splice(1, 0, { id: 'forklift', title: 'Forklift Driver', wage: 1500, shifts: [{ days: [0, 1, 2, 3, 4, 5], start: 300, end: 780 }], payEvery: 'daily', headcount: 1, requires: {}, quals: ['forklift'], uniform: 'uniform_wholesale', playable: true, description: 'Early shift: puts the morning imports away into the racking with the forklift truck.', duties: ['Lift the imported pallets at goods-in', 'Drive each one to its bay in the racking', 'Set it down so the pickers can reach it'] });
+  },
   8: (s) => {
     // v8 -> v9: qualifications. Jobs that need one say so; townspeople hold their usual ones, and the
     // player keeps doing the job they already have (and driving the car they already own)

@@ -10,11 +10,13 @@ const [x, z] = process.argv.slice(2).map(Number);
 // skip the GPU work so the profile shows the game's own CPU cost; run the tick by hand
 await page.evaluate(([x, z]) => {
   const g = window.__bigshot.game;
+  const S = window.__bigshot.sim; while (g.state.minute < S.at(0, 11, 0)) S.step(g.state, 2);
   if (!Number.isNaN(x)) { g.player.pos = { x, z }; g.player.where = window.__bigshot.sim.locationOf({ x, z }); }
   g.renderer.render = () => {}; if (g.composer) g.composer.render = () => {};
   g.speedMult = 4;
 }, [x, z]);
 const cdp = await page.context().newCDPSession(page);
+await page.waitForTimeout(8000);
 await cdp.send('Profiler.enable');
 await cdp.send('Profiler.setSamplingInterval', { interval: 200 });
 await cdp.send('Profiler.start');

@@ -1,4 +1,5 @@
 // Early-game guidance. Each objective is checked against authoritative state.
+import { palletsWaiting } from './forklift';
 import type { GameState, Objective, Vec2 } from './types';
 import { activeLease } from './housing';
 import { fmtClock } from './clock';
@@ -56,6 +57,12 @@ export function agenda(state: GameState): Reminder | null {
   const p = state.people[state.playerId];
   const now = state.minute;
   // driving a delivery: where to, and how far
+  const fl = Object.values(state.vehicles).find((v) => v.kind === 'forklift' && v.driverId === p.id);
+  if (fl) {
+    const load = Object.entries(state.containers[fl.cargoId].items).find(([, q]) => (q ?? 0) > 0);
+    const waiting = palletsWaiting(state);
+    return { text: load ? `Forklift: take the ${itemName(load[0])} pallet to its bay in the racking and press E.` : waiting ? `Forklift: ${waiting} pallet(s) at goods-in (east wall). Drive up and press E to lift one.` : 'Forklift: all put away. Park it and press E to get off.', urgent: false, leaveAt: now, startsAt: now };
+  }
   const car = Object.values(state.vehicles).find((v) => v.kind === 'car' && v.driverId === p.id);
   if (car) return { text: 'Driving your car: W/S drive, A/D steer, E to park and get out.', urgent: false, leaveAt: now, startsAt: now };
   const van = Object.values(state.vehicles).find((v) => v.kind === 'van' && v.driverId === p.id);

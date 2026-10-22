@@ -27,6 +27,7 @@ import { raining } from '../sim/weather';
 import { safeWrite, loadSlot, type KV } from '../sim/save';
 import { news } from '../sim/events';
 import { CAR_MODELS, exitCar } from '../sim/cars';
+import { forkliftAction } from '../sim/forklift';
 import { inOutage } from '../sim/inspections';
 
 const CHATTER = ['How have you been?', 'Did you hear Corner Market is hiring again?', 'The rent on Harbour Road is daylight robbery.', 'Rosa\'s soup is the best thing in town.', 'They say rain again tomorrow.', 'My cousin started at the warehouse.', 'Those new houses are coming along.', 'Ha! No, really?', 'We should do this more often.', 'Long week. Glad it\'s nearly over.', 'Have you seen the prices at Harbour Home?', 'I passed my driving test!', 'The inspector came round the shop yesterday.', 'Exactly what I said!']; 
@@ -239,6 +240,11 @@ export class Game {
       if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
       this.keys.add(e.code);
       if (this.uiOpen) return;
+      if (e.code === 'KeyE' && this.drivingVan()?.kind === 'forklift') {
+        if (Math.abs(this.vanSpeed) > 1) { this.onToast('Stop first.'); return; }
+        this.onToast(forkliftAction(this.state, this.player.id).msg);
+        return;
+      }
       if (e.code === 'KeyE' && this.drivingVan()?.kind === 'car') {
         if (Math.abs(this.vanSpeed) > 1.5) { this.onToast('Slow down to park.'); return; }
         this.onToast(exitCar(this.state, this.player.id).msg);
@@ -381,7 +387,8 @@ export class Game {
     const car = v.kind === 'car' ? CAR_MODELS.find((m) => m.id === v.model) : undefined;
     const thr = canDrive ? (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0) : 0;
     const steer = canDrive ? (k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0) - (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) : 0;
-    const MAX = car?.topSpeed ?? 11, REV = 3;
+    const fork = v.kind === 'forklift';
+    const MAX = fork ? 4.5 : car?.topSpeed ?? 11, REV = fork ? 2.5 : 3;
     if (thr > 0) this.vanSpeed += (this.vanSpeed < 0 ? 9 : 3.5) * dt;
     else if (thr < 0) this.vanSpeed -= (this.vanSpeed > 0 ? 9 : 2.5) * dt;
     else this.vanSpeed -= Math.sign(this.vanSpeed) * Math.min(Math.abs(this.vanSpeed), 2.2 * dt);
@@ -389,7 +396,7 @@ export class Game {
     // steering: tighter at low speed, the turn rate scales with how fast the wheels roll
     v.heading += steer * Math.sign(this.vanSpeed) * Math.min(Math.abs(this.vanSpeed), 3.5) * dt * 0.22;
     const nx = v.pos.x + Math.sin(v.heading) * this.vanSpeed * dt, nz = v.pos.z + Math.cos(v.heading) * this.vanSpeed * dt;
-    const res = resolveCircle({ x: nx, z: nz }, 1.15);
+    const res = resolveCircle({ x: nx, z: nz }, fork ? 0.8 : 1.15);
     if (Math.hypot(res.x - nx, res.z - nz) > 0.01) this.vanSpeed *= 0.4; // bumped into something
     v.odometer += Math.hypot(res.x - v.pos.x, res.z - v.pos.z);
     v.pos = res;
@@ -462,9 +469,10 @@ export class Game {
       const behind = van.heading + Math.PI;
       const dYaw = ((behind - this.camYaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
       this.camYaw += dYaw * Math.min(1, dt * 2.5);
-      this.camPitch += (0.3 - this.camPitch) * Math.min(1, dt * 2);
-      this.camDist = Math.max(this.camDist, 7.5);
-      this.camDist += (9 - this.camDist) * Math.min(1, dt * 2);
+      const fk = van.kind === 'forklift';
+      this.camPitch += ((fk ? 0.45 : 0.3) - this.camPitch) * Math.min(1, dt * 2);
+      if (!fk) this.camDist = Math.max(this.camDist, 7.5);
+      this.camDist += ((fk ? 5 : 9) - this.camDist) * Math.min(1, dt * 2);
     } else if (!this.camLocked && performance.now() < this.manualUntil) {
       // the player is looking around with the mouse: leave the angle alone, keep the distance
       const wantDist = (p.sleeping ? 3.4 : inside ? 3.3 : 4.4) * this.zoom;
@@ -491,7 +499,7 @@ export class Game {
     }
     // follow the drawn body (it may be acting out a multi-step action away from its sim spot)
     const drawn = p.action ? this.views.people.get(p.id)?.rig.root.position : null;
-    const pivot = new THREE.Vector3(drawn?.x ?? p.pos.x, van ? 2.7 : p.sleeping ? 1.0 : 1.62, drawn?.z ?? p.pos.z);
+    const pivot = new THREE.Vector3(drawn?.x ?? p.pos.x, van ? (van.kind === 'forklift' ? 2.0 : 2.7) : p.sleeping ? 1.0 : 1.62, drawn?.z ?? p.pos.z);
     const pitch = this.camPitch;
     const dir = new THREE.Vector3(Math.sin(this.camYaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(this.camYaw) * Math.cos(pitch));
     // over-the-shoulder offset to the right of the view direction

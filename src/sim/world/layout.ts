@@ -674,9 +674,9 @@ function buildWorldData(homeDesign: HomeDesign): World {
     obstacles.push({ kind: 'lane_marking', rect: { x0, z0: 15.0, x1: x0 + 2.2, z1: 17.6 }, height: 0.01, solid: false });
     obstacles.push({ kind: 'pallet', rect: { x0: x0 + 0.4, z0: 15.8, x1: x0 + 1.6, z1: 16.8 }, height: 0.15, solid: false });
   }
-  obstacles.push({ kind: 'forklift', rect: { x0: -43.6, z0: 30, x1: -42.4, z1: 32.3 }, height: 2.2, solid: true, rot: Math.PI / 2 });
   obstacles.push({ kind: 'roller_door', rect: { x0: -58, z0: 14.05, x1: -50, z1: 14.3 }, height: 4, solid: false, rot: Math.PI });
-  for (const [x, z] of [[-41.2, 36.8], [-41.2, 35.4], [-41.2, 38.6]]) obstacles.push({ kind: 'pallet_load', rect: { x0: x - 0.6, z0: z - 0.5, x1: x + 0.6, z1: z + 0.5 }, height: 1.3, solid: true });
+  // goods-in: imported pallets wait here (drawn live from the goods-in stock), the forklift parks nearby
+  obstacles.push({ kind: 'lane_marking', rect: { x0: -44.2, z0: 34.2, x1: -40.6, z1: 39.4 }, height: 0.01, solid: false });
 
   // ---- Harbour Home showroom: room sets either side of a clear aisle to the sales counter
   {

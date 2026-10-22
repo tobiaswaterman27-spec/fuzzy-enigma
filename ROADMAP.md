@@ -40,7 +40,7 @@ Status vocabulary: **planned → implemented → integrated → tested → playa
 - Pixel ratio capped (1.5 high / 1.0 low); automatic drop to Low graphics if frames stay above ~35 ms.
 
 ## Next highest-priority tasks
-1. Goods-in put-away at the warehouse; forklift driving; traffic on the roads.
+1. ~~Goods-in put-away at the warehouse; forklift driving; traffic on the roads.~~ Done (v19: Forklift Driver).
 2. Faces, hair and shoes; props gripped properly (cases between the hands, picked items held then placed).
 3. More step-by-step action sequences (cooking at the stove, getting changed at the wardrobe).
 4. NPC–NPC avoidance and queue spacing; long-run economy verification (8+ weeks), events.
@@ -54,6 +54,8 @@ Status vocabulary: **planned → implemented → integrated → tested → playa
 - **v5** — clothes hang naturally (bum fix), apron/long-hair rebuilt, render performance work.
 - **v6** — normal-mapped surfaces, consistent road markings, Blender cars/van/gondolas/checkout, more parked cars.
 - **v7–v10** — motion capture, automatic camera, Blender furniture, Marlow Court block of flats, seated real-time interviews with spoken questions, staff roles, AI-arranged homes with decoration, see-through windows.
+- **v19** — performance (bodies built in a background worker, pooled lights, per-area batching, culled stock, lighter models, dynamic resolution), camera (drag to look, wheel zoom, smooth wall handling), Marlow Court redesigned, Saturday market, varied everyday clothes, playable Forklift Driver (goods-in put-away), lights out in power cuts.
+- **v18** — training courses, park chats.
 - **v17** — faces (brows, lash lines, round irises), food-hygiene inspections (0–5 ratings, stickers by the door, fines, demand effects), power cuts that close businesses; buy a car (Car tab), drive and park it anywhere, insurance and fuel; training courses at the Job Centre (food hygiene, driving licence with a test, forklift, supervision) that jobs and driving require; townspeople meet up in the park and chat (speech bubbles nearby); Saturday market in the park (stalls with traders, fresh produce, townspeople browse); lights go out in power cuts.
 - **v16** — shares in local businesses (buy 5% stakes, Sunday dividends, sell back; with 25% buy the whole company — it keeps its staff and pays you its profit) in the Bank tab; friendships: chatting builds relationships (acquaintance → friend → close friend), invite friends for coffee at the cafe's corner table, People tab, friends lift mood, neglected friendships fade.
 - **v15** — construction (build houses as a Site Labourer, visible stage by stage), Cafe Cook / Kitchen Assistant job, cafe keeps enough supplies.

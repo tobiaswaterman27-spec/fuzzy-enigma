@@ -246,7 +246,7 @@ export const GARMENTS: Record<string, Garment> = {
 
 /** Everyday clothes vary from person to person: a few tops, trousers and shoes for casual wear, and
  * shirt, suit and tie colours for smart wear. Uniforms are the same for everyone. */
-const CASUAL_TOPS: [string, 'knit' | 'polo' | 'shirt', 'short' | 'long'][] = [
+export const CASUAL_TOPS: [string, 'knit' | 'polo' | 'shirt', 'short' | 'long'][] = [
   ['#3f6ea8', 'knit', 'short'], ['#7d8287', 'knit', 'long'], ['#7b2d3a', 'knit', 'short'], ['#5d6b3c', 'knit', 'long'], ['#efeee9', 'knit', 'short'],
   ['#222428', 'knit', 'short'], ['#c99a2e', 'knit', 'long'], ['#2b3b55', 'polo', 'short'], ['#9cb6cf', 'shirt', 'long'], ['#b5562e', 'knit', 'long'],
   ['#4d7a6e', 'polo', 'short'], ['#d6c7ae', 'knit', 'long'],

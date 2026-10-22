@@ -10,6 +10,7 @@ import { buildingAt, getWorld, type Interactable, SHELF_LAYOUT, PALLET_X, SHOPS,
 import { ITEMS } from '../sim/items';
 import { count, total, firstItem } from '../sim/inventory';
 import { SHELF_CAPACITY } from '../sim/retail';
+import { FORKLIFT_ID, palletsWaiting } from '../sim/forklift';
 import { buildOneOnMainThread, requestHuman, workerActive } from './humanBuilder';
 
 /** realistic bodies are costly to cut and drape, so outfit/body rebuilds are spread over frames */
@@ -558,6 +559,9 @@ export class Views {
   hidePlayer = false;
   /** privately owned cars */
   cars = new Map<string, THREE.Object3D>();
+  /** the warehouse forklift (with a pallet on the forks when carrying) and pallets waiting at goods-in */
+  private fork: { truck: THREE.Object3D; load: THREE.Object3D } | null = null;
+  private goodsIn: THREE.Object3D[] = [];
   shelfMeshes = new Map<string, { mesh: THREE.InstancedMesh; bid: string; product: string; base: THREE.Vector3[]; side: number[]; mess: number }>();
   /** the player's home: dirty dishes, clutter and the washing machine */
   private home = new THREE.Group();
@@ -697,6 +701,34 @@ export class Views {
   /** instanced stock meshes, shown by distance */
   private stock: { mesh: THREE.InstancedMesh; x: number; z: number; bid: string | null }[] = [];
   private stockTick = 0;
+
+  private updateForklift(state: GameState) {
+    const v = state.vehicles[FORKLIFT_ID];
+    if (v && !this.fork) {
+      const truck = new THREE.Group();
+      const body = modelInstance('forklift', '#f2c200');
+      if (body) truck.add(body);
+      const load = modelInstance('pallet_load') ?? new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.0), new THREE.MeshStandardMaterial({ color: '#b8925d' }));
+      load.position.set(0, 0.35, 1.55);
+      load.rotation.y = Math.PI / 2;
+      truck.add(load);
+      this.scene.add(truck);
+      this.fork = { truck, load };
+      for (let k = 0; k < 8; k++) {
+        const p = modelInstance('pallet_load') ?? new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.0), new THREE.MeshStandardMaterial({ color: '#b8925d' }));
+        p.position.set(-43.3 + (k % 2) * 1.5, 0, 35.0 + Math.floor(k / 2) * 1.2);
+        p.rotation.y = Math.PI / 2;
+        this.scene.add(p);
+        this.goodsIn.push(p);
+      }
+    }
+    if (!v || !this.fork) return;
+    this.fork.truck.position.set(v.pos.x, 0, v.pos.z);
+    this.fork.truck.rotation.y = v.heading;
+    this.fork.load.visible = total(state.containers[v.cargoId]) > 0;
+    const waiting = palletsWaiting(state);
+    this.goodsIn.forEach((p, k) => { p.visible = k < waiting; });
+  }
 
   /** hygiene rating stickers in the shop and cafe windows, by the entrance */
   private updateStickers(state: GameState) {
@@ -847,6 +879,7 @@ export class Views {
     const van = state.vehicles.van_1;
     this.van.position.set(van.pos.x, 0, van.pos.z);
     this.van.rotation.y = van.heading;
+    this.updateForklift(state);
     for (const [id, obj] of this.cars) if (!state.vehicles[id]) { this.scene.remove(obj); this.cars.delete(id); }
     for (const v of Object.values(state.vehicles)) {
       if (v.kind !== 'car') continue;

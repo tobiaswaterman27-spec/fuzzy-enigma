@@ -31,3 +31,4 @@ export * from './inspections';
 export * from './cars';
 export * from './training';
 export * from './streetmarket';
+export * from './forklift';

@@ -7,6 +7,7 @@ import type { Appearance } from './sim/types';
 import * as sim from './sim/index';
 import { loadHumanAsset, buildRealHuman } from './render/humanAsset';
 import { loadModels } from './render/models';
+import { CASUAL_TOPS } from './render/human';
 import { requestHuman, startHumanBuilder, workerActive } from './render/humanBuilder';
 import { hasHumanBuild } from './render/humanAsset';
 import { buildRig, loadMocap } from './render/character';
@@ -49,6 +50,7 @@ function creator() {
       <label>Hair</label>${chip('hair', HAIR_STYLES, a.hair)}
       <label>Hair colour</label>${chip('hairColor', HAIR_COLORS, a.hairColor, true)}
       <label>Build</label>${chip('build', BUILDS, a.build)}
+      <label>Everyday clothes</label><div class="chips">${CASUAL_TOPS.map(([c], i) => `<button data-g="style" data-v="${i}" class="swatch ${(a.style ?? 0) % CASUAL_TOPS.length === i && a.style !== undefined ? 'on' : ''}" style="background:${c}" aria-label="top ${i + 1}"></button>`).join('')}</div>
       <label>Height</label><div class="chips">${[0.94, 1, 1.06].map((h) => `<button data-g="height" data-v="${h}" class="${a.height === h ? 'on' : ''}">${h < 1 ? 'shorter' : h > 1 ? 'taller' : 'average'}</button>`).join('')}</div>
       <button class="primary" id="cc-start">Start life in Harbourside</button>
       <p class="muted">Controls: WASD to walk, Shift to run, E to use, Tab for your phone. The camera follows behind you; drag with the mouse to look around and scroll to zoom.</p>`;
@@ -69,7 +71,12 @@ function creator() {
       return;
     }
     const g = b.dataset.g as keyof Appearance;
-    (p().appearance as any)[g] = g === 'height' ? Number(b.dataset.v) : b.dataset.v;
+    if (g === 'style') {
+      // keep the chosen top; step through trousers and shoes when the same top is picked again
+      const cur = p().appearance.style;
+      const top = Number(b.dataset.v);
+      p().appearance.style = cur !== undefined && cur % CASUAL_TOPS.length === top ? (cur + CASUAL_TOPS.length * 13) % 1000 : top;
+    } else (p().appearance as any)[g] = g === 'height' ? Number(b.dataset.v) : b.dataset.v;
     render();
   };
 }

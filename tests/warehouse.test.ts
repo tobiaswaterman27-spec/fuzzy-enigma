@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createNewGame, step, startAction, getWorld, hire, placeOrder, pickQueue, total, count, at, ITEMS, interactable, clockIn, type GameState } from '../src/sim/index';
+import { createNewGame, step, startAction, getWorld, hire, placeOrder, pickQueue, total, count, at, ITEMS, interactable, clockIn, GOODS_IN, FORKLIFT_ID, GOODS_IN_SPOT, forkliftAction, dismount, WH_PRODUCTS, type GameState } from '../src/sim/index';
 import { courses } from '../src/sim/construction';
 
 const setup = { name: 'Tester', appearance: { skin: '#e3b48f', hair: 'short' as const, hairColor: '#3b2416', build: 'average' as const } };
@@ -130,5 +130,45 @@ describe('Site Labourer', () => {
     expect(count(s.containers[p.handsId], 'bricks')).toBe(0);
     expect(s.build!.done).toBeGreaterThanOrEqual(16); // the NPC labourer lays bricks too
     expect(courses(s, 0)).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe('Forklift Driver', () => {
+  it('imports wait at goods-in; the driver lifts a pallet, drives it to its bay and puts it away', () => {
+    const s = createNewGame(7, setup);
+    const p = s.people.player;
+    p.quals = ['forklift'];
+    hire(s, 'player', 'wholesale', 'forklift', true);
+    p.appearance.outfit = 'uniform_wholesale';
+    // run the stock of milk down so the morning import brings some in
+    s.containers.wholesale_stock.items.milk = 20;
+    while (s.minute < at(1, 5, 10)) step(s, 5);
+    const gi = s.containers[GOODS_IN];
+    expect(gi.items.milk ?? 0).toBeGreaterThan(0);
+    expect(act(s, 'wh_terminal', 'clock_in').ok).toBe(true);
+    const fk = s.vehicles[FORKLIFT_ID];
+    const it = interactable(s, `forklift:${FORKLIFT_ID}`)!;
+    p.pos = { ...it.pos }; p.where = 'wholesale';
+    expect(startAction(s, 'player', it.id, 'drive_forklift').ok).toBe(true);
+    let guard = 0; while (p.action && guard++ < 100) step(s, 0.1);
+    expect(p.where).toBe('vehicle');
+    fk.pos = { ...GOODS_IN_SPOT };
+    const lifted = forkliftAction(s, 'player');
+    expect(lifted.ok).toBe(true);
+    const product = Object.keys(s.containers[fk.cargoId].items).find((k) => (s.containers[fk.cargoId].items[k] ?? 0) > 0)!;
+    const load = s.containers[fk.cargoId].items[product]!;
+    const pr = getWorld().interactables[`wh_rack_${product}`].pos;
+    const other = WH_PRODUCTS.filter((k) => k !== product).sort((a, b) => { const A = getWorld().interactables[`wh_rack_${a}`].pos, B = getWorld().interactables[`wh_rack_${b}`].pos; return Math.hypot(B.x - pr.x, B.z - pr.z) - Math.hypot(A.x - pr.x, A.z - pr.z); })[0];
+    fk.pos = { ...getWorld().interactables[`wh_rack_${other}`].pos };
+    expect(forkliftAction(s, 'player').ok).toBe(false);
+    const before = count(s.containers.wholesale_stock, product);
+    fk.pos = { ...getWorld().interactables[`wh_rack_${product}`].pos };
+    expect(forkliftAction(s, 'player').ok).toBe(true);
+    expect(count(s.containers.wholesale_stock, product)).toBe(before + load);
+    expect(dismount(s, 'player').ok).toBe(true);
+    expect(p.visible).toBe(true);
+    // whatever is left is put away by the supervisor after the shift
+    while (s.minute < at(1, 13, 5)) step(s, 5);
+    expect(total(gi)).toBe(0);
   });
 });

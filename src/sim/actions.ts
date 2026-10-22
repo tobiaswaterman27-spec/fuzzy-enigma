@@ -1,6 +1,7 @@
 // InteractionSystem + TaskAndJobSystem execution.
 // Actions are timed, interruptible and validated. State changes happen in
 // unit callbacks or on completion - never because an animation finished.
+import { canDriveForklift, mountForklift, palletsWaiting } from './forklift';
 import { buyAtStall, marketOn, stallPrice } from './streetmarket';
 import { COURSES, completeSession, sessionBlocker, sessionMinutes } from './training';
 import { canDriveCar, enterCar } from './cars';
@@ -46,6 +47,13 @@ export function interactable(state: GameState, id: Id): Interactable | null {
       return { id, kind: 'vehicle', label: v.name, pos: front, facing: v.heading - Math.PI / 2, obj: v.pos, locationId: 'outside', businessId: v.ownerId, range: 2.6 };
     }
   }
+  if (id.startsWith('forklift:')) {
+    const v = state.vehicles[id.slice(9)];
+    if (v && v.state === 'parked') {
+      const side = { x: v.pos.x + Math.sin(v.heading - Math.PI / 2) * 1.3, z: v.pos.z + Math.cos(v.heading - Math.PI / 2) * 1.3 };
+      return { id, kind: 'vehicle', label: 'Forklift truck', pos: side, facing: v.heading + Math.PI / 2, obj: v.pos, locationId: 'wholesale', businessId: 'wholesale', range: 2.4 };
+    }
+  }
   if (id.startsWith('car:')) {
     const v = state.vehicles[id.slice(4)];
     if (v && v.state === 'parked') {
@@ -66,6 +74,7 @@ export function allInteractables(state: GameState): Interactable[] {
   for (const o of Object.values(state.people)) if (!o.isPlayer && o.visible && !o.sleeping) out.push(interactable(state, `person:${o.id}`)!);
   for (const v of Object.values(state.vehicles)) if (v.kind === 'van' && v.state === 'loaded') out.push(interactable(state, `van:${v.id}`)!);
   for (const v of Object.values(state.vehicles)) if (v.kind === 'car' && v.state === 'parked') out.push(interactable(state, `car:${v.id}`)!);
+  for (const v of Object.values(state.vehicles)) if (v.kind === 'forklift' && v.state === 'parked') out.push(interactable(state, `forklift:${v.id}`)!);
   return out;
 }
 
@@ -308,6 +317,10 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
       break;
     }
     case 'vehicle': {
+      if (it.id.startsWith('forklift:')) {
+        out.push(opt('drive_forklift', `Get on the forklift (${palletsWaiting(state)} pallet(s) at goods-in)`, canDriveForklift(state, actorId)));
+        break;
+      }
       if (it.id.startsWith('car:')) {
         const car = state.vehicles[it.id.slice(4)];
         out.push(opt('drive_car', `Get in and drive your ${car?.name ?? 'car'}`, !car || car.ownerId !== actorId ? 'Not your car' : canDriveCar(state, car)));
@@ -443,6 +456,7 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
       begin(p, type, itId, { duration: 0.6 / speed(p, 'warehouse') }, now); break;
     case 'drive_van':
     case 'drive_car':
+    case 'drive_forklift':
       begin(p, type, itId, { duration: 0.3 }, now); break;
     case 'study':
       begin(p, type, itId, { duration: sessionMinutes(p) }, now); break;
@@ -629,6 +643,10 @@ export function tickAction(state: GameState, p: Person, dt: number): string | nu
     }
     case 'buy_stall': {
       msg = buyAtStall(state, p.id, a.target).msg;
+      break;
+    }
+    case 'drive_forklift': {
+      msg = mountForklift(state, p.id);
       break;
     }
     case 'drive_car': {
