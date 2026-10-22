@@ -2,7 +2,7 @@
 // Actions are timed, interruptible and validated. State changes happen in
 // unit callbacks or on completion - never because an animation finished.
 import { useEnergy } from './bills';
-import { buyWeapon, robTill, WEAPONS } from './health';
+import { buyWeapon, finishRob, startRob, WEAPONS } from './health';
 import { breakIn, houseOf, houseOpen, knock, searchValuables } from './houses';
 import { grabShoplifter } from './incidents';
 import { buyRound, PUB_PINT, pubOpen } from './pub';
@@ -611,9 +611,13 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
     }
     case 'hire_boat':
       return hireBoat(state, p.id);
-    case 'rob':
-      begin(p, type, itId, { duration: 0.3 }, now);
-      return { ok: true, msg: robTill(state, p.id, it.businessId!) };
+    case 'rob': {
+      const r = startRob(state, p.id, it.businessId!, itId);
+      if (!r.ok) return r;
+      // with a weapon: threaten, wait while the clerk empties the till, take the cash and pocket it
+      begin(p, type, itId, { duration: r.acted ? 1.5 : 0.3 }, now);
+      return { ok: true, msg: r.msg };
+    }
     case 'grab':
       return { ok: true, msg: grabShoplifter(state, p.id, itId.slice(7)) };
     case 'break_in':
@@ -630,6 +634,9 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
       if (it.kind === 'pub_bar') {
         const r = transfer(state, { from: p.accountId, to: state.externalId, amount: PUB_PINT, reason: 'purchase', memo: 'A pint at The Anchor', key: `pint:${p.id}:${Math.floor(now)}` });
         if (!r.ok) return { ok: false, msg: 'Not enough money.' };
+        // Maureen pulls it
+        const m = state.people.pub_landlady;
+        if (m?.visible) m.gesture = { clip: 'type', until: now + 1.6 };
         begin(p, type, itId, { duration: 10 }, now);
         break;
       }
@@ -903,6 +910,8 @@ export function tickAction(state: GameState, p: Person, dt: number): string | nu
       break;
     case 'knock': knock(state, p.id, houseOf(a.target)); msg = null; break;
     case 'scratch': msg = scratchcard(state, p.id).msg; break;
+    case 'rob': msg = finishRob(state, p.id) || null; break;
+    case 'hand_over_cash': msg = null; break;
     case 'fish': if (!p.isPlayer) npcCatch(state, p); msg = null; break;
     case 'buy_tackle': case 'sell_catch': msg = null; break;
     case 'lotto': msg = null; break;

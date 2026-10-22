@@ -432,35 +432,62 @@ export function goToAandE(state: GameState, id: Id): { ok: boolean; msg: string 
 export const isNight = (state: GameState) => { const m = minuteOfDay(state.minute); return m < 6 * 60 || m > 22 * 60; };
 
 // ------------------------------------------------------------ robbery
-/** demand the takings at a counter. With a weapon the staff hand it over; without one they may not */
-export function robTill(state: GameState, robberId: Id, businessId: Id): string {
+/** demand the takings at a counter. Without a weapon the staff refuse (or come at you) there and then;
+ * with one, the robbery plays out: the clerk opens the till, takes the cash out and hands it over, and
+ * the money only changes hands at the end (finishRob). */
+export function startRob(state: GameState, robberId: Id, businessId: Id, tillId: Id): { ok: boolean; msg: string; acted?: boolean } {
+  void tillId;
   const me = state.people[robberId];
   const b = state.businesses[businessId];
-  if (!b) return '';
+  if (!b) return { ok: false, msg: '' };
   const staff = Object.values(state.people).filter((o) => !o.isPlayer && o.visible && !o.dead && o.down == null && dist(o.pos, me.pos) < 8 && (o.contractId ? state.contracts[o.contractId]?.businessId === businessId : false));
   const clerk = staff.sort((x, y) => dist(x.pos, me.pos) - dist(y.pos, me.pos))[0];
-  if (!clerk) return 'There is nobody at the counter.';
+  if (!clerk) return { ok: false, msg: 'There is nobody at the counter.' };
   clerk.facing = Math.atan2(me.pos.x - clerk.pos.x, me.pos.z - clerk.pos.z);
   clerk.relations[me.id] = 0;
-  // everyone else in the shop gets out
   for (const o of Object.values(state.people)) if (!o.isPlayer && o !== clerk && o.visible && dist(o.pos, me.pos) < 15 && !o.police) flee(state, o, me.pos);
   if (!me.weapon) {
     if (clerk.traits.patience < 0.4 && healthOf(clerk) > 50) {
       clerk.combat = { target: me.id, until: state.minute + 3, next: state.minute + 0.3 };
       crime(state, 'attempted robbery', 2, clerk.id);
-      return `${clerk.name.split(' ')[0]} comes over the counter at you!`;
+      return { ok: true, msg: `${clerk.name.split(' ')[0]} comes over the counter at you!` };
     }
     clerk.gesture = { clip: 'argue', until: state.minute + 1 };
     crime(state, 'attempted robbery', 2, clerk.id);
-    return `${clerk.name.split(' ')[0]} refuses and hits the alarm.`;
+    return { ok: true, msg: `${clerk.name.split(' ')[0]} refuses and hits the alarm.` };
   }
+  // the clerk does as they are told, step by step
+  clerk.action = { type: 'hand_over_cash', target: `person:${robberId}`, started: state.minute, progress: 0, unitTime: 0, duration: 1.3, units: 0 };
+  clerk.move = null;
+  if (clerk.npc) clerk.npc.plan = [{ kind: 'wait', until: state.minute + 3 }];
+  state.robbery = { robber: robberId, clerk: clerk.id, business: businessId };
+  return { ok: true, msg: '', acted: true };
+}
+
+/** the end of the hold-up: the cash is yours, and the police are on their way */
+export function finishRob(state: GameState, robberId: Id): string {
+  const r = state.robbery;
+  if (!r || r.robber !== robberId) return '';
+  state.robbery = null;
+  const me = state.people[robberId], clerk = state.people[r.clerk], b = state.businesses[r.business];
+  if (!clerk || !b || clerk.down != null || clerk.dead) return 'You get nothing.';
   const bal = state.ledger.accounts[b.accountId]?.balance ?? 0;
   const take = Math.max(0, Math.min(40000, Math.round(bal * 0.08)));
-  if (take > 0) transfer(state, { from: b.accountId, to: me.accountId, amount: take, reason: 'transfer', memo: 'Cash from a till', key: `robbery:${businessId}:${Math.floor(state.minute)}` });
+  if (take > 0) transfer(state, { from: b.accountId, to: me.accountId, amount: take, reason: 'transfer', memo: 'Cash from a till', key: `robbery:${r.business}:${Math.floor(state.minute)}` });
   clerk.gesture = { clip: 'scared', until: state.minute + 1.5 };
   clerk.needs.mood = clamp(clerk.needs.mood - 30, 0, 100);
   lifeEvent(state, clerk, `Held up at ${b.name} by ${me.name}`);
   news(state, 'bad', `Armed robbery at ${b.name}`, `A ${me.weapon === 'knife' ? 'knife' : 'bat'}-wielding robber took ${fmtMoney(take)} from the till. Police are looking for them.`, false);
   crime(state, 'armed robbery', 4, clerk.id);
-  return `${clerk.name.split(' ')[0]} empties the till for you with shaking hands: ${fmtMoney(take)}. Now run.`;
+  return `${fmtMoney(take)} in your pocket. Now run.`;
+}
+
+/** the old one-step form, still used by tests and the no-weapon path */
+export function robTill(state: GameState, robberId: Id, businessId: Id): string {
+  const r = startRob(state, robberId, businessId, 'till');
+  if (!r.acted) return r.msg;
+  const c = state.robbery ? state.people[state.robbery.clerk] : null;
+  if (c) c.action = null;
+  const m = finishRob(state, robberId);
+  return m.includes('pocket') ? `${c?.name.split(' ')[0] ?? 'The clerk'} empties the till for you with shaking hands: ${m}` : m;
 }

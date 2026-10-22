@@ -351,7 +351,17 @@ class PersonView {
     const floored = p.down != null || !!p.dead;
     const gest = p.gesture && state.minute < p.gesture.until && !p.move ? `g:${p.gesture.clip}` : null;
     const kick = a?.type === 'attack' && a.arg === 'kick' ? 'g:kick' : null;
-    let clipAction = floored ? 'down' : kick ? kick : gest ? gest : stage ? (stage.walking ? null : stage.clip) : this.bedIt ? this.bedPose : stepping ? null : siteClip ?? a?.type ?? null;
+    // a hold-up, beat by beat: the robber threatens, waits, takes the cash and pockets it; the clerk
+    // freezes, opens the till, takes the notes out and hands them over
+    const prog = a && a.duration > 0 ? a.progress / a.duration : 0;
+    const beat = a?.type === 'rob' && a.duration > 1 ? (prog < 0.6 ? 'g:argue' : prog < 0.78 ? 'g:idle' : prog < 0.9 ? 'g:pickup' : 'g:place')
+      : a?.type === 'hand_over_cash' ? (prog < 0.18 ? 'g:scared' : prog < 0.55 ? 'g:type' : prog < 0.78 ? 'g:pickup' : 'g:place')
+      // buying over a counter: ask, wait while it is fetched or poured, take it, put it away (or drink it)
+      : a?.type === 'buy_pint' ? (prog < 0.08 ? 'g:talk' : prog < 0.18 ? 'g:idle' : prog < 0.22 ? 'g:pickup' : 'g:drink')
+      : a?.type === 'buy_tackle' || a?.type === 'buy_weapon' || a?.type === 'sell_catch' || a?.type === 'hire_boat' ? (prog < 0.45 ? 'g:talk' : prog < 0.75 ? 'g:pickup' : 'g:place') : null;
+    this.syncPint(a?.type === 'buy_pint' && prog > 0.19);
+    this.syncCash(p, a?.type === 'rob' ? prog > 0.78 && prog < 0.96 : a?.type === 'hand_over_cash' ? prog > 0.5 && prog < 0.9 : false);
+    let clipAction = floored ? 'down' : beat ? beat : kick ? kick : gest ? gest : stage ? (stage.walking ? null : stage.clip) : this.bedIt ? this.bedPose : stepping ? null : siteClip ?? a?.type ?? null;
     // standing about with nothing to do: people check their phones, yawn when tired, stretch
     if (!clipAction && realSpeed === 0 && !p.isPlayer && !item) {
       this.idleFor += dt;
@@ -560,6 +570,34 @@ class PersonView {
     const fx = p.pos.x + Math.sin(f) * 5, fz = p.pos.z + Math.cos(f) * 5;
     this.rod.float.position.set(fx, -1.0 + (bite ? -0.09 + Math.sin(t * 22) * 0.03 : Math.sin(t * 1.6) * 0.015), fz);
     (this.rod.line.geometry as THREE.BufferGeometry).setFromPoints([tip, new THREE.Vector3((tip.x + fx) / 2, (tip.y - 1.0) / 2 - 0.3, (tip.z + fz) / 2), this.rod.float.position.clone()]);
+  }
+  private pint: THREE.Group | null = null;
+  /** a pint glass in the hand while drinking */
+  private syncPint(on: boolean) {
+    if (on && !this.pint) {
+      const g = new THREE.Group();
+      const glass = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.035, 0.15, 14, 1, true), new THREE.MeshStandardMaterial({ color: '#e8eef0', transparent: true, opacity: 0.35, roughness: 0.05, side: THREE.DoubleSide }));
+      const beer = new THREE.Mesh(new THREE.CylinderGeometry(0.039, 0.033, 0.12, 14), new THREE.MeshStandardMaterial({ color: '#b5651d', roughness: 0.3, transparent: true, opacity: 0.85 }));
+      beer.position.y = -0.012;
+      const head = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.02, 14), new THREE.MeshStandardMaterial({ color: '#f4ecd8', roughness: 0.9 }));
+      head.position.y = 0.058;
+      g.add(glass, beer, head);
+      g.position.set(0, -0.08, 0.04);
+      this.rig.bones.handR.add(g);
+      this.pint = g;
+    } else if (!on && this.pint) { this.pint.parent?.remove(this.pint); this.pint = null; }
+  }
+  private cash: THREE.Group | null = null;
+  /** a wad of banknotes in the right hand */
+  private syncCash(p: Person, on: boolean) {
+    void p;
+    if (on && !this.cash) {
+      const g = new THREE.Group();
+      for (let i = 0; i < 4; i++) { const n = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.004, 0.14), new THREE.MeshStandardMaterial({ color: i % 2 ? '#7a5bb5' : '#4a8a5a', roughness: 0.8 })); n.position.y = i * 0.005; n.rotation.y = i * 0.15; g.add(n); }
+      g.position.set(0, -0.09, 0.02);
+      this.rig.bones.handR.add(g);
+      this.cash = g;
+    } else if (!on && this.cash) { this.cash.parent?.remove(this.cash); this.cash = null; }
   }
   private phone: THREE.Mesh | null = null;
   /** a phone in the hand while the phone clip plays */

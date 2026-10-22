@@ -154,6 +154,7 @@ export type ActionType =
   | 'buy_pint'
   | 'knock'
   | 'grab'
+  | 'hand_over_cash'
   | 'buy_round'
   | 'hire_boat'
   | 'favour_ask'
@@ -717,6 +718,8 @@ export interface GameState {
   taxi?: { on: boolean; job: import('./taxi').TaxiJob | null; done?: number; earned?: number } | null;
   /** lottery tickets for the Saturday draw */
   lotto?: { owner: Id; draw: number; numbers: number[]; checked?: boolean }[];
+  /** a hold-up in progress */
+  robbery?: { robber: Id; clerk: Id; business: Id } | null;
   /** the player has died */
   gameOver?: { at: number; cause: string } | null;
   datingSince?: number;
