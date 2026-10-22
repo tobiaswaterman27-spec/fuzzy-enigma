@@ -329,6 +329,8 @@ export interface Person {
   /** the way this person walks normally (a walk clip), when chosen */
   gait?: string;
   favoursDone?: number;
+  /** goals scored in the park */
+  goals?: number;
   /** fish landed, and the heaviest of each kind */
   fishCaught?: number;
   fishingBest?: Record<string, number>;
@@ -698,6 +700,8 @@ export interface GameState {
   /** text messages people have sent the player */
   inbox?: { from: Id; text: string; at: number; read: boolean }[];
   dogsInit?: boolean;
+  /** achievements unlocked (id -> minute) */
+  achievements?: Record<string, number>;
   /** favours the player is doing for townspeople (favours.ts) */
   favours?: import('./favours').Favour[];
   /** a line in the water (fishing.ts) */

@@ -80,3 +80,19 @@ describe('Favours', () => {
     expect(auditLedger(s)).toEqual([]);
   });
 });
+
+describe('Achievements', () => {
+  it('are announced once when first reached', async () => {
+    const { achievementsTick } = await import('../src/sim/index');
+    const s = createNewGame(7, setup);
+    s.minute = Math.floor(s.minute / 2) * 2;
+    achievementsTick(s);
+    expect(s.achievements?.fish).toBeUndefined();
+    s.people.player.fishCaught = 1;
+    achievementsTick(s);
+    expect(s.achievements?.fish).toBeDefined();
+    const n = s.news.filter((x) => x.title.includes('Gone fishing')).length;
+    achievementsTick(s);
+    expect(s.news.filter((x) => x.title.includes('Gone fishing')).length).toBe(n);
+  });
+});

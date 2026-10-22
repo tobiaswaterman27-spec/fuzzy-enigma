@@ -202,7 +202,7 @@ export class Game {
     this.gatheringProps = new GatheringProps(this.scene);
     this.harbour = new Harbour(this.scene);
     this.football = new Football(this.scene);
-    this.football.onGoal = (m) => this.onToast(m);
+    this.football.onGoal = (m, yours) => { this.onToast(yours ? m : `${m} Not yours, that one.`); if (yours) this.player.goals = (this.player.goals ?? 0) + 1; };
     this.rain = new Rain(this.scene);
     this.sites = new Sites(this.scene);
     this.market = new MarketStalls(this.scene);

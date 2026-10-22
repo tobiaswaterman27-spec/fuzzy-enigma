@@ -23,6 +23,7 @@ import { HOSPITAL, WEAPONS, goToAandE } from '../sim/health';
 import { ADOPTION_FEE, adoptDog, call999, DOG_FOOD_WEEK } from '../sim/leisure';
 import { startTaxi, stopTaxi, taxiTarget } from '../sim/taxi';
 import { biting } from '../sim/fishing';
+import { ACHIEVEMENTS } from '../sim/achievements';
 import { AGENT_FEE, buyNewBuild, forSale, NEW_BUILD_PRICE, NEW_BUILD_RENT, ownedBuilds, RESALE_SHARE, sellNewBuild } from '../sim/lettings';
 import { PLOTS } from '../sim/world/plots';
 import { bookRetest, COURSES, enrol } from '../sim/training';
@@ -176,6 +177,7 @@ export class UI {
     // interaction prompt
     const f = this.game.focus;
     this.doorWords();
+    this.achievementPopups();
     this.texting();
     this.rowWords();
     const pr = $('#prompt');
@@ -360,6 +362,7 @@ export class UI {
       <h3>Dog</h3>${d ? `<div class="card"><b>${esc(d.name)}</b> · with you since day ${dayIndex(d.since) + 1} · ${d.happy >= 70 ? 'happy' : d.happy >= 40 ? 'all right' : 'fed up'} (${Math.round(d.happy)})<br><span class="muted">${d.walkedDay === dayIndex(s.minute) ? 'Walked today.' : 'Not walked yet today: be out and about together for half an hour.'} Food ${fmtMoney(DOG_FOOD_WEEK)} a week.</span></div>`
       : `<div class="card">Harbourside Dog Rescue has dogs looking for a home. Adoption fee ${fmtMoney(ADOPTION_FEE)}, then ${fmtMoney(DOG_FOOD_WEEK)} a week for food. They go everywhere with you and need a walk every day.<div class="row"><input id="dog-name" type="text" maxlength="16" placeholder="Name your dog" style="flex:1"><button data-adopt="1">Adopt</button></div></div>`}
       <h3>Lottery</h3><div class="card">${tickets.length ? tickets.map((t) => `Ticket for ${fmtDate(t.draw).split(',')[0]}: <b>${t.numbers.join(' ')}</b>`).join('<br>') : 'No ticket for this week.'}<br><span class="muted">Tickets and scratchcards at the Corner Market self-checkout. Draw Saturday 20:00: 3 numbers ${fmtMoney(3000)}, 4 ${fmtMoney(14000)}, 5 ${fmtMoney(175000)}, all 6 ${fmtMoney(200000000)}.</span></div>
+      <h3>Achievements (${Object.keys(s.achievements ?? {}).length}/${ACHIEVEMENTS.length})</h3><div class="card">${ACHIEVEMENTS.map((a) => `<div class="line"><span>${s.achievements?.[a.id] !== undefined ? '★' : '☆'} <b>${esc(a.title)}</b></span><span class="muted">${esc(a.how)}</span></div>`).join('')}</div>
       <h3>Emergency</h3><div class="row"><button data-999="ambulance">Call 999: ambulance</button><button data-999="police">Call 999: police</button></div>`;
   }
 
@@ -749,6 +752,26 @@ export class UI {
     });
   }
 
+  private achSeen = -1;
+  /** a gold popup for each achievement as it is unlocked */
+  private achievementPopups() {
+    const got = this.s.achievements ?? {};
+    const n = Object.keys(got).length;
+    if (this.achSeen < 0) { this.achSeen = n; return; }
+    if (n === this.achSeen) return;
+    const newest = Object.entries(got).sort((a, b) => b[1] - a[1]).slice(0, n - this.achSeen);
+    this.achSeen = n;
+    for (const [id] of newest) {
+      const a = ACHIEVEMENTS.find((x) => x.id === id);
+      if (!a) continue;
+      const el = document.createElement('div');
+      el.className = 'achievement';
+      el.innerHTML = `<span>★ Achievement</span><b>${esc(a.title)}</b><small>${esc(a.how)}</small>`;
+      document.body.appendChild(el);
+      setTimeout(() => el.classList.add('out'), 4200);
+      setTimeout(() => el.remove(), 5000);
+    }
+  }
   private rowHeard = -1;
   /** a row in the street: what they shout at each other comes from who they are */
   private rowWords() {

@@ -41,7 +41,8 @@ export class Football {
   private npcKickAt = 0;
   private cooldown = 0;
   score = [0, 0];
-  onGoal: (msg: string) => void = () => {};
+  onGoal: (msg: string, yours: boolean) => void = () => {};
+  private lastTouch: 'you' | 'them' = 'them';
 
   constructor(scene: THREE.Scene) {
     this.ball = new THREE.Mesh(new THREE.SphereGeometry(R, 20, 14), new THREE.MeshStandardMaterial({ map: ballTexture(), roughness: 0.45 }));
@@ -57,6 +58,7 @@ export class Football {
   shoot(facing: number, power = 13) {
     this.vel.set(Math.sin(facing) * power, 3.2, Math.cos(facing) * power);
     this.cooldown = 0.4;
+    this.lastTouch = 'you';
   }
 
   update(state: GameState, dt: number, player: { x: number; z: number; vx: number; vz: number; facing: number }) {
@@ -71,6 +73,7 @@ export class Football {
       this.vel.z = player.vz * k + (dz / (d || 1)) * 0.6;
       if (sp > 4.2) this.vel.y = 1.2;
       this.cooldown = 0.18;
+      this.lastTouch = 'you';
     }
     // people in the park kick it back now and then
     if (performance.now() > this.npcKickAt) {
@@ -80,6 +83,7 @@ export class Football {
         const a = Math.atan2(player.x - this.pos.x, player.z - this.pos.z) + (Math.random() - 0.5) * 0.6;
         this.vel.set(Math.sin(a) * (6 + Math.random() * 4), 1.5 + Math.random() * 2, Math.cos(a) * (6 + Math.random() * 4));
         gesture(state, p, 'kick', 1.2);
+        this.lastTouch = 'them';
         this.npcKickAt = performance.now() + 2500;
         break;
       }
@@ -105,7 +109,7 @@ export class Football {
       const fromFront = Math.sign(next.x - this.pos.x) === g.side;
       if (inside && fromFront) {
         this.score[i]++;
-        this.onGoal(`GOAL! (${this.score[0]} - ${this.score[1]})`);
+        this.onGoal(`GOAL! (${this.score[0]} - ${this.score[1]})`, this.lastTouch === 'you');
         next.set(CENTRE.x, R, CENTRE.z); this.vel.set(0, 0, 0);
         for (const p of Object.values(state.people)) if (!p.isPlayer && p.visible && p.where === 'park' && Math.hypot(p.pos.x - next.x, p.pos.z - next.z) < 25) gesture(state, p, Math.random() < 0.5 ? 'happy' : 'laugh', 2.5);
         break;
