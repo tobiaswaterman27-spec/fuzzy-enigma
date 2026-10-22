@@ -11,6 +11,7 @@ import { ITEMS } from '../sim/items';
 import { count, total, firstItem } from '../sim/inventory';
 import { SHELF_CAPACITY } from '../sim/retail';
 import { FORKLIFT_ID, palletsWaiting } from '../sim/forklift';
+import { ageOf } from '../sim/persona';
 import { buildOneOnMainThread, requestHuman, workerActive } from './humanBuilder';
 
 /** realistic bodies are costly to cut and drape, so outfit/body rebuilds are spread over frames */
@@ -40,6 +41,74 @@ const MOP_STRAND = new THREE.MeshStandardMaterial({ color: '#e8e4da', roughness:
 const BASKET_MAT = new THREE.MeshStandardMaterial({ color: '#c0392b', roughness: 0.5, wireframe: false });
 const BASKET_GEO = (() => { const g = new THREE.CylinderGeometry(0.17, 0.14, 0.14, 4, 1, true); g.rotateY(Math.PI / 4); g.scale(1.2, 1, 0.75); return g; })();
 const BAG_MAT = new THREE.MeshStandardMaterial({ color: '#f2f2ee', roughness: 0.7, side: THREE.DoubleSide, transparent: true, opacity: 0.92 });
+
+const BASE_WALKS = ['walk', 'walk_b', 'walk_c'];
+
+/** a cricket bat or a kitchen knife, gripped in the fist (the hand bone's -y runs out past the fingers) */
+function weaponMesh(kind: 'bat' | 'knife'): THREE.Group {
+  const g = new THREE.Group();
+  if (kind === 'bat') {
+    const wood = new THREE.MeshStandardMaterial({ color: '#d9b77a', roughness: 0.55 });
+    const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.017, 0.017, 0.26, 10), new THREE.MeshStandardMaterial({ color: '#1d1d1f', roughness: 0.9 }));
+    grip.position.y = -0.02;
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.105, 0.56, 0.035), wood);
+    blade.position.y = -0.43;
+    const shoulder = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.019, 0.08, 10), wood);
+    shoulder.position.y = -0.17;
+    g.add(grip, shoulder, blade);
+  } else {
+    const handle = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.11, 0.016), new THREE.MeshStandardMaterial({ color: '#141414', roughness: 0.6 }));
+    handle.position.y = -0.02;
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.19, 0.003), new THREE.MeshStandardMaterial({ color: '#d4d8dc', metalness: 0.9, roughness: 0.22 }));
+    blade.position.y = -0.17;
+    g.add(handle, blade);
+  }
+  g.traverse((o) => { o.castShadow = true; });
+  return g;
+}
+
+const BLOOD_MAT = new THREE.MeshStandardMaterial({ color: '#4a0606', roughness: 0.18, metalness: 0.05, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+let bloodGeos: THREE.BufferGeometry[] | null = null;
+/** the height of the paving or road surface at a point (pavements are raised above the road) */
+function surfaceY(x: number, z: number): number {
+  let y = 0;
+  for (const r of getWorld().roads) {
+    if (r.kind === 'grass' || x < r.rect.x0 || x > r.rect.x1 || z < r.rect.z0 || z > r.rect.z1) continue;
+    y = Math.max(y, (r.kind === 'sidewalk' || r.kind === 'plaza' ? 0.12 : 0.06) - 0.03);
+  }
+  return y;
+}
+/** a few irregular splat shapes, shared by every pool of blood */
+function bloodShapes(): THREE.BufferGeometry[] {
+  if (bloodGeos) return bloodGeos;
+  bloodGeos = [];
+  for (let k = 0; k < 4; k++) {
+    const sh = new THREE.Shape();
+    const n = 22;
+    for (let i = 0; i <= n; i++) {
+      const t = (i / n) * Math.PI * 2;
+      const r = 0.75 + 0.25 * Math.sin(t * (3 + k) + k) + 0.12 * Math.sin(t * 7 + k * 2);
+      const x = Math.cos(t) * r, y = Math.sin(t) * r * (0.75 + k * 0.08);
+      if (i === 0) sh.moveTo(x, y); else sh.lineTo(x, y);
+    }
+    const geo = new THREE.ShapeGeometry(sh);
+    geo.rotateX(-Math.PI / 2);
+    bloodGeos.push(geo);
+  }
+  return bloodGeos;
+}
+/** how someone walks: their own gait, changed by injury, drink, mood, age and confidence */
+export function walkStyleFor(p: Person): string {
+  if (p.injured || (p.health ?? 100) < 50) return 'walk_limp';
+  if ((p.drunk ?? 0) > 40) return 'walk_drunk';
+  if (p.needs.mood < 25) return 'walk_sad';
+  if (ageOf(p) > 70) return 'walk_slow';
+  if (p.traits.ambition > 0.75 && p.needs.mood > 70) return 'walk_proud';
+  if (p.isPlayer) return 'walk';
+  let h = 0;
+  for (let i = 0; i < p.id.length; i++) h = (h * 33 + p.id.charCodeAt(i)) >>> 0;
+  return BASE_WALKS[h % BASE_WALKS.length];
+}
 
 class PersonView {
   rig: Rig;
@@ -262,14 +331,17 @@ class PersonView {
     }
     // shopping basket (picked goods) in the left hand, carrier bag (paid goods) in the right
     this.syncHeld(state, p);
+    this.syncWeapon(p);
     const stepping = a?.type === 'shower' && this.showerStep;
     const realSpeed = stage ? (stage.walking ? Math.max(0.6, this.speed) : 0) : stepping ? 0.9 : a || this.bedIt ? 0 : this.speed;
     // site work looks like the job in hand: digging and shovelling, laying bricks, fixing and painting
     const siteClip = a?.type === 'site_work' ? (p.equipment === 'tool_spade' || p.equipment === 'tool_shovel' ? 'clean' : 'stock_shelf') : null;
-    const clipAction = stage ? (stage.walking ? null : stage.clip) : this.bedIt ? this.bedPose : stepping ? null : siteClip ?? a?.type ?? null;
+    const floored = p.down != null || !!p.dead;
+    const clipAction = floored ? 'down' : stage ? (stage.walking ? null : stage.clip) : this.bedIt ? this.bedPose : stepping ? null : siteClip ?? a?.type ?? null;
+    this.anim.walkStyle = walkStyleFor(p);
     this.anim.update(dt, realSpeed, !!item, clipAction);
     // keep the feet on the floor: whatever the animation does, the lower foot rests on the ground
-    if (!this.bedIt && this.rig.joints) {
+    if (!this.bedIt && !floored && this.rig.joints) {
       this.rig.root.updateMatrixWorld(true);
       this.rig.bones.footL.getWorldPosition(FOOT_A);
       this.rig.bones.footR.getWorldPosition(FOOT_B);
@@ -433,6 +505,16 @@ class PersonView {
         this.carried.position.lerp(mid.add(new THREE.Vector3(0, -0.05, 0)), 0.5);
       } else this.carried.position.set(0, 0, 0);
     }
+  }
+
+  private weapon: THREE.Group | null = null;
+  private weaponKind: string | null = null;
+  private syncWeapon(p: Person) {
+    const k = p.dead || p.away ? null : p.weapon ?? null;
+    if (k === this.weaponKind) return;
+    if (this.weapon) { this.weapon.parent?.remove(this.weapon); this.weapon = null; }
+    if (k) { this.weapon = weaponMesh(k); this.rig.bones.handR.add(this.weapon); }
+    this.weaponKind = k;
   }
 
   private syncHeld(state: GameState, p: Person) {
@@ -759,8 +841,39 @@ export class Views {
     }
   }
 
+  private blood = new Map<string, THREE.Mesh>();
+  /** pools and drips of blood: they darken and fade over a day */
+  private syncBlood(state: GameState) {
+    const list = state.blood ?? [];
+    const seen = new Set<string>();
+    const shapes = bloodShapes();
+    for (const b of list) {
+      seen.add(b.id);
+      let m = this.blood.get(b.id);
+      if (!m) {
+        let h = 0;
+        for (let i = 0; i < b.id.length; i++) h = (h * 31 + b.id.charCodeAt(i)) >>> 0;
+        m = new THREE.Mesh(shapes[h % shapes.length], BLOOD_MAT.clone());
+        m.rotation.y = (h % 628) / 100;
+        m.position.set(b.pos.x, surfaceY(b.pos.x, b.pos.z) + 0.006 + (h % 7) * 0.0006, b.pos.z);
+        m.renderOrder = 2;
+        this.scene.add(m);
+        this.blood.set(b.id, m);
+      }
+      const age = state.minute - b.at;
+      // a pool spreads for the first few minutes, then dries darker and fades
+      const s = b.size * Math.min(1, 0.6 + age / 2.5);
+      m.scale.set(s, 1, s);
+      const mat = m.material as THREE.MeshStandardMaterial;
+      mat.opacity = Math.max(0, 0.92 - age / 1500);
+      mat.roughness = age > 60 ? 0.7 : 0.18;
+    }
+    for (const [id, m] of this.blood) if (!seen.has(id)) { this.scene.remove(m); (m.material as THREE.Material).dispose(); this.blood.delete(id); }
+  }
+
   update(state: GameState, dt: number, viewer?: { x: number; z: number }, viewerInside?: string | null, speech?: Map<string, { text: string; until: number }>) {
     buildBudget = 1;
+    this.syncBlood(state);
     // without a worker, bodies are built here, one per frame at most
     if (!workerActive() && buildOneOnMainThread()) buildBudget = 0;
     if (viewer && this.stockTick++ % 10 === 0) for (const s of this.stock) s.mesh.visible = (!!viewerInside && viewerInside === s.bid) || Math.hypot(s.x - viewer.x, s.z - viewer.z) < 32;

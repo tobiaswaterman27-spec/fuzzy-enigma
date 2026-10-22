@@ -28,6 +28,7 @@ import { safeWrite, loadSlot, type KV } from '../sim/save';
 import { news } from '../sim/events';
 import { CAR_MODELS, exitCar } from '../sim/cars';
 import { forkliftAction } from '../sim/forklift';
+import { attack, attackTarget, hitByVehicle, nextWeapon } from '../sim/health';
 import { openingLine } from '../sim/persona';
 import { inOutage } from '../sim/inspections';
 
@@ -91,6 +92,12 @@ export class Game {
   focus: Focus | null = null;
   onToast: (msg: string) => void = () => {};
   onFrame: () => void = () => {};
+  /** the player was hurt (for the red flash) */
+  onHurt: (amount: number) => void = () => {};
+  /** the player has died */
+  onGameOver: (cause: string) => void = () => {};
+  private lastHealth = 100;
+  private hitCooldown = new Map<string, number>();
   private last = performance.now();
   private autosaveAt = performance.now() + 120000;
   insideId: string | null = null;
@@ -262,6 +269,15 @@ export class Game {
         this.onToast(exitCar(this.state, this.player.id).msg);
         return;
       }
+      if (e.code === 'KeyF' && !this.drivingVan()) {
+        const p = this.player;
+        if (p.down != null || p.away || p.dead || p.sleeping) return;
+        const t = attackTarget(this.state, p.id);
+        const msg = attack(this.state, p.id, t?.id ?? null);
+        if (msg) this.onToast(msg);
+        return;
+      }
+      if (e.code === 'KeyQ' && !this.drivingVan()) { this.onToast(nextWeapon(this.state, this.player.id)); return; }
       if (e.code === 'KeyE') this.interact(0);
       if (/^Digit[1-6]$/.test(e.code)) this.interact(Number(e.code.slice(5)) - 1);
     });
@@ -310,6 +326,9 @@ export class Game {
 
   /** game minutes per real second right now */
   get rate() {
+    const away = this.player.away;
+    if (away) return away.place === 'prison' ? 900 : away.place === 'custody' ? 150 : 120;
+    if (this.player.down != null) return 1;
     if (this.player.sleeping) return 45;
     return BASE_TIME_SCALE * this.speedMult;
   }
@@ -335,6 +354,10 @@ export class Game {
       this.updatePlayer(dt);
       const ev = step(s, dt * this.rate);
       for (const m of ev.player) this.onToast(m);
+      const hp = this.player.health ?? 100;
+      if (hp < this.lastHealth - 0.5) this.onHurt(this.lastHealth - hp);
+      this.lastHealth = hp;
+      if (s.gameOver && !this.paused) { this.paused = true; this.onGameOver(s.gameOver.cause); }
       this.updateFocus();
       if (performance.now() > this.autosaveAt) { this.autosave(); this.autosaveAt = performance.now() + 180000; }
     }
@@ -445,6 +468,23 @@ export class Game {
     const res = resolveCircle({ x: nx, z: nz }, fork ? 0.8 : 1.15, this.collidersWithCars(v.id));
     if (Math.hypot(res.x - nx, res.z - nz) > 0.01) this.vanSpeed *= 0.4; // bumped into something
     v.odometer += Math.hypot(res.x - v.pos.x, res.z - v.pos.z);
+    // people in the way are hit (and knocked aside)
+    if (Math.abs(this.vanSpeed) > 1.5) {
+      const now = performance.now();
+      const fx = Math.sin(v.heading), fz = Math.cos(v.heading);
+      for (const o of Object.values(this.state.people)) {
+        if (o.isPlayer || !o.visible || o.dead || o.where === 'vehicle') continue;
+        const dx = o.pos.x - res.x, dz = o.pos.z - res.z;
+        const along = dx * fx + dz * fz, side = dx * fz - dz * fx;
+        if (Math.abs(along) > (fork ? 1.3 : 2.3) || Math.abs(side) > (fork ? 0.8 : 1.05)) continue;
+        if ((this.hitCooldown.get(o.id) ?? 0) > now) continue;
+        this.hitCooldown.set(o.id, now + 1500);
+        hitByVehicle(this.state, o.id, p.id, Math.abs(this.vanSpeed));
+        o.pos = resolveCircle({ x: o.pos.x + Math.sign(side || 1) * fz * 1.2 + fx * Math.sign(this.vanSpeed) * 0.8, z: o.pos.z - Math.sign(side || 1) * fx * 1.2 + fz * Math.sign(this.vanSpeed) * 0.8 }, 0.3);
+        this.vanSpeed *= 0.7;
+        this.onToast(`You hit ${o.name}!`);
+      }
+    }
     v.pos = res;
     p.pos = { ...v.pos };
     p.facing = v.heading;
@@ -454,7 +494,7 @@ export class Game {
     const p = this.player;
     if (this.drivingVan()) { this.updateDriving(dt); return; }
     this.vanSpeed = 0;
-    if (this.uiOpen || p.sleeping) return;
+    if (this.uiOpen || p.sleeping || p.down != null || p.away || p.dead) { this.vel.x = this.vel.z = 0; return; }
     // movement is relative to the camera: W away from the camera, S towards it, A/D to the sides.
     // The body accelerates, decelerates and turns smoothly towards where it is going.
     const k = this.keys;
@@ -473,6 +513,12 @@ export class Game {
       const sp = (run ? RUN_SPEED : WALK_SPEED) * capability(p).move;
       tx = ((fwd.x * iz + right.x * ix) / len) * sp;
       tz = ((fwd.z * iz + right.z * ix) / len) * sp;
+    }
+    // drunk: you weave about whether you mean to or not
+    const drunk = p.drunk ?? 0;
+    if (drunk > 35) {
+      const t = performance.now() / 1000, sway = ((drunk - 35) / 65) * 1.1 * (len > 0 ? 1 : 0.25);
+      tx += Math.sin(t * 1.3) * sway * Math.cos(p.facing); tz -= Math.sin(t * 1.3) * sway * Math.sin(p.facing);
     }
     // acceleration: quick to start, a little slower to stop
     const acc = len > 0 ? 7 : 9;

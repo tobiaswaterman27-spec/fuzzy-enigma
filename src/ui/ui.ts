@@ -19,6 +19,7 @@ import { askOut, breakUp, propose } from '../sim/life';
 import { aiReply, getApiKey, getModel, hasAi, setApiKey, type ChatTurn } from '../ai/openai';
 import { billAccount, billEstimate } from '../sim/bills';
 import { MILESTONES, netWorth, wealthTitle } from '../sim/wealth';
+import { HOSPITAL, WEAPONS, goToAandE } from '../sim/health';
 import { AGENT_FEE, buyNewBuild, forSale, NEW_BUILD_PRICE, NEW_BUILD_RENT, ownedBuilds, RESALE_SHARE, sellNewBuild } from '../sim/lettings';
 import { PLOTS } from '../sim/world/plots';
 import { bookRetest, COURSES, enrol } from '../sim/training';
@@ -57,6 +58,8 @@ export class UI {
     game.onUi = (w, arg) => (w === 'chat' ? this.openChat(arg!) : w === 'jobs' || w === 'laptop' ? this.openPhone(w === 'laptop' ? this.tab : 'jobs') : w === 'homestore' ? this.openPhone('home') : w === 'invite' ? this.toast(inviteForCoffee(this.s, this.p.id, arg!).msg) : w === 'interview' ? this.interviewInPerson(arg!) : this.advisor());
     game.onQualityAuto = () => this.toast(`Graphics lowered to ${game.quality === 'medium' ? 'Medium' : 'Low'} for smoother play (Menu > Graphics to change).`);
     game.onFrame = () => this.frame();
+    game.onHurt = (n) => { const f = $('#hurt-flash'); f.classList.add('on'); f.style.setProperty('--a', String(Math.min(1, n / 30))); requestAnimationFrame(() => requestAnimationFrame(() => f.classList.remove('on'))); };
+    game.onGameOver = (cause) => this.gameOver(cause);
     window.addEventListener('keydown', (e) => {
       if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
       if (e.code === 'Tab' || e.code === 'KeyP') { e.preventDefault(); this.phoneOpen ? this.closePhone() : this.openPhone(this.tab); }
@@ -99,6 +102,24 @@ export class UI {
     void this.toastTimer;
   }
 
+  /** the player has died: their story ends; load a save or start a new life */
+  gameOver(cause: string) {
+    const s = this.s, p = this.p;
+    const days = dayIndex(s.minute) + 1;
+    const { total } = netWorth(s, p.id);
+    const el = $('#gameover');
+    el.hidden = false;
+    el.innerHTML = `<div class="box"><h1>You died</h1><p>${esc(p.name)}, ${esc(cause)}.</p><p class="muted">Day ${days} in Harbourside · net worth ${fmtMoney(total)} · ${p.record?.length ? `${p.record.length} conviction(s)` : 'a clean record'}.</p>
+      <div><button class="primary" data-go="auto">Load autosave</button><button data-go="slot">Load saved game</button><button data-go="new">Start a new life</button></div></div>`;
+    el.onclick = (e) => {
+      const b = (e.target as HTMLElement).closest('button');
+      if (!b) return;
+      if (b.dataset.go === 'new') { location.reload(); return; }
+      const r = this.game.load(b.dataset.go === 'auto' ? 'bigshot.auto' : 'bigshot.slot1');
+      if (r.ok) { el.hidden = true; this.game.paused = false; } else this.toast((r as any).error ?? 'Could not load');
+    };
+  }
+
   // ------------------------------------------------------------ HUD
   frame() {
     const s = this.s, p = this.p;
@@ -111,6 +132,16 @@ export class UI {
     setBar('#bar-food', p.needs.satiety);
     setBar('#bar-hygiene', p.needs.hygiene);
     setBar('#bar-mood', p.needs.mood);
+    setBar('#bar-health', p.health ?? 100);
+    const w = s.wanted;
+    $('#wanted').hidden = !w;
+    if (w) $('#wanted').innerHTML = `${'★'.repeat(w.level)}<span class="off">${'★'.repeat(5 - w.level)}</span>`;
+    $('#weapon-ind').hidden = !p.weapon;
+    if (p.weapon) $('#weapon-ind').textContent = `Holding: ${WEAPONS[p.weapon].label} (F to use, Q to put away)`;
+    const away = p.away;
+    $('#away').hidden = !away && p.down == null;
+    if (away) $('#away').innerHTML = `<h2>${away.place === 'hospital' ? HOSPITAL : away.place === 'prison' ? 'HMP Harbourside' : 'Harbourside Police Station'}</h2><div class="muted">${esc(away.reason)}</div><div>Out ${fmtDate(away.until)} ${fmtClock(away.until)}</div><div class="muted">Time passes quickly…</div>`;
+    else if (p.down != null) $('#away').innerHTML = '<h2>You are on the ground</h2><div class="muted">An ambulance is on its way.</div>';
     $('#cond').textContent = conditionLabel(p).join(' · ');
     // a time-critical reminder (only shown when it is nearly time to set off) outranks the general goal
     const rem = agenda(s);
@@ -138,7 +169,7 @@ export class UI {
     // interaction prompt
     const f = this.game.focus;
     const pr = $('#prompt');
-    if (p.action) {
+    if (p.action && p.action.type !== 'attack') {
       const a = p.action;
       const pct = a.duration > 0 ? Math.min(100, (a.progress / a.duration) * 100) : null;
       pr.hidden = false;
@@ -294,7 +325,7 @@ export class UI {
     const bag = s.containers[p.bagId];
     const pantry = p.pantryId ? s.containers[p.pantryId] : null;
     const inv = (c: typeof bag | null) => c && total(c) ? Object.entries(c.items).map(([k, n]) => `${n}× ${itemName(k)}`).join(', ') : 'empty';
-    return `<div class="card"><b>${esc(p.name)}</b><br>Energy ${p.needs.energy.toFixed(0)} · Food ${p.needs.satiety.toFixed(0)} · Hygiene ${p.needs.hygiene.toFixed(0)} · Mood ${p.needs.mood.toFixed(0)}<br><span class="muted">${conditionLabel(p).join(' · ') || 'Feeling fine'}</span><br>${choreStatus(s, p).length ? `<span class="muted">Home: ${esc(choreStatus(s, p).join(' · '))}</span><br>` : ''}Professional reputation ${p.reputation.toFixed(0)}/100</div>
+    return `<div class="card"><b>${esc(p.name)}</b><br>Energy ${p.needs.energy.toFixed(0)} · Food ${p.needs.satiety.toFixed(0)} · Hygiene ${p.needs.hygiene.toFixed(0)} · Mood ${p.needs.mood.toFixed(0)}<br><span class="muted">${conditionLabel(p).join(' · ') || 'Feeling fine'}</span><br>${choreStatus(s, p).length ? `<span class="muted">Home: ${esc(choreStatus(s, p).join(' · '))}</span><br>` : ''}Professional reputation ${p.reputation.toFixed(0)}/100<br>Health ${(p.health ?? 100).toFixed(0)}/100${p.injured ? ` · <span class="neg">injured (${esc(p.injured.cause)})</span>` : ''}${p.drunk && p.drunk > 20 ? ' · drunk' : ''}${(p.health ?? 100) < 90 || p.injured ? '<div class="row"><button data-ae="1">Go to A&amp;E at St Mary\'s</button></div>' : ''}${p.record?.length ? `<br><span class="muted">Criminal record: ${esc(p.record.join('; '))}</span>` : ''}</div>
       ${(() => { const w = netWorth(s, p.id); return `<h3>Net worth · ${esc(wealthTitle(w.total))}</h3><div class="card"><div class="big">${fmtMoney(w.total)}</div>${w.lines.map((l) => `<div class="line"><span>${esc(l.label)}</span><span class="${l.amount < 0 ? 'neg' : ''}">${fmtMoney(l.amount)}</span></div>`).join('')}${(() => { const next = MILESTONES.find((m) => m > w.total); return next ? `<p class="muted">Next milestone: ${fmtMoney(next)}</p>` : ''; })()}</div>`; })()}
       <h3>Effects</h3><p class="muted">Below 25 energy you move and work 20% slower (36% below 10). Starving slows work. Sleep in your bed to recover. Eat food from your kitchen or a cafe meal.</p>
       <h3>Skills</h3>${['retail', 'cleaning', 'warehouse', 'cooking', 'construction'].map((k) => `<div class="line"><span>${k}</span><span>level ${skillLevel(p.skills[k] ?? 0)} (${p.skills[k] ?? 0} xp)</span></div>`).join('')}
@@ -505,6 +536,7 @@ export class UI {
     const s = this.s;
     if (d.tab) { this.tab = d.tab as Tab; if (d.tab === 'jobs') s.flags.viewedJobs = true; this.renderPhone(); return; }
     if (d.close) return this.closePhone();
+    if (d.ae) { const r = goToAandE(s, this.p.id); this.toast(r.msg); if (r.ok) this.closePhone(); return; }
     if (d.apply) { this.toast(applyForJob(s, this.p.id, d.apply, []).msg); this.lastBody = ''; this.renderPhone(); return; }
     if (d.accept) this.toast(acceptOffer(s, d.accept).msg);
     if (d.decline) declineOffer(s, d.decline);
@@ -726,7 +758,7 @@ export class UI {
       <button data-m="gfx">Graphics: ${this.game.quality === 'high' ? 'High (ambient occlusion, bloom, anti-aliasing)' : this.game.quality === 'medium' ? 'Medium (anti-aliasing, no ambient occlusion)' : 'Low (fastest)'} · resolution ${Math.round(this.game.resScale * 100)}% - click to switch</button>
       <h3>AI conversations (optional)</h3><p class="muted">With your own OpenAI API key, people answer anything you say, in character, from their job, family, money, mood and history. The key is kept only in this browser and sent only to OpenAI. Without a key, conversations use built-in replies.</p>
       ${hasAi() ? `<p>Key saved (…${esc((getApiKey() ?? '').slice(-4))}) · model ${esc(getModel())}</p><div class="row"><button data-m="aiclear">Remove key</button></div>` : `<input id="ai-key" type="password" placeholder="sk-…" autocomplete="off" style="font:inherit;padding:8px;border-radius:6px;border:1px solid var(--line);background:#1c2420;color:var(--ink)"><div class="row"><button data-m="aisave">Save key</button></div>`}
-      <h3>Controls</h3><p class="muted">WASD or arrows: walk in that direction (relative to the camera) · Shift: run · E: use · 1-6: other options · Tab or P: phone · Esc: pause. The camera follows you automatically; drag to look around, scroll to zoom.</p>
+      <h3>Controls</h3><p class="muted">WASD or arrows: walk in that direction (relative to the camera) · Shift: run · E: use · F: punch / attack · Q: hold a weapon (bat or knife, sold at Harbour Home) · 1-6: other options · Tab or P: phone · Esc: pause. The camera follows you automatically; drag to look around, scroll to zoom.</p>
       <p class="muted">Day ${dayIndex(this.s.minute) + 1}. Time passes at ${this.game.speedMult}× (1× = 20 game minutes per real minute). Sleeping fast-forwards.</p>`;
   }
   onMenuClick(e: Event) {

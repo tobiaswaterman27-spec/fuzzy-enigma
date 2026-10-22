@@ -66,6 +66,11 @@ export function capability(p: Person) {
   if (e < 10) { move *= 0.8; act *= 0.8; }
   if (s < 10) act *= 0.85;
   if ((p.needs.mood ?? 60) < 25) act *= 0.9;
+  const hp = p.health ?? 100;
+  if (p.injured || hp < 50) { move *= 0.6; act *= 0.7; } else if (hp < 80) move *= 0.9;
+  if ((p.drunk ?? 0) > 40) { move *= 0.8; act *= 0.75; }
+  const age = p.age ?? 0;
+  if (age > 70) move *= 0.8;
   return { move, act };
 }
 

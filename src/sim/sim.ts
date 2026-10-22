@@ -3,6 +3,7 @@
 // systems run once per whole game minute so nothing is skipped when the
 // clock is accelerated (sleeping, fast-forward).
 import { lifeDaily } from './life';
+import { healthDaily, healthMinute, healthSubstep } from './health';
 import { wealthDaily } from './wealth';
 import { billsTick } from './bills';
 import { lettingsTick } from './lettings';
@@ -65,6 +66,7 @@ function substep(state: GameState, dt: number, ev: StepEvents) {
     tickChores(state, p, dt);
     if (p.visible) enforceLocationRules(state, p);
   }
+  healthSubstep(state, dt);
   logisticsTick(state, dt);
 }
 
@@ -88,6 +90,7 @@ export function minuteTick(state: GameState) {
   socialMinute(state);
   inspectionsTick(state);
   carsTick(state);
+  healthMinute(state);
   goodsInTick(state);
   lettingsTick(state);
   billsTick(state);
@@ -119,6 +122,7 @@ export function minuteTick(state: GameState) {
     socialDaily(state);
     wealthDaily(state);
     lifeDaily(state);
+    healthDaily(state);
     for (const b of Object.values(state.businesses)) dailyClose(state, b);
     dailyEconomy(state);
     compactLedger(state, 14 * MIN_PER_DAY);

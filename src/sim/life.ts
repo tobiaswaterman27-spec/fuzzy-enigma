@@ -101,13 +101,14 @@ export function freeHome(state: GameState): Id | null {
   return (HOUSE_IDS as readonly string[]).find((h) => !lived.has(h)) ?? null;
 }
 
-export function die(state: GameState, p: Person, cause: string) {
+export function die(state: GameState, p: Person, cause: string, keepBody = false) {
   if (p.dead) return;
   p.dead = { at: state.minute, cause };
   if (p.contractId) endContract(state, p.contractId, 'closed', `${p.name} died`);
   const l = activeLease(state, p.id);
   if (l && !(p.partnerId && state.people[p.partnerId]?.homeId === p.homeId)) l.status = 'ended';
-  p.visible = false; p.where = 'offsite'; p.action = null; p.move = null;
+  if (!keepBody) { p.visible = false; p.where = 'offsite'; }
+  p.action = null; p.move = null; p.combat = null; p.bleeding = 0;
   if (p.npc) { p.npc.retired = true; p.npc.plan = []; p.npc.goal = 'offsite'; }
   const partner = p.partnerId ? state.people[p.partnerId] : null;
   if (partner && alive(partner)) {

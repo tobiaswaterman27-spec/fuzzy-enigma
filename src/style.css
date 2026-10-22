@@ -87,3 +87,16 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 
 #objective.urgent { border-left-color: #e0a030; }
 #objective.urgent #objective-text { color: #ffd38a; }
+
+.bar.health i { background: linear-gradient(90deg, #b3261e, #e0574f); }
+#wanted { font-size: 18px; color: #f4c20d; letter-spacing: 2px; text-shadow: 0 0 6px #000; }
+#wanted .off { color: rgba(255,255,255,0.22); }
+#weapon-ind { font-size: 12px; color: #f0d9b5; }
+#hurt-flash { position: fixed; inset: 0; pointer-events: none; opacity: 0; background: radial-gradient(ellipse at center, rgba(120,0,0,0) 45%, rgba(150,0,0,0.75) 100%); transition: opacity 0.6s ease-out; z-index: 20; }
+#hurt-flash.on { opacity: 1; transition: none; }
+#away { position: fixed; left: 50%; top: 38%; transform: translate(-50%, -50%); background: rgba(10,14,12,0.88); padding: 18px 26px; border-radius: 12px; text-align: center; z-index: 25; max-width: 420px; }
+#away h2 { margin: 0 0 6px; font-size: 20px; }
+#gameover { position: fixed; inset: 0; background: rgba(0,0,0,0.86); z-index: 40; display: flex; align-items: center; justify-content: center; }
+#gameover .box { max-width: 460px; text-align: center; padding: 24px; }
+#gameover h1 { font-size: 34px; margin: 0 0 8px; color: #e0574f; letter-spacing: 1px; }
+#gameover button { margin: 6px; }

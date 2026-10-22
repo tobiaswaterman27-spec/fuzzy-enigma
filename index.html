@@ -19,11 +19,14 @@
     <button id="btn-menu" title="Menu (Esc)">Menu</button>
   </div>
   <div id="needs">
+    <div class="need"><span>Health</span><div class="bar health"><i id="bar-health"></i></div></div>
     <div class="need"><span>Energy</span><div class="bar"><i id="bar-energy"></i></div></div>
     <div class="need"><span>Food</span><div class="bar"><i id="bar-food"></i></div></div>
     <div class="need"><span>Hygiene</span><div class="bar"><i id="bar-hygiene"></i></div></div>
     <div class="need"><span>Mood</span><div class="bar"><i id="bar-mood"></i></div></div>
     <div id="cond"></div>
+    <div id="wanted" hidden></div>
+    <div id="weapon-ind" hidden></div>
   </div>
   <div id="objective"><span class="lbl">Goal</span><div id="objective-text"></div></div>
   <div id="shift" hidden></div>
@@ -35,6 +38,9 @@
 <div id="dialog" hidden></div>
 <div id="menu" hidden><div id="menu-body"></div></div>
 <div id="creator" hidden></div>
+<div id="hurt-flash"></div>
+<div id="away" hidden></div>
+<div id="gameover" hidden></div>
 <div id="boot">Loading Harbourside…</div>
 <script type="module" src="/src/main.ts"></script>
 </body>

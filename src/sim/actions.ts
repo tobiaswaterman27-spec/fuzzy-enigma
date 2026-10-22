@@ -2,6 +2,9 @@
 // Actions are timed, interruptible and validated. State changes happen in
 // unit callbacks or on completion - never because an animation finished.
 import { useEnergy } from './bills';
+import { buyWeapon, WEAPONS } from './health';
+
+const PINT = 520;
 import { canDriveForklift, mountForklift, palletsWaiting } from './forklift';
 import { buyAtStall, marketOn, stallPrice } from './streetmarket';
 import { COURSES, completeSession, sessionBlocker, sessionMinutes } from './training';
@@ -344,6 +347,7 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
         break;
       }
       out.push({ type: 'ui', label: 'Browse furniture, wallpaper, flooring and rugs for your home', enabled: true, ui: 'homestore', reason: staffed ? undefined : 'Counter closed - you can still order online' });
+      for (const k of ['bat', 'knife'] as const) out.push(opt('buy_weapon', `Buy a ${WEAPONS[k].label} · ${fmtMoney(WEAPONS[k].price)}`, !staffed ? 'Counter closed' : count(state.containers[p.bagId], WEAPONS[k].item) ? 'You already have one' : undefined, k));
       break;
     }
     case 'stall': {
@@ -405,6 +409,8 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
       const supplies = b ? count(state.containers[b.stockContainers[0]], 'cafe_supplies') : 0;
       const price = b ? priceOf(b, 'meal') : 0;
       out.push(opt('buy_meal', `Buy a hot meal - ${fmtMoney(price)} (+55 food)`, !b || !isOpen(b, state.minute) || !staffed ? 'Cafe is closed' : supplies <= 0 ? 'Sold out - waiting for supplies' : state.ledger.accounts[p.accountId].balance < price ? 'Not enough money' : undefined));
+      const mod = minuteOfDay(state.minute);
+      out.push(opt('buy_pint', `Have a pint · ${fmtMoney(PINT)} (mood up, but it goes to your head)`, !b || !isOpen(b, state.minute) || !staffed ? 'Cafe is closed' : mod < 12 * 60 ? 'Licensed from 12:00' : (p.drunk ?? 0) > 70 ? "You've had enough, mate" : undefined));
       break;
     }
   }
@@ -507,6 +513,21 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
       begin(p, type, itId, { duration: it.kind === 'kitchen' && p.isPlayer ? 8 : 3, arg }, now); break;
     case 'change_outfit':
       begin(p, type, itId, { duration: 1, arg }, now); break;
+    case 'buy_weapon': {
+      const r = buyWeapon(state, p.id, arg as 'bat' | 'knife', state.businesses[it.businessId ?? 'homestore']?.accountId ?? state.businesses.homestore.accountId);
+      if (!r.ok) return r;
+      begin(p, type, itId, { duration: 0.6 }, now);
+      return r;
+    }
+    case 'buy_pint': {
+      const b = state.businesses[it.businessId!];
+      const r = transfer(state, { from: p.accountId, to: b.accountId, amount: PINT, reason: 'purchase', memo: `Pint at ${b.name}` });
+      if (!r.ok) return { ok: false, msg: r.error };
+      const st = b.stats[b.stats.length - 1];
+      if (st) { st.revenue += PINT; st.customers++; }
+      begin(p, type, itId, { duration: 10 }, now);
+      break;
+    }
     case 'buy_meal': {
       const b = state.businesses[it.businessId!];
       const price = priceOf(b, 'meal');
@@ -579,6 +600,7 @@ export function tickAction(state: GameState, p: Person, dt: number): string | nu
   const a = p.action;
   if (!a) return null;
   const it = interactable(state, a.target);
+  if (a.type === 'attack') { a.progress += dt; if (a.progress >= a.duration) p.action = null; return null; }
   if (!it && a.type !== 'sleep') { cancelAction(state, p); return 'Target is gone.'; }
   if (it && Math.min(dist(p.pos, it.pos), dist(p.pos, it.obj)) > it.range + 1.5) { cancelAction(state, p); return 'Stopped: you moved away.'; }
   a.progress += dt;
@@ -737,6 +759,14 @@ export function tickAction(state: GameState, p: Person, dt: number): string | nu
       break;
     case 'buy_meal':
       msg = 'That hit the spot.';
+      break;
+    case 'buy_pint':
+      p.drunk = Math.min(100, (p.drunk ?? 0) + 22);
+      p.needs.mood = clamp(p.needs.mood + 5, 0, 100);
+      msg = (p.drunk ?? 0) > 60 ? 'The room is starting to spin.' : (p.drunk ?? 0) > 35 ? "You're feeling merry." : 'Cheers.';
+      break;
+    case 'buy_weapon':
+      msg = null;
       break;
     case 'sit':
     case 'watch_tv':

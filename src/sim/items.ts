@@ -41,6 +41,9 @@ export const ITEMS: Record<string, ItemDef> = {
   uniform_cafe: { id: 'uniform_cafe', name: 'Cafe Apron', category: 'clothing', caseSize: 1, wholesale: 0, importCost: 0, retail: 0, satiety: 0, energy: 0, color: '#7b2d26', demand: 0 },
   uniform_site: { id: 'uniform_site', name: 'Site Gear (hi-vis, boots, hard hat)', category: 'clothing', caseSize: 1, wholesale: 0, importCost: 0, retail: 0, satiety: 0, energy: 0, color: '#f2a516', demand: 0 },
   bricks: { id: 'bricks', name: 'Bricks', category: 'supplies', caseSize: 16, wholesale: 60, importCost: 40, retail: 0, satiety: 0, energy: 0, color: '#a5583e', demand: 0 },
+  uniform_police: { id: 'uniform_police', name: 'Police Uniform', category: 'clothing', caseSize: 1, wholesale: 0, importCost: 0, retail: 0, satiety: 0, energy: 0, color: '#1b2433', demand: 0 },
+  cricket_bat: { id: 'cricket_bat', name: 'Cricket Bat', category: 'household', caseSize: 1, wholesale: 0, importCost: 0, retail: 3500, satiety: 0, energy: 0, color: '#d9b77a', demand: 0 },
+  kitchen_knife: { id: 'kitchen_knife', name: 'Kitchen Knife', category: 'household', caseSize: 1, wholesale: 0, importCost: 0, retail: 1200, satiety: 0, energy: 0, color: '#b8bcc2', demand: 0 },
   mop: { id: 'mop', name: 'Mop & Bucket', category: 'supplies', caseSize: 1, wholesale: 0, importCost: 0, retail: 0, satiety: 0, energy: 0, color: '#2a7fd4', demand: 0 },
 };
 
@@ -57,6 +60,7 @@ export const CLOTHING: Record<string, ClothingEffect> = {
   uniform_wholesale: { formality: 0, comfort: 0, label: 'Hi-vis workwear: required in the warehouse' },
   uniform_cafe: { formality: 1, comfort: 0, label: 'Cafe apron' },
   uniform_site: { formality: 0, comfort: 0, label: 'Site gear: required on the building site' },
+  uniform_police: { formality: 2, comfort: 0, label: 'Police uniform' },
 };
 
 export const PRODUCTS = ['bread', 'milk', 'apples', 'soup', 'pasta', 'coffee', 'snacks', 'soap'] as const;

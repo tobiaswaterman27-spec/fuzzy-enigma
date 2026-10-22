@@ -261,7 +261,7 @@ export const ACTION_CLIP: Record<string, string> = {
   serve_customer: 'scan', self_checkout: 'scan', take_mop: 'pickup', return_mop: 'pickup', clean: 'mop',
   check_in_delivery: 'clipboard', pick_item: 'place', sleep: 'lie', eat: 'eat', store_food: 'place',
   change_outfit: 'dress', buy_meal: 'eat', sit: 'sit', watch_tv: 'sit', talk: 'talk', shower: 'wash', cook: 'type', phone: 'phone',
-  take_order: 'talk', take_tool: 'pickup', return_tool: 'pickup', take_bricks: 'pickup', site_work: 'place', cook_meal: 'type', serve_meal: 'place', drive_van: 'pickup', drive_car: 'pickup', drive_forklift: 'pickup', study: 'sit', buy_stall: 'talk', pick_case: 'pickup', stage_case: 'place', face_shelf: 'place', bale_cardboard: 'place', empty_bin: 'pickup', dump_rubbish: 'place', wash_up: 'type', laundry: 'pickup', tidy: 'pickup',
+  take_order: 'talk', take_tool: 'pickup', return_tool: 'pickup', take_bricks: 'pickup', site_work: 'place', cook_meal: 'type', serve_meal: 'place', drive_van: 'pickup', drive_car: 'pickup', drive_forklift: 'pickup', attack: 'punch', down: 'fall', buy_pint: 'eat', buy_weapon: 'pickup', study: 'sit', buy_stall: 'talk', pick_case: 'pickup', stage_case: 'place', face_shelf: 'place', bale_cardboard: 'place', empty_bin: 'pickup', dump_rubbish: 'place', wash_up: 'type', laundry: 'pickup', tidy: 'pickup',
 };
 
 /** seated clips: getting into and out of them plays a real sit-down / stand-up move */
@@ -287,6 +287,7 @@ export class AnimationController {
     if (!a) {
       a = this.mixer.clipAction(getClip(name));
       if (name === 'pickup') { a.setLoop(THREE.LoopRepeat, Infinity); }
+      if (name === 'fall') { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; }
       this.actions.set(name, a);
     }
     return a;
@@ -303,8 +304,8 @@ export class AnimationController {
     next.play();
     const prev = this.current ? this.actions.get(this.current) : null;
     // locomotion to locomotion keeps the stride phase so the feet never skip
-    const loco = ['walk', 'run', 'carry_walk'];
-    if (prev && loco.includes(clip) && loco.includes(this.current)) {
+    const loco = (c: string) => c.startsWith('walk') || c === 'run' || c === 'carry_walk';
+    if (prev && loco(clip) && loco(this.current)) {
       next.time = (prev.time / prev.getClip().duration) * next.getClip().duration;
       fade = 0.3;
     }
@@ -313,17 +314,22 @@ export class AnimationController {
   }
 
   /** Decide the clip from authoritative state: an action wins over locomotion. */
+  /** this person's way of walking (a clip name), set from who they are and how they are */
+  walkStyle = 'walk';
+
   update(dt: number, speed: number, carrying: boolean, action: string | null) {
     let clip: string;
     let rate = 1;
     if (action) {
       clip = ACTION_CLIP[action] ?? 'idle';
+      if (action === 'attack') rate = 1.7;
     } else if (speed > 2.6) {
       clip = 'run';
       rate = speed / RUN_SPEED_REF;
     } else if (speed > 0.15) {
-      clip = carrying ? 'carry_walk' : 'walk';
-      rate = Math.max(0.5, Math.min(2.2, speed / (carrying ? CARRY_SPEED_REF : WALK_SPEED_REF)));
+      clip = carrying ? 'carry_walk' : MOCAP[this.walkStyle] ? this.walkStyle : 'walk';
+      const ref = carrying ? CARRY_SPEED_REF : MOCAP[clip]?.speed || WALK_SPEED_REF;
+      rate = Math.max(0.5, Math.min(2.2, speed / ref));
     } else {
       clip = carrying ? 'carry_idle' : 'idle';
     }

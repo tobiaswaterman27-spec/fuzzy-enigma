@@ -37,3 +37,4 @@ export * from './bills';
 export * from './wealth';
 export * from './persona';
 export * from './life';
+export * from './health';

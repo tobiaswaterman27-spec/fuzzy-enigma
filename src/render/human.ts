@@ -241,6 +241,7 @@ export const GARMENTS: Record<string, Garment> = {
   uniform_market: { top: { color: '#2e8b57', tex: 'polo', sleeve: 'short', collar: '#256f46', hem: 0.97, accent: '#ffffff' }, bottom: { color: '#24272b', tex: 'twill', length: 'long' }, shoes: '#18181a', over: { kind: 'apron', color: '#1d5c3a', accent: '#e9f2ec' } },
   uniform_site: { top: { color: '#5b5f63', tex: 'twill', sleeve: 'long', hem: 0.97 }, bottom: { color: '#3b3f2e', tex: 'twill', length: 'long' }, shoes: '#4a3520', over: { kind: 'vest', color: '#ff8c1a' } },
   uniform_wholesale: { top: { color: '#3a4652', tex: 'twill', sleeve: 'long', hem: 0.97 }, bottom: { color: '#2b3440', tex: 'twill', length: 'long' }, shoes: '#4a3520', over: { kind: 'vest', color: '#f2d000' } },
+  uniform_police: { top: { color: '#f2f4f6', tex: 'shirt', sleeve: 'short', collar: '#f2f4f6', hem: 0.96 }, bottom: { color: '#15181d', tex: 'twill', length: 'long' }, shoes: '#0d0d0f', over: { kind: 'vest', color: '#d8e010' } },
   uniform_cafe: { top: { color: '#f3f0ea', tex: 'shirt', sleeve: 'short', collar: '#f3f0ea', hem: 0.96 }, bottom: { color: '#222', tex: 'twill', length: 'long' }, shoes: '#181818', over: { kind: 'apron', color: '#7b2d26' } },
 };
 

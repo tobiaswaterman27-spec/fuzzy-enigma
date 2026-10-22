@@ -46,7 +46,8 @@ export type TxnReason =
   | 'property'
   | 'investment'
   | 'dividend'
-  | 'transfer';
+  | 'transfer'
+  | 'fine';
 
 export interface Txn {
   id: Id;
@@ -144,6 +145,9 @@ export type ActionType =
   | 'pick_item'
   | 'self_checkout'
   | 'sleep'
+  | 'attack'
+  | 'buy_weapon'
+  | 'buy_pint'
   | 'eat'
   | 'change_outfit'
   | 'buy_meal'
@@ -286,6 +290,24 @@ export interface Person {
   health?: number;
   /** hurt badly enough to need treatment */
   injured?: { severity: number; cause: string; since: number } | null;
+  /** knocked to the ground (game minute it happened): lies there until helped up or taken away */
+  down?: number | null;
+  /** health lost per game minute from open wounds */
+  bleeding?: number;
+  /** weapon in hand, if any */
+  weapon?: 'bat' | 'knife' | null;
+  /** in hospital or in a police cell until a time */
+  away?: { until: number; reason: string; place: 'hospital' | 'custody' | 'prison' } | null;
+  /** fighting someone: hits back while they are close, until a time */
+  combat?: { target: Id; until: number; next: number } | null;
+  /** running away until a time */
+  fleeing?: number;
+  /** criminal convictions */
+  record?: string[];
+  /** a police officer on duty */
+  police?: boolean;
+  /** 0..100 how drunk: wears off over a few hours */
+  drunk?: number;
   /** died: kept for the record, no longer simulated */
   dead?: { at: number; cause: string } | null;
   /** times someone has crossed this person badly (they remember it) */
@@ -627,6 +649,12 @@ export interface GameState {
   wealthMilestone?: number;
   /** life simulation set up (ages, couples) and when the player started dating (life.ts) */
   lifeInit?: boolean;
+  /** blood on the ground (fades after a day) */
+  blood?: { id: Id; pos: Vec2; at: number; size: number }[];
+  /** how much the police want the player (0..5 stars) */
+  wanted?: { level: number; unseen: number; crime: string } | null;
+  /** the player has died */
+  gameOver?: { at: number; cause: string } | null;
   datingSince?: number;
   creditBans?: Record<Id, boolean>;
   /** homes owned outright or with a mortgage (property.ts), by location */

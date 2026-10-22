@@ -91,7 +91,8 @@ export function goTo(state: GameState, p: Person, to: Vec2, label: string): bool
 export function tickMovement(state: GameState, p: Person, dt: number) {
   const m = p.move;
   if (!m) return;
-  let step = WALK * capability(p).move * dt;
+  const hurry = p.down != null ? 0 : (p.fleeing ?? 0) > state.minute ? 2.3 : p.police || p.combat ? 2.0 : 1;
+  let step = WALK * capability(p).move * hurry * dt;
   // personal space: someone just ahead slows you down and you step round them (keeping left)
   const tgt0 = m.path[m.idx];
   if (tgt0) {
@@ -123,7 +124,7 @@ export function tickMovement(state: GameState, p: Person, dt: number) {
     if (mv >= d - 1e-6) m.idx++;
   }
   const remaining = dist(p.pos, m.dest);
-  const moved = WALK * capability(p).move * dt - step;
+  const moved = WALK * capability(p).move * hurry * dt - step;
   if (moved < 0.01 * dt) m.stuckTime += dt;
   else m.stuckTime = 0;
   if (m.idx >= m.path.length) {
@@ -903,7 +904,8 @@ function shouldPreemptForTill(state: GameState, p: Person): boolean {
 export function npcTick(state: GameState) {
   sitePlot = state.build?.plot ?? 0;
   for (const p of Object.values(state.people)) {
-    if (p.isPlayer || !p.npc || p.dead || p.left) continue;
+    if (p.isPlayer || !p.npc || p.dead || p.left || p.away || p.down != null || p.police || p.combat) continue;
+    if (p.fleeing && p.move) continue;
     const n = p.npc;
     if (state.meetups?.length && !n.ambient) goToMeetup(state, p);
     if (state.minute >= n.nextDecision && !p.action) decide(state, p);

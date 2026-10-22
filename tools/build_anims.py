@@ -64,6 +64,20 @@ CLIPS = {
     'phone': ('79_36', None, True, 'free', (2.5, 5.0)),
     'brush_teeth': ('79_81', None, True, 'free', (1.5, 3.0)),
     'handshake': ('79_06', None, False, 'whole', None),
+    # everyone walks a little differently; moods and injuries change the walk
+    'walk_b': ('07_01', None, True, 'cycle', (0.9, 1.4)),
+    'walk_c': ('16_15', None, True, 'cycle', (0.9, 1.4)),
+    'walk_brisk': ('81_04', None, True, 'cycle', (0.8, 1.3)),
+    'walk_slow': ('120_19', None, True, 'cycle', (1.0, 1.8)),
+    'walk_sad': ('91_13', None, True, 'cycle', (1.0, 1.7)),
+    'walk_proud': ('91_30', None, True, 'cycle', (0.9, 1.6)),
+    'walk_drunk': ('91_09', None, True, 'cycle', (1.0, 2.4)),
+    'walk_limp': ('91_16', None, True, 'cycle', (1.0, 2.2)),
+    # fights and falls
+    'punch': ('02_05', None, True, 'free', (0.8, 1.8)),
+    'fight': ('13_17', None, True, 'free', (1.0, 2.5)),
+    'fall': ('90_16', None, False, 'whole', None),
+    'lie_ground': ('111_12', None, True, 'seated', (2.0, 4.0)),
 }
 
 
