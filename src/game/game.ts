@@ -123,7 +123,6 @@ export class Game {
   speech = new Map<string, { text: string; until: number }>();
   say(personId: string, text: string, seconds = 5) { this.speech.set(personId, { text, until: performance.now() + seconds * 1000 }); }
   private vel = { x: 0, z: 0 };
-  private stillFor = 0;
   private sunAnchor = new THREE.Vector3();
   /** mouse look: the automatic camera waits until this time (ms) */
   private manualUntil = 0;
@@ -380,7 +379,7 @@ export class Game {
       drag.x = e.clientX; drag.y = e.clientY;
       this.camYaw -= dx * 0.006;
       this.camPitch = Math.max(-0.12, Math.min(1.25, this.camPitch + dy * 0.004));
-      this.manualUntil = performance.now() + 4000;
+      this.manualUntil = performance.now() + 700;
     });
     const end = (e: PointerEvent) => { if (drag?.id === e.pointerId) drag = null; };
     this.canvas.addEventListener('pointerup', end);
@@ -618,24 +617,26 @@ export class Game {
     if (this.drivingVan()) { this.updateDriving(dt); return; }
     this.vanSpeed = 0;
     if (this.uiOpen || p.sleeping || p.down != null || p.away || p.dead) { this.vel.x = this.vel.z = 0; return; }
-    // movement is relative to the camera: W away from the camera, S towards it, A/D to the sides.
-    // The body accelerates, decelerates and turns smoothly towards where it is going.
+    // the camera sits behind your back: W walks forward, S steps back, A/D turn (turning on the spot
+    // when standing, carving round while walking). The body accelerates and slows smoothly.
     const k = this.keys;
-    let ix = 0, iz = 0;
+    let iz = 0, turn = 0;
     if (k.has('KeyW') || k.has('ArrowUp')) iz += 1;
     if (k.has('KeyS') || k.has('ArrowDown')) iz -= 1;
-    if (k.has('KeyA') || k.has('ArrowLeft')) ix -= 1;
-    if (k.has('KeyD') || k.has('ArrowRight')) ix += 1;
+    if (k.has('KeyA') || k.has('ArrowLeft')) turn += 1;
+    if (k.has('KeyD') || k.has('ArrowRight')) turn -= 1;
     const run = k.has('ShiftLeft') || k.has('ShiftRight');
-    const len = Math.hypot(ix, iz);
-    const fwd = { x: -Math.sin(this.camYaw), z: -Math.cos(this.camYaw) };
-    const right = { x: -fwd.z, z: fwd.x };
+    if (turn) {
+      if (p.action) cancelAction(this.state, p, 'moved');
+      p.facing += turn * (iz ? 2.4 : 3.0) * dt;
+    }
+    const len = Math.abs(iz);
     let tx = 0, tz = 0;
     if (len > 0) {
       if (p.action) cancelAction(this.state, p, 'moved');
-      const sp = (run ? RUN_SPEED * fitnessFactor(p) : WALK_SPEED) * capability(p).move;
-      tx = ((fwd.x * iz + right.x * ix) / len) * sp;
-      tz = ((fwd.z * iz + right.z * ix) / len) * sp;
+      const sp = (iz > 0 ? (run ? RUN_SPEED * fitnessFactor(p) : WALK_SPEED) : WALK_SPEED * 0.55) * capability(p).move;
+      tx = Math.sin(p.facing) * iz * sp;
+      tz = Math.cos(p.facing) * iz * sp;
     }
     // drunk: you weave about whether you mean to or not
     const drunk = p.drunk ?? 0;
@@ -649,11 +650,6 @@ export class Game {
     this.vel.z += (tz - this.vel.z) * Math.min(1, dt * acc);
     const speed = Math.hypot(this.vel.x, this.vel.z);
     if (speed < 0.03 && len === 0) { this.vel.x = this.vel.z = 0; return; }
-    if (len > 0) {
-      const want = Math.atan2(tx, tz);
-      let d = ((want - p.facing + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
-      p.facing += d * Math.min(1, dt * 9);
-    }
     const before = p.pos;
     p.pos = resolveCircle({ x: p.pos.x + this.vel.x * dt, z: p.pos.z + this.vel.z * dt }, 0.3, this.collidersWithCars());
     if (run && speed > 3) trainRun(p, Math.hypot(p.pos.x - before.x, p.pos.z - before.z));
@@ -705,16 +701,10 @@ export class Game {
       this.camDist += (wantDist - this.camDist) * Math.min(1, dt * 3);
     } else if (!this.camLocked) {
       // automatic camera: settles behind the player; closer and higher indoors so rooms read clearly
+      // always behind your back, like a chase camera: it swings round with you as you turn
       const behind = p.facing + Math.PI;
-      let dYaw = ((behind - this.camYaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
-      // only walking forward (W) swings the view round behind you; strafing or walking towards the camera
-      // keeps it still so directions stay stable. After standing still for a moment it recentres gently.
-      const spd = Math.hypot(this.vel.x, this.vel.z);
-      const fwdKey = this.keys.has('KeyW') || this.keys.has('ArrowUp');
-      const backKey = this.keys.has('KeyS') || this.keys.has('ArrowDown');
-      if (spd > 0.3 || p.action) this.stillFor = 0; else this.stillFor += dt;
-      const rate = spd > 0.3 ? (fwdKey && !backKey ? 0.8 + 0.4 * Math.min(1, spd / 4) : 0) : p.action ? 0.6 : this.stillFor > 1.5 ? 0.5 : 0;
-      this.camYaw += dYaw * Math.min(1, dt * rate);
+      const dYaw = ((behind - this.camYaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+      this.camYaw += dYaw * Math.min(1, dt * 7);
       // in a small room the walls pull the camera in: look down from higher up instead
       const cramped = inside && this.distCur > 0 && this.distCur < 1.6;
       const wantPitch = p.sleeping ? 0.75 : cramped ? 0.6 : inside ? 0.42 : 0.24;

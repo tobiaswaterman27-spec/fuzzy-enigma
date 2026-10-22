@@ -63,7 +63,7 @@ function creator() {
       <input id="cc-ai" type="password" placeholder="${hasAi() ? 'Key saved in this browser - leave blank to keep it' : 'sk-… - leave blank to play without'}" autocomplete="off">
       <p class="muted" style="margin-top:4px">People answer anything you say to them, in character, from their job, family, money, mood and history. Playing inside claude.ai, they are voiced by Claude on your own account (you will be asked to allow it the first time) and no key is needed. Elsewhere, add your OpenAI key: it is stored only in this browser and sent only to OpenAI.</p>
       <button class="primary" id="cc-start">Start life in Harbourside</button>
-      <p class="muted">Controls: WASD to walk, Shift to run, E to use, F to fight, G to take a car, Tab for your phone. The camera follows behind you; drag with the mouse to look around and scroll to zoom.</p>`;
+      <p class="muted">Controls: W/S to walk, A/D to turn, Shift to run, E to use, F to fight, G to take a car, Tab for your phone. The camera follows behind you; drag with the mouse to look around and scroll to zoom.</p>`;
   };
   render();
   el.onclick = (e) => {
