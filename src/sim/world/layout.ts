@@ -1043,7 +1043,7 @@ function buildWorldData(homeDesign: HomeDesign): World {
   N('pk_gate', 56, 10.5, 'park'); N('pk_a', 52, 25, 'park'); N('pk_b', 62, 26, 'park'); N('pk_c', 56, 32, 'park');
   N('pk_bench_1', 50, 22.9, 'park'); N('pk_bench_2', 62, 22.9, 'park');
   for (const st of STALLS) N(`mk_${st.id}`, st.pos.x, st.pos.z, 'park');
-  L('pk_gate', 'mk_stall_veg', 'pk_a'); L('pk_gate', 'mk_stall_bread', 'pk_b'); L('mk_stall_bread', 'mk_stall_coffee', 'pk_b');
+  L('pk_gate', 'mk_stall_veg'); L('pk_gate', 'mk_stall_bread', 'mk_stall_coffee', 'pk_b');
   L('se_56', 'pk_gate', 'pk_a', 'pk_c', 'pk_b', 'pk_gate'); L('pk_a', 'pk_bench_1'); L('pk_b', 'pk_bench_2');
   // bus stops (commute / ambient spawn)
   N('bus_w', -88, -6.5 + 0.01); L('nw_-88', 'bus_w');
