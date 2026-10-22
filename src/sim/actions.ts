@@ -334,7 +334,7 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
       if (p.isPlayer && canComplete(state, actorId, other.id)) out.unshift(opt('favour_done', canComplete(state, actorId, other.id)!.kind === 'deliver' ? `Hand ${other.name.split(' ')[0]} the parcel` : canComplete(state, actorId, other.id)!.kind === 'walk_dog' ? `Give ${other.name.split(' ')[0]} their dog back` : `Give ${other.name.split(' ')[0]} what they asked for`));
       if (p.isPlayer && !other.police && !other.npc?.ambient && !openFavour(state, other.id)) out.push(opt('favour_ask', `Ask ${other.name.split(' ')[0]} if they need a hand with anything`));
       if (p.isPlayer && (other.npc as any)?.shoplift) out.unshift(opt('grab', `Grab ${other.name.split(' ')[0]} (shoplifter!)`));
-      out.push(opt('talk', p.isPlayer ? `Say hello in passing` : `Chat with ${other.name}`, other.action?.type === 'serve_customer' ? 'Busy serving' : undefined));
+      out.push(opt('talk', p.isPlayer ? `Wave and say hello` : `Chat with ${other.name}`, other.action?.type === 'serve_customer' ? 'Busy serving' : undefined));
       if (p.isPlayer && !other.npc?.ambient) out.push({ type: 'ui', label: `Invite ${other.name.split(' ')[0]} for a coffee`, enabled: fam >= FRIEND_AT && !plannedMeetup(state), reason: fam < FRIEND_AT ? 'Get to know them better first (chat more)' : 'You already have a meet-up arranged', ui: 'invite', arg: other.id });
       break;
     }
@@ -668,6 +668,24 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
     case 'tidy':
       begin(p, type, itId, { duration: Math.max(3, Math.min(25, choresOf(p).mess * 0.3)) }, now); break;
     case 'talk': {
+      // you, in passing: a wave and a hello, they stop, turn and wave back. No standing about.
+      if (p.isPlayer) {
+        const o = state.people[itId.slice(7)];
+        if (!o) return { ok: false, msg: '' };
+        p.facing = Math.atan2(o.pos.x - p.pos.x, o.pos.z - p.pos.z);
+        o.facing = Math.atan2(p.pos.x - o.pos.x, p.pos.z - o.pos.z);
+        o.move = null;
+        if (o.npc) o.npc.plan.unshift({ kind: 'wait', until: now + 0.7 });
+        p.gesture = { clip: 'wave', until: now + 0.8 };
+        o.gesture = { clip: o.grudge ? 'shrug' : 'wave', until: now + 0.8 };
+        const k = o.grudge ? 0 : 3;
+        p.relations[o.id] = clamp((p.relations[o.id] ?? 0) + k, 0, 100);
+        o.relations[p.id] = clamp((o.relations[p.id] ?? 0) + k, 0, 100);
+        (p.lastSeen ??= {})[o.id] = now;
+        p.needs.mood = clamp((p.needs.mood ?? 60) + 2, 0, 100);
+        if (p.relations[o.id] >= FRIEND_AT && p.relations[o.id] - k < FRIEND_AT) news(state, 'good', `${o.name} is now a friend`, 'Invite them for a coffee at Tidewater Cafe to keep in touch.', true);
+        return { ok: true, msg: '' };
+      }
       // townspeople who meet up on purpose talk for a good while
       begin(p, type, itId, { duration: arg === 'long' ? 20 : 2 }, now);
       const o = state.people[itId.slice(7)];
@@ -941,8 +959,7 @@ export function tickAction(state: GameState, p: Person, dt: number): string | nu
         (p.lastSeen ??= {})[o.id] = state.minute;
         if (p.isPlayer && p.relations[o.id] >= FRIEND_AT && p.relations[o.id] - 5 < FRIEND_AT) news(state, 'good', `${o.name} is now a friend`, 'Invite them for a coffee at Tidewater Cafe to keep in touch.', true);
         p.needs.mood = clamp((p.needs.mood ?? 60) + 6, 0, 100);
-        const lines = [`${o.name}: "Morning! Busy day?"`, `${o.name}: "Nice to see a new face around Harbourside."`, `${o.name}: "Corner Market's always short of staff, you know."`, `${o.name}: "Rent's gone up again, hasn't it."`, `${o.name}: "Have you tried the cafe? Rosa does a good lunch."`];
-        msg = lines[Math.floor(state.minute) % lines.length];
+        msg = null;
       }
       break;
     }
