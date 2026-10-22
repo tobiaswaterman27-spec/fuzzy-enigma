@@ -4,6 +4,7 @@
 import { useEnergy } from './bills';
 import { buyWeapon, WEAPONS } from './health';
 import { breakIn, houseOf, houseOpen, knock, searchValuables } from './houses';
+import { grabShoplifter } from './incidents';
 
 const PINT = 520;
 import { canDriveForklift, mountForklift, palletsWaiting } from './forklift';
@@ -318,6 +319,7 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
       if (iv) out.push({ type: 'ui', label: `Interview with ${other.name}`, enabled: false, reason: 'Held at the window table in Tidewater Cafe - sit down there', ui: 'interview', arg: iv.id });
       const fam = Math.round(p.relations?.[other.id] ?? 0);
       if (p.isPlayer) out.push({ type: 'ui', label: `Talk to ${other.name}${fam ? ` (${relationLabel(fam).toLowerCase()} · ${fam})` : ''}`, enabled: other.action?.type !== 'serve_customer', reason: 'Busy serving', ui: 'chat', arg: other.id });
+      if (p.isPlayer && (other.npc as any)?.shoplift) out.unshift(opt('grab', `Grab ${other.name.split(' ')[0]} (shoplifter!)`));
       out.push(opt('talk', p.isPlayer ? `Say hello in passing` : `Chat with ${other.name}`, other.action?.type === 'serve_customer' ? 'Busy serving' : undefined));
       if (p.isPlayer && !other.npc?.ambient) out.push({ type: 'ui', label: `Invite ${other.name.split(' ')[0]} for a coffee`, enabled: fam >= FRIEND_AT && !plannedMeetup(state), reason: fam < FRIEND_AT ? 'Get to know them better first (chat more)' : 'You already have a meet-up arranged', ui: 'invite', arg: other.id });
       break;
@@ -532,6 +534,8 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
     }
     case 'knock':
       begin(p, type, itId, { duration: 0.6 }, now); break;
+    case 'grab':
+      return { ok: true, msg: grabShoplifter(state, p.id, itId.slice(7)) };
     case 'break_in':
       begin(p, type, itId, { duration: 1.2 }, now); break;
     case 'search':

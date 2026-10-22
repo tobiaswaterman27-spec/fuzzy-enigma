@@ -51,3 +51,21 @@ describe('Street incidents', () => {
     expect([a, b].some((p) => p.record?.includes('affray')) || [a, b].some((p) => p.down != null)).toBe(true);
   });
 });
+
+describe('Shoplifting', () => {
+  it('a shopper runs off with the goods; grabbing them puts the goods back and the police take them', async () => {
+    const { shopliftTick, grabShoplifter, addItems } = await import('../src/sim/index');
+    const s = createNewGame(7, setup);
+    const p = Object.values(s.people).find((q) => q.npc && !q.isPlayer)!;
+    p.visible = true; p.where = 'market'; p.pos = { x: 20, z: -20 }; p.action = null;
+    p.npc!.goal = 'shop'; p.npc!.shopId = 'market'; p.npc!.step = 'run'; p.npc!.plan = [{ kind: 'call', fn: 'checkout' }];
+    p.traits.conscientiousness = 0.1;
+    addItems(s.containers[p.basketId], 'bread', 2);
+    for (let i = 0; i < 400 && !(p.npc as any).shoplift; i++) shopliftTick(s);
+    expect((p.npc as any).shoplift).toBeTruthy();
+    expect(s.containers[p.bagId].items.bread).toBe(2);
+    expect(grabShoplifter(s, 'player', p.id)).toMatch(/goods back/);
+    expect(s.containers[p.bagId].items.bread ?? 0).toBe(0);
+    expect(p.away?.place).toBe('custody');
+  });
+});

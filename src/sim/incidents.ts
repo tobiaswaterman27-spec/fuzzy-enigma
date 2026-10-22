@@ -7,6 +7,11 @@ import { lifeEvent, news } from './events';
 import { minuteOfDay, dayIndex } from './clock';
 import { flee, sendAway } from './health';
 import { gesture } from './talk';
+import { moveAll, moveItems } from './inventory';
+import { getWorld, SHOPS } from './world/layout';
+import { statsFor } from './employment';
+import { isStaff } from './retail';
+import { transfer } from './ledger';
 
 export interface Incident { a: Id; b: Id; at: number; stage: 'argue' | 'fight' | 'done'; escalate: boolean; why: string }
 
@@ -94,4 +99,54 @@ function run(state: GameState, inc: Incident) {
     }
     if (b.npc && !b.down) { b.npc.plan = []; b.npc.nextDecision = state.minute; }
   }
+}
+
+// ------------------------------------------------------------ shoplifting
+/** now and then a shopper at Corner Market pockets what is in their basket and runs for the door */
+export function shopliftTick(state: GameState) {
+  if (Object.values(state.people).some((p) => (p.npc as any)?.shoplift)) return;
+  const shop = state.businesses.market;
+  if (!shop) return;
+  for (const p of Object.values(state.people)) {
+    const n = p.npc;
+    if (!n || p.isPlayer || n.goal !== 'shop' || n.shopId !== 'market' || !p.visible || p.action || n.step !== 'run') continue;
+    if (n.plan[0]?.kind !== 'call' || (n.plan[0] as any).fn !== 'checkout') continue;
+    const basket = state.containers[p.basketId];
+    const units = Object.values(basket?.items ?? {}).reduce((a, b) => a + b, 0);
+    if (!units || rand(state) > 0.006 + (p.traits.conscientiousness < 0.25 ? 0.02 : 0)) continue;
+    const items = { ...basket.items };
+    moveAll(state, p.basketId, p.bagId);
+    (n as any).shoplift = { items, at: state.minute };
+    const exit = Object.values(getWorld().nodes).filter((x) => x.loc === 'outside' && dist(x, p.pos) > 30 && dist(x, p.pos) < 60);
+    const to = exit[Math.floor(rand(state) * exit.length)] ?? getWorld().nodes.bus_e;
+    n.plan = [{ kind: 'move', to: { x: to.x, z: to.z }, label: 'getaway' }, { kind: 'call', fn: n.ambient ? 'despawn' : 'arriveHome' }];
+    n.goal = 'go_home';
+    p.fleeing = state.minute + 6;
+    statsFor(state, shop).lostSales += units;
+    const me = state.people[state.playerId];
+    if (dist(me.pos, p.pos) < 25 || isStaff(state, me.id, 'market')) news(state, 'bad', 'Shoplifter!', `${p.name} is running out of Corner Market without paying. Catch them (run up and press E).`, true);
+    return;
+  }
+}
+
+/** caught: the goods go back to the shop and the police take them away */
+export function grabShoplifter(state: GameState, catcherId: Id, thiefId: Id): string {
+  const p = state.people[thiefId], me = state.people[catcherId];
+  const sl = (p.npc as any)?.shoplift;
+  if (!sl) return 'They have not done anything.';
+  for (const [item, q] of Object.entries(sl.items as Record<string, number>)) moveItems(state, p.bagId, SHOPS.market.backroom, item, q);
+  (p.npc as any).shoplift = undefined;
+  p.fleeing = 0;
+  (p.record ??= []).push('shoplifting');
+  gesture(state, p, 'sad', 2);
+  lifeEvent(state, p, `Caught shoplifting by ${me.name}`);
+  me.reputation = clamp(me.reputation + 3, 0, 100);
+  let reward = '';
+  if (isStaff(state, me.id, 'market')) {
+    const r = transfer(state, { from: state.businesses.market.accountId, to: me.accountId, amount: 2500, reason: 'wage', memo: 'Reward for stopping a shoplifter' });
+    if (r.ok) reward = ' The manager gives you a £25 reward.';
+  }
+  sendAway(state, p, 'custody', 8 * 60, 'shoplifting');
+  news(state, 'good', 'You caught a shoplifter', `${p.name} was handed over to the police and the goods went back on the shelves.${reward}`, true);
+  return `You grab ${p.name.split(' ')[0]} and get the goods back.${reward}`;
 }

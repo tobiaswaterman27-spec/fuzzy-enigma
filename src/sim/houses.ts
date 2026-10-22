@@ -122,14 +122,15 @@ export function housesTick(state: GameState) {
   const here = me.visible ? locationOf(me.pos) : null;
   for (const p of Object.values(state.people)) {
     const id = p.homeId;
-    if (p.isPlayer || !id || !id.startsWith('house_') || p.dead || p.left || p.away || p.where !== id) continue;
+    if (p.isPlayer || !id || !(id.startsWith('house_') || id === 'flat') || p.dead || p.left || p.away || p.where !== id) continue;
     const inside = here === id;
     if (inside && !p.visible && !p.sleeping) {
-      const n = getWorld().nodes[`in_house_${HOUSE_IDS.indexOf(id) + 1}`];
+      // your own flat: whoever lives with you is about the living room
+      const n = getWorld().nodes[id === 'flat' ? 'fl_k' : `in_house_${HOUSE_IDS.indexOf(id) + 1}`];
       if (!n) continue;
       p.visible = true;
       // clear floor in the front room, between the coffee table and the drawers
-      p.pos = { x: n.x + (n.x > 0 ? 2.8 : -2.8), z: n.z + 0.8 - residentsHome(state, id).indexOf(p) * 1.2 };
+      p.pos = id === 'flat' ? { x: n.x + 0.4, z: n.z - 1.2 - residentsHome(state, id).indexOf(p) * 1.0 } : { x: n.x + (n.x > 0 ? 2.8 : -2.8), z: n.z + 0.8 - residentsHome(state, id).indexOf(p) * 1.2 };
       p.facing = Math.atan2(me.pos.x - p.pos.x, me.pos.z - p.pos.z);
       (p.npc as any).shownIn = id;
     } else if (!inside && p.visible && (p.npc as any)?.shownIn === id && !p.move && !p.action && !p.combat && !(state.doorCall?.answerer === p.id && state.doorCall.stage !== 'done') && !(p.gesture && state.minute < p.gesture.until)) {
