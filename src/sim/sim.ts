@@ -8,6 +8,7 @@ import { doorTick, housesTick } from './houses';
 import { followTick } from './talk';
 import { gatheringsTick } from './gatherings';
 import { incidentsTick, shopliftTick } from './incidents';
+import { dogTick, initDogs, joggersTick, lottoTick } from './leisure';
 import { wealthDaily } from './wealth';
 import { billsTick } from './bills';
 import { lettingsTick } from './lettings';
@@ -101,6 +102,9 @@ export function minuteTick(state: GameState) {
   healthMinute(state);
   gatheringsTick(state);
   incidentsTick(state);
+  dogTick(state);
+  joggersTick(state);
+  lottoTick(state);
   shopliftTick(state);
   goodsInTick(state);
   lettingsTick(state);
@@ -133,6 +137,7 @@ export function minuteTick(state: GameState) {
     socialDaily(state);
     wealthDaily(state);
     lifeDaily(state);
+    initDogs(state);
     healthDaily(state);
     for (const b of Object.values(state.businesses)) dailyClose(state, b);
     dailyEconomy(state);

@@ -68,7 +68,7 @@ export function attack(state: GameState, attackerId: Id, targetId: Id | null): s
     if (!t.isPlayer) react(state, t, a, w);
     return a.isPlayer ? `${t.name.split(' ')[0]} dodged.` : null;
   }
-  const dmg = (W.min + rand(state) * (W.max - W.min)) * ((a.drunk ?? 0) > 50 ? 0.8 : 1) * (t.down ? 1.3 : 1);
+  const dmg = (W.min + rand(state) * (W.max - W.min)) * ((a.drunk ?? 0) > 50 ? 0.8 : 1) * (t.down ? 1.3 : 1) * (0.8 + (a.fitness ?? 40) / 250);
   hurt(state, t, dmg, `${W.verb} by ${a.name}${w === 'fists' ? '' : ` with a ${W.label}`}`, a.id, W.bleed);
   if (!t.isPlayer && !t.dead) react(state, t, a, w);
   if (!a.police) witnessed(state, a, t, w);

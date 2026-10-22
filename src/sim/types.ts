@@ -152,6 +152,8 @@ export type ActionType =
   | 'buy_pint'
   | 'knock'
   | 'grab'
+  | 'scratch'
+  | 'lotto'
   | 'break_in'
   | 'search'
   | 'eat'
@@ -320,6 +322,12 @@ export interface Person {
   following?: { target: Id; until: number } | null;
   /** the way this person walks normally (a walk clip), when chosen */
   gait?: string;
+  /** a dog of their own */
+  dog?: import('./leisure').Dog;
+  /** 0..100, from running: speed, stamina, punches */
+  fitness?: number;
+  /** out for a jog until a time */
+  jogging?: number;
   /** 0..100 how drunk: wears off over a few hours */
   drunk?: number;
   /** died: kept for the record, no longer simulated */
@@ -679,6 +687,9 @@ export interface GameState {
   incident?: import('./incidents').Incident | null;
   /** text messages people have sent the player */
   inbox?: { from: Id; text: string; at: number; read: boolean }[];
+  dogsInit?: boolean;
+  /** lottery tickets for the Saturday draw */
+  lotto?: { owner: Id; draw: number; numbers: number[]; checked?: boolean }[];
   /** the player has died */
   gameOver?: { at: number; cause: string } | null;
   datingSince?: number;

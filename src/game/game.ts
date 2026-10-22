@@ -32,6 +32,7 @@ import { news } from '../sim/events';
 import { CAR_MODELS, exitCar, stealCar } from '../sim/cars';
 import { forkliftAction } from '../sim/forklift';
 import { attack, attackTarget, hitByVehicle, nextWeapon } from '../sim/health';
+import { fitnessFactor, trainRun } from '../sim/leisure';
 import { hasAi } from '../ai/openai';
 import { inOutage } from '../sim/inspections';
 
@@ -551,7 +552,7 @@ export class Game {
     let tx = 0, tz = 0;
     if (len > 0) {
       if (p.action) cancelAction(this.state, p, 'moved');
-      const sp = (run ? RUN_SPEED : WALK_SPEED) * capability(p).move;
+      const sp = (run ? RUN_SPEED * fitnessFactor(p) : WALK_SPEED) * capability(p).move;
       tx = ((fwd.x * iz + right.x * ix) / len) * sp;
       tz = ((fwd.z * iz + right.z * ix) / len) * sp;
     }
@@ -572,7 +573,9 @@ export class Game {
       let d = ((want - p.facing + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
       p.facing += d * Math.min(1, dt * 9);
     }
+    const before = p.pos;
     p.pos = resolveCircle({ x: p.pos.x + this.vel.x * dt, z: p.pos.z + this.vel.z * dt }, 0.3, this.collidersWithCars());
+    if (run && speed > 3) trainRun(p, Math.hypot(p.pos.x - before.x, p.pos.z - before.z));
     // people are solid too: step round them rather than through them
     for (const o of Object.values(this.state.people)) {
       if (o.isPlayer || !o.visible || o.sleeping) continue;

@@ -91,7 +91,7 @@ export function goTo(state: GameState, p: Person, to: Vec2, label: string): bool
 export function tickMovement(state: GameState, p: Person, dt: number) {
   const m = p.move;
   if (!m) return;
-  const hurry = p.down != null ? 0 : (p.fleeing ?? 0) > state.minute ? 2.3 : p.police || p.combat ? 2.0 : p.following ? 1.8 : 1;
+  const hurry = p.down != null ? 0 : (p.fleeing ?? 0) > state.minute ? 2.3 : p.police || p.combat ? 2.0 : p.following ? 1.8 : (p.jogging ?? 0) > state.minute ? 2.1 : 1;
   let step = WALK * capability(p).move * hurry * dt;
   // personal space: someone just ahead slows you down and you step round them (keeping left)
   const tgt0 = m.path[m.idx];
@@ -447,6 +447,11 @@ function startWork(state: GameState, p: Person) {
 function runCall(state: GameState, p: Person, fn: string) {
   const n = p.npc!;
   switch (fn) {
+    case 'goHomeNow':
+      p.jogging = 0;
+      n.plan = [{ kind: 'move', to: homeDoor(p.homeId), label: 'home' }, { kind: 'call', fn: 'arriveHome' }];
+      n.goal = 'go_home';
+      break;
     case 'arriveHome':
       if (p.bagId && p.pantryId) moveAll(state, p.bagId, p.pantryId);
       p.appearance.outfit = n.homeOutfit;

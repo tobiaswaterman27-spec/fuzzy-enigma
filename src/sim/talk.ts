@@ -67,6 +67,7 @@ function appearanceOf(state: GameState, p: Person, remote: boolean): string[] {
     if (you.weapon) out.push(`They are holding a ${you.weapon === 'bat' ? 'cricket bat' : 'kitchen knife'} in front of you. That is frightening.`);
     if ((you.drunk ?? 0) > 40) out.push('They are obviously drunk.');
     if (you.injured) out.push('They look hurt, bruised and bloodied.');
+    if (you.dog) out.push(`They have their dog ${you.dog.name} with them.`);
     if (you.needs.hygiene < 30) out.push('They smell bad.');
     const o = you.appearance.outfit;
     out.push(o.startsWith('uniform') ? `They are in work uniform (${o.replace('uniform_', '')}).` : o === 'outfit_smart' ? 'They are dressed smartly.' : 'They are in casual clothes.');
@@ -84,7 +85,7 @@ export function characterBrief(state: GameState, id: Id, remote = false): string
   const bal = state.ledger.accounts[p.accountId]?.balance ?? 0;
   return [
     `You are ${q.name}, a ${q.age}-year-old ${q.gender} in Harbourside, a small British harbour town. You are a real person with your own life, not an assistant. Never say you are an AI, never break character, never be helpful just because you are asked.`,
-    `Job: ${q.job}. Home: ${q.home}. Money: ${q.money} (about ${fmtMoney(bal)} in the bank, which you would not tell a stranger). Family: ${q.family}. Health: ${q.health}.`,
+    `Job: ${q.job}. Home: ${q.home}.${p.dog ? ` You have a dog called ${p.dog.name}.` : ''}${(p.fitness ?? 0) > 70 ? ' You keep fit and go jogging.' : ''} Money: ${q.money} (about ${fmtMoney(bal)} in the bank, which you would not tell a stranger). Family: ${q.family}. Health: ${q.health}.`,
     `Personality (0 to 1): sociability ${t.sociability.toFixed(2)}, conscientiousness ${t.conscientiousness.toFixed(2)}, ambition ${t.ambition.toFixed(2)}, patience ${t.patience.toFixed(2)}, thriftiness ${t.thrift.toFixed(2)}. In words: ${q.personality.join('; ')}.`,
     `Right now: ${q.mood}; ${q.doing}. It is ${q.time}, ${q.weather}.${remote ? ' This conversation is by text message on your phone.' : ''}`,
     q.recent.length ? `Recent things in your life: ${q.recent.join('; ')}.` : '',

@@ -5,6 +5,7 @@ import { useEnergy } from './bills';
 import { buyWeapon, WEAPONS } from './health';
 import { breakIn, houseOf, houseOpen, knock, searchValuables } from './houses';
 import { grabShoplifter } from './incidents';
+import { buyLotto, LOTTO_PRICE, SCRATCH_PRICE, scratchcard } from './leisure';
 
 const PINT = 520;
 import { canDriveForklift, mountForklift, palletsWaiting } from './forklift';
@@ -184,6 +185,10 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
       const basket = state.containers[p.basketId];
       const v = b ? basketValue(state, b, basket.id) : 0;
       out.push(opt('self_checkout', `Self-checkout: pay ${fmtMoney(v)} for ${total(basket)} items`, total(basket) === 0 ? 'Your basket is empty - take items from the shelves' : state.ledger.accounts[p.accountId].balance < v ? 'Not enough money' : undefined));
+      if (p.isPlayer) {
+        out.push(opt('scratch', `Buy a scratchcard · ${fmtMoney(SCRATCH_PRICE)}`));
+        out.push(opt('lotto', `Lottery ticket for Saturday · ${fmtMoney(LOTTO_PRICE)}`));
+      }
       break;
     }
     case 'cupboard':
@@ -534,6 +539,14 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
     }
     case 'knock':
       begin(p, type, itId, { duration: 0.6 }, now); break;
+    case 'scratch':
+      begin(p, type, itId, { duration: 0.4 }, now); break;
+    case 'lotto': {
+      const r = buyLotto(state, p.id);
+      if (!r.ok) return r;
+      begin(p, type, itId, { duration: 0.3 }, now);
+      return r;
+    }
     case 'grab':
       return { ok: true, msg: grabShoplifter(state, p.id, itId.slice(7)) };
     case 'break_in':
@@ -790,6 +803,8 @@ export function tickAction(state: GameState, p: Person, dt: number): string | nu
       msg = null;
       break;
     case 'knock': knock(state, p.id, houseOf(a.target)); msg = null; break;
+    case 'scratch': msg = scratchcard(state, p.id).msg; break;
+    case 'lotto': msg = null; break;
     case 'break_in': msg = breakIn(state, p.id, houseOf(a.target)).msg || null; break;
     case 'search': msg = searchValuables(state, p.id, houseOf(a.target)).msg; break;
     case 'sit':

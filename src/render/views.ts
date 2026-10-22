@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import type { GameState, Person } from '../sim/types';
 import { AnimationController, buildRig, dress, type Rig } from './character';
 import { buildCar } from './world';
+import { DogView } from './dog';
 import { CAR_MODELS } from '../sim/cars';
 import { modelInstance } from './models';
 import { planRoute } from '../sim/world/nav';
@@ -927,6 +928,46 @@ export class Views {
     for (const [id, k] of this.kids) if (!k.seen) { if (k.view) k.view.dispose(this.scene); this.kids.delete(id); }
   }
 
+  /** dogs out with their owners, on a lead (yours walks free at heel) */
+  private dogs = new Map<string, { view: DogView; lead: THREE.Line | null; seen: boolean }>();
+  private updateDogs(state: GameState, dt: number, viewer?: { x: number; z: number }) {
+    for (const d of this.dogs.values()) d.seen = false;
+    for (const o of Object.values(state.people)) {
+      const dog = o.dog;
+      if (!dog || !o.visible || o.dead || o.away || o.where === 'vehicle' || o.down != null) continue;
+      if (!o.isPlayer && (o.npc?.goal === 'work' || o.npc?.goal === 'go_work' || o.where !== 'outside' && o.where !== 'park')) continue;
+      if (viewer && Math.hypot(o.pos.x - viewer.x, o.pos.z - viewer.z) > 45) continue;
+      let d = this.dogs.get(o.id);
+      if (!d) {
+        const view = new DogView(dog.color, dog.size);
+        view.pos.set(o.pos.x - 0.6, o.pos.z - 0.5);
+        this.scene.add(view.root);
+        let lead: THREE.Line | null = null;
+        if (!o.isPlayer) {
+          lead = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), new THREE.LineBasicMaterial({ color: '#7a2318' }));
+          this.scene.add(lead);
+        }
+        d = { view, lead, seen: true };
+        this.dogs.set(o.id, d);
+      }
+      d.seen = true;
+      // at heel: just ahead and to the left of the owner
+      const side = -0.55, ahead = 0.35;
+      const tx = o.pos.x + Math.cos(o.facing) * side + Math.sin(o.facing) * ahead, tz = o.pos.z - Math.sin(o.facing) * side + Math.cos(o.facing) * ahead;
+      d.view.update(dt, tx, tz, o.facing);
+      const pv = this.people.get(o.id);
+      if (d.lead && pv) {
+        const hand = pv.rig.bones.handL.getWorldPosition(new THREE.Vector3());
+        const collar = new THREE.Vector3(d.view.pos.x + Math.sin(d.view.facing) * 0.2 * (o.dog?.size ?? 1), 0.45 * (o.dog?.size ?? 1), d.view.pos.y + Math.cos(d.view.facing) * 0.2 * (o.dog?.size ?? 1));
+        const mid = hand.clone().add(collar).multiplyScalar(0.5); mid.y -= 0.15;
+        (d.lead.geometry as THREE.BufferGeometry).setFromPoints([hand, mid, collar]);
+        d.lead.visible = pv.rig.root.visible;
+      }
+      d.view.root.visible = !pv || pv.rig.root.visible || o.isPlayer;
+    }
+    for (const [id, d] of this.dogs) if (!d.seen) { this.scene.remove(d.view.root); if (d.lead) this.scene.remove(d.lead); this.dogs.delete(id); }
+  }
+
   private blood = new Map<string, THREE.Mesh>();
   /** pools and drips of blood: they darken and fade over a day */
   private syncBlood(state: GameState) {
@@ -1009,6 +1050,7 @@ export class Views {
       v.setSpeech(sp && sp.until > performance.now() ? sp.text : null);
     }
     this.updateKids(state, dt, viewer);
+    this.updateDogs(state, dt, viewer);
     for (const [id, v] of this.shelfMeshes) {
       const b = state.businesses[v.bid];
       const k = b?.sections[id];

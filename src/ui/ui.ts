@@ -20,6 +20,7 @@ import { aiJson, getApiKey, getModel, hasAi, setApiKey, type ChatTurn } from '..
 import { billAccount, billEstimate } from '../sim/bills';
 import { MILESTONES, netWorth, wealthTitle } from '../sim/wealth';
 import { HOSPITAL, WEAPONS, goToAandE } from '../sim/health';
+import { ADOPTION_FEE, adoptDog, call999, DOG_FOOD_WEEK } from '../sim/leisure';
 import { AGENT_FEE, buyNewBuild, forSale, NEW_BUILD_PRICE, NEW_BUILD_RENT, ownedBuilds, RESALE_SHARE, sellNewBuild } from '../sim/lettings';
 import { PLOTS } from '../sim/world/plots';
 import { bookRetest, COURSES, enrol } from '../sim/training';
@@ -41,7 +42,7 @@ import { isOpen } from '../sim/retail';
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector(sel) as T;
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
 
-type Tab = 'jobs' | 'work' | 'bank' | 'status' | 'news' | 'map' | 'shop' | 'biz' | 'home' | 'people' | 'car';
+type Tab = 'jobs' | 'work' | 'bank' | 'status' | 'news' | 'map' | 'shop' | 'biz' | 'home' | 'people' | 'car' | 'life';
 
 export class UI {
   phoneOpen = false;
@@ -201,7 +202,7 @@ export class UI {
 
   renderPhone() {
     this.lastPhoneRender = performance.now();
-    const tabs: [Tab, string][] = [['jobs', 'Jobs'], ['work', 'Work'], ['bank', 'Bank'], ['biz', 'Business'], ['home', 'Home'], ['people', 'People'], ['car', 'Car'], ['status', 'Me'], ['news', 'News'], ['map', 'Map'], ['shop', 'Market']];
+    const tabs: [Tab, string][] = [['jobs', 'Jobs'], ['work', 'Work'], ['bank', 'Bank'], ['biz', 'Business'], ['home', 'Home'], ['people', 'People'], ['life', 'Life'], ['car', 'Car'], ['status', 'Me'], ['news', 'News'], ['map', 'Map'], ['shop', 'Market']];
     const unread = this.s.news.filter((n) => n.personal && !n.read).length;
     const tabsHtml = tabs.map(([t, l]) => `<button data-tab="${t}" class="${t === this.tab ? 'on' : ''}">${l}${t === 'news' && unread ? ` <i class="dot">${unread}</i>` : ''}</button>`).join('');
     if (tabsHtml !== this.lastTabs) { $('#phone-tabs').innerHTML = tabsHtml; this.lastTabs = tabsHtml; }
@@ -340,6 +341,18 @@ export class UI {
   }
 
   /** everyone you know: how well, when you last saw them, and invitations */
+  tab_life(): string {
+    const s = this.s, p = this.p;
+    const d = p.dog;
+    const fit = Math.round(p.fitness ?? 40);
+    const tickets = (s.lotto ?? []).filter((t) => t.owner === p.id && !t.checked);
+    return `<h3>Fitness</h3><div class="card">Fitness ${fit}/100 <div class="bar"><i style="width:${fit}%"></i></div><span class="muted">Run (hold Shift) to get fitter: you run faster, tire less and hit harder. It fades if you stop.</span></div>
+      <h3>Dog</h3>${d ? `<div class="card"><b>${esc(d.name)}</b> · with you since day ${dayIndex(d.since) + 1} · ${d.happy >= 70 ? 'happy' : d.happy >= 40 ? 'all right' : 'fed up'} (${Math.round(d.happy)})<br><span class="muted">${d.walkedDay === dayIndex(s.minute) ? 'Walked today.' : 'Not walked yet today: be out and about together for half an hour.'} Food ${fmtMoney(DOG_FOOD_WEEK)} a week.</span></div>`
+      : `<div class="card">Harbourside Dog Rescue has dogs looking for a home. Adoption fee ${fmtMoney(ADOPTION_FEE)}, then ${fmtMoney(DOG_FOOD_WEEK)} a week for food. They go everywhere with you and need a walk every day.<div class="row"><input id="dog-name" type="text" maxlength="16" placeholder="Name your dog" style="flex:1"><button data-adopt="1">Adopt</button></div></div>`}
+      <h3>Lottery</h3><div class="card">${tickets.length ? tickets.map((t) => `Ticket for ${fmtDate(t.draw).split(',')[0]}: <b>${t.numbers.join(' ')}</b>`).join('<br>') : 'No ticket for this week.'}<br><span class="muted">Tickets and scratchcards at the Corner Market self-checkout. Draw Saturday 20:00: 3 numbers ${fmtMoney(3000)}, 4 ${fmtMoney(14000)}, 5 ${fmtMoney(175000)}, all 6 ${fmtMoney(200000000)}.</span></div>
+      <h3>Emergency</h3><div class="row"><button data-999="ambulance">Call 999: ambulance</button><button data-999="police">Call 999: police</button></div>`;
+  }
+
   tab_car(): string {
     const s = this.s, p = this.p;
     const car = playerCar(s, p.id);
@@ -559,6 +572,8 @@ export class UI {
     if (d.buyhome) { this.toast(buyHomeProperty(s, this.p.id).msg); this.lastBody = ''; this.renderPhone(); return; }
     if (d.sellhome) { if (btn.dataset.confirm) { this.toast(sellHome(s, this.p.id).msg); this.lastBody = ''; this.renderPhone(); } else { btn.dataset.confirm = '1'; btn.textContent = 'Click again to confirm the sale'; } return; }
     if (d.msg) { this.closePhone(); this.openChat(d.msg, true); return; }
+    if (d.adopt) { const name = ($('#dog-name') as HTMLInputElement | null)?.value ?? ''; this.toast(adoptDog(s, this.p.id, name).msg); this.lastBody = ''; this.renderPhone(); return; }
+    if (d['999']) { this.toast(call999(s, this.p.id, d['999'] as 'ambulance' | 'police')); this.closePhone(); return; }
     if (d.reply) {
       const msg = s.inbox?.find((x) => x.from === d.reply && String(x.at) === d.at);
       if (msg) { msg.read = true; this.openers.set(d.reply, msg.text); }
