@@ -89,6 +89,7 @@ CLIPS = {
     'cry': ('79_72', None, True, 'free', (2.0, 5.0)),
     'scared': ('79_73', None, True, 'free', (1.5, 4.0)),
     'drink': ('79_33', None, True, 'free', (2.0, 4.0)),
+    'kick': ('144_05', None, True, 'free', (0.6, 1.4)),
 }
 
 

@@ -23,6 +23,7 @@ import { Traffic } from '../render/traffic';
 import { PoliceCar } from '../render/police';
 import { GatheringProps } from '../render/gatherings';
 import { Harbour } from '../render/harbour';
+import { Football } from '../render/football';
 import { Rain } from '../render/rain';
 import { Audio } from '../render/audio';
 import { Sites } from '../render/sites';
@@ -69,6 +70,7 @@ export class Game {
   police: PoliceCar;
   gatheringProps: GatheringProps;
   harbour: Harbour;
+  football: Football;
   private cabMarker: THREE.Mesh | null = null;
   private seasonKey = '';
   private seasonTick = 0;
@@ -199,6 +201,8 @@ export class Game {
     this.police = new PoliceCar(this.scene);
     this.gatheringProps = new GatheringProps(this.scene);
     this.harbour = new Harbour(this.scene);
+    this.football = new Football(this.scene);
+    this.football.onGoal = (m) => this.onToast(m);
     this.rain = new Rain(this.scene);
     this.sites = new Sites(this.scene);
     this.market = new MarketStalls(this.scene);
@@ -330,6 +334,8 @@ export class Game {
       if (e.code === 'KeyF' && !this.drivingVan()) {
         const p = this.player;
         if (p.down != null || p.away || p.dead || p.sleeping) return;
+        // next to the football: a shot rather than a punch
+        if (this.football.near(p.pos.x, p.pos.z)) { this.football.shoot(p.facing, 9 + (p.fitness ?? 40) / 15); p.action = { type: 'attack', target: 'air', arg: 'kick', started: this.state.minute, progress: 0, unitTime: 0, duration: 0.35, units: 0 }; return; }
         const t = attackTarget(this.state, p.id);
         const msg = attack(this.state, p.id, t?.id ?? null);
         if (msg) this.onToast(msg);
@@ -443,6 +449,7 @@ export class Game {
     this.sites.update(s);
     this.gatheringProps.update(s);
     this.harbour.update(dt);
+    { const p = this.player; this.football.update(s, this.paused ? 0 : dt, { x: p.pos.x, z: p.pos.z, vx: this.vel.x, vz: this.vel.z, facing: p.facing }); }
     // where HarbourCabs wants you to go: a glowing ring on the kerb
     const cab = taxiTarget(s);
     if (cab) {

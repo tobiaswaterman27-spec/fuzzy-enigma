@@ -344,7 +344,8 @@ class PersonView {
     const siteClip = a?.type === 'site_work' ? (p.equipment === 'tool_spade' || p.equipment === 'tool_shovel' ? 'clean' : 'stock_shelf') : null;
     const floored = p.down != null || !!p.dead;
     const gest = p.gesture && state.minute < p.gesture.until && !p.move ? `g:${p.gesture.clip}` : null;
-    let clipAction = floored ? 'down' : gest ? gest : stage ? (stage.walking ? null : stage.clip) : this.bedIt ? this.bedPose : stepping ? null : siteClip ?? a?.type ?? null;
+    const kick = a?.type === 'attack' && a.arg === 'kick' ? 'g:kick' : null;
+    let clipAction = floored ? 'down' : kick ? kick : gest ? gest : stage ? (stage.walking ? null : stage.clip) : this.bedIt ? this.bedPose : stepping ? null : siteClip ?? a?.type ?? null;
     // standing about with nothing to do: people check their phones, yawn when tired, stretch
     if (!clipAction && realSpeed === 0 && !p.isPlayer && !item) {
       this.idleFor += dt;
