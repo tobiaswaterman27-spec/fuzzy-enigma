@@ -21,6 +21,7 @@ import { billAccount, billEstimate } from '../sim/bills';
 import { MILESTONES, netWorth, wealthTitle } from '../sim/wealth';
 import { HOSPITAL, WEAPONS, goToAandE } from '../sim/health';
 import { ADOPTION_FEE, adoptDog, call999, DOG_FOOD_WEEK } from '../sim/leisure';
+import { startTaxi, stopTaxi, taxiTarget } from '../sim/taxi';
 import { AGENT_FEE, buyNewBuild, forSale, NEW_BUILD_PRICE, NEW_BUILD_RENT, ownedBuilds, RESALE_SHARE, sellNewBuild } from '../sim/lettings';
 import { PLOTS } from '../sim/world/plots';
 import { bookRetest, COURSES, enrol } from '../sim/training';
@@ -150,7 +151,9 @@ export class UI {
     const obj = currentObjective(s);
     $('#objective').hidden = !obj && !rem;
     $('#objective').classList.toggle('urgent', !!rem?.urgent);
-    if (rem) $('#objective-text').textContent = rem.text;
+    const cabGoal = taxiTarget(s);
+    if (cabGoal) { $('#objective').hidden = false; $('#objective-text').textContent = cabGoal.text; }
+    else if (rem) $('#objective-text').textContent = rem.text;
     else if (obj) $('#objective-text').textContent = obj.text;
     // shift card
     const att = openAttendance(s, p.id);
@@ -359,7 +362,9 @@ export class UI {
     const bal = s.ledger.accounts[p.accountId].balance;
     if (car) {
       const back = Math.round((car.price ?? 0) * RESALE * (0.6 + 0.4 * car.condition / 100));
-      return `<div class="card good"><b>Your ${esc(car.name)}</b> <i class="sw" style="background:${car.color}"></i>
+      const tx = s.taxi;
+      const cab = `<h3>HarbourCabs</h3><div class="card">${tx?.on ? `On the app. ${tx.job ? esc(taxiTarget(s)?.text ?? '') : 'Waiting for a fare: drive about.'}<br><span class="muted">${tx.done ?? 0} fares, ${fmtMoney(tx.earned ?? 0)} earned.</span><div class="row"><button data-cab="off">Go off the app</button>${tx.job?.stage === 'ride' && hasAi() ? '<button data-cab="talk">Talk to your passenger</button>' : ''}</div>` : `Drive people about in your own car for the fare, less HarbourCabs' 20%. Smooth driving earns tips.<div class="row"><button data-cab="on">Go on the app</button></div>`}</div>`;
+      return cab + `<div class="card good"><b>Your ${esc(car.name)}</b> <i class="sw" style="background:${car.color}"></i>
         <div class="line"><span>Where</span><span>${car.state === 'parked' ? `parked ${Math.round(Math.hypot(car.pos.x - p.pos.x, car.pos.z - p.pos.z))} m from you` : 'you are driving it'}</span></div>
         <div class="line"><span>Distance driven</span><span>${(car.odometer / 1000).toFixed(1)} km</span></div>
         <div class="line"><span>Insurance & road tax</span><span>${fmtMoney(CAR_WEEKLY)} a week${car.nextCharge ? `, next ${fmtDate(car.nextCharge)}` : ''}</span></div>
@@ -572,6 +577,12 @@ export class UI {
     if (d.buyhome) { this.toast(buyHomeProperty(s, this.p.id).msg); this.lastBody = ''; this.renderPhone(); return; }
     if (d.sellhome) { if (btn.dataset.confirm) { this.toast(sellHome(s, this.p.id).msg); this.lastBody = ''; this.renderPhone(); } else { btn.dataset.confirm = '1'; btn.textContent = 'Click again to confirm the sale'; } return; }
     if (d.msg) { this.closePhone(); this.openChat(d.msg, true); return; }
+    if (d.cab) {
+      if (d.cab === 'on') this.toast(startTaxi(s, this.p.id).msg);
+      else if (d.cab === 'off') this.toast(stopTaxi(s));
+      else if (d.cab === 'talk' && s.taxi?.job) { this.closePhone(); this.openChat(s.taxi.job.passenger, true, `sitting in the back of ${this.p.name.split(' ')[0]}'s car, who is your HarbourCabs driver, on the way to ${s.taxi.job.to}`); return; }
+      this.lastBody = ''; this.renderPhone(); return;
+    }
     if (d.adopt) { const name = ($('#dog-name') as HTMLInputElement | null)?.value ?? ''; this.toast(adoptDog(s, this.p.id, name).msg); this.lastBody = ''; this.renderPhone(); return; }
     if (d['999']) { this.toast(call999(s, this.p.id, d['999'] as 'ambulance' | 'police')); this.closePhone(); return; }
     if (d.reply) {
@@ -615,7 +626,7 @@ export class UI {
   private openers = new Map<string, string>();
 
   /** talk to someone, face to face or (remote) by text on your phone. Needs the player's OpenAI key */
-  openChat(npcId: string, remote = false) {
+  openChat(npcId: string, remote = false, situation = '') {
     const s = this.s, me = this.p, o = s.people[npcId];
     if (!o) return;
     if (!hasAi()) { this.toast('To talk to people, add your OpenAI API key (Menu > AI conversations).'); return; }
@@ -630,7 +641,7 @@ export class UI {
     hold();
     beginTalk(s, npcId);
     const log: { who: 'you' | 'them' | 'fact'; text: string }[] = [];
-    const history: ChatTurn[] = [{ role: 'system', content: characterBrief(s, npcId, remote) }];
+    const history: ChatTurn[] = [{ role: 'system', content: characterBrief(s, npcId, remote, situation) }];
     const said: string[] = [];
     let busy = false, ended = false, lastSend = 0, exchanges = 0;
     const first = o.name.split(' ')[0];
@@ -703,6 +714,7 @@ export class UI {
     const opener = this.openers.get(npcId);
     this.openers.delete(npcId);
     if (opener) { log.push({ who: 'them', text: opener }); history.push({ role: 'assistant', content: JSON.stringify({ reply: opener, emotion: 'neutral', attitude: 0, decision: null, action: 'none' }) }); render(); setTimeout(() => ($('#chat-in') as HTMLInputElement | null)?.focus(), 0); }
+    else if (situation) void ask(`[Your driver ${me.name.split(' ')[0]} starts chatting to you. React naturally.]`);
     else void ask(remote ? `[${me.name.split(' ')[0]} has sent you a message to start a conversation. Reply to open it.]` : `[${me.name.split(' ')[0]} has walked up to you and wants to talk. They have not said anything yet. React as you naturally would.]`);
   }
 

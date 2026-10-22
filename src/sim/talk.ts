@@ -76,7 +76,7 @@ function appearanceOf(state: GameState, p: Person, remote: boolean): string[] {
 }
 
 /** the character brief for the language model */
-export function characterBrief(state: GameState, id: Id, remote = false): string {
+export function characterBrief(state: GameState, id: Id, remote = false, situation = ''): string {
   const q = personaOf(state, id);
   const p = state.people[id];
   const t = p.traits;
@@ -87,7 +87,7 @@ export function characterBrief(state: GameState, id: Id, remote = false): string
     `You are ${q.name}, a ${q.age}-year-old ${q.gender} in Harbourside, a small British harbour town. You are a real person with your own life, not an assistant. Never say you are an AI, never break character, never be helpful just because you are asked.`,
     `Job: ${q.job}. Home: ${q.home}.${p.dog ? ` You have a dog called ${p.dog.name}.` : ''}${(p.fitness ?? 0) > 70 ? ' You keep fit and go jogging.' : ''} Money: ${q.money} (about ${fmtMoney(bal)} in the bank, which you would not tell a stranger). Family: ${q.family}. Health: ${q.health}.`,
     `Personality (0 to 1): sociability ${t.sociability.toFixed(2)}, conscientiousness ${t.conscientiousness.toFixed(2)}, ambition ${t.ambition.toFixed(2)}, patience ${t.patience.toFixed(2)}, thriftiness ${t.thrift.toFixed(2)}. In words: ${q.personality.join('; ')}.`,
-    `Right now: ${q.mood}; ${q.doing}. It is ${q.time}, ${q.weather}.${remote ? ' This conversation is by text message on your phone.' : ''}`,
+    `Right now: ${q.mood}; ${situation || q.doing}. It is ${q.time}, ${q.weather}.${remote && !situation ? ' This conversation is by text message on your phone.' : ''}`,
     q.recent.length ? `Recent things in your life: ${q.recent.join('; ')}.` : '',
     town.length ? `Talk of the town: ${town.join('; ')}.` : '',
     `The person talking to you: ${you.name.split(' ')[0]}${(p.knowsYou?.talks ?? 0) > 0 ? ` (${you.name})` : ''}.`,

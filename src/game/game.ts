@@ -33,6 +33,7 @@ import { CAR_MODELS, exitCar, stealCar } from '../sim/cars';
 import { forkliftAction } from '../sim/forklift';
 import { attack, attackTarget, hitByVehicle, nextWeapon } from '../sim/health';
 import { fitnessFactor, trainRun } from '../sim/leisure';
+import { taxiBump, taxiTarget } from '../sim/taxi';
 import { hasAi } from '../ai/openai';
 import { inOutage } from '../sim/inspections';
 
@@ -65,6 +66,7 @@ export class Game {
   traffic: Traffic;
   police: PoliceCar;
   gatheringProps: GatheringProps;
+  private cabMarker: THREE.Mesh | null = null;
   rain: Rain;
   audio: Audio;
   sites: Sites;
@@ -402,6 +404,17 @@ export class Game {
     }
     this.sites.update(s);
     this.gatheringProps.update(s);
+    // where HarbourCabs wants you to go: a glowing ring on the kerb
+    const cab = taxiTarget(s);
+    if (cab) {
+      if (!this.cabMarker) {
+        this.cabMarker = new THREE.Mesh(new THREE.TorusGeometry(1.4, 0.07, 8, 40), new THREE.MeshStandardMaterial({ color: '#f4c20d', emissive: '#f4c20d', emissiveIntensity: 1.5 }));
+        this.cabMarker.rotation.x = Math.PI / 2;
+        this.scene.add(this.cabMarker);
+      }
+      this.cabMarker.visible = true;
+      this.cabMarker.position.set(cab.pos.x, 0.15 + Math.sin(performance.now() / 300) * 0.05, cab.pos.z);
+    } else if (this.cabMarker) this.cabMarker.visible = false;
     this.market.update(s, this.paused ? 0 : dt, this.player.pos);
     this.audio.update(s, this.paused ? 0 : dt, Math.hypot(this.vel.x, this.vel.z), this.drivingVan() ? this.vanSpeed : null);
     this.watchFrameRate(dt);
@@ -508,7 +521,7 @@ export class Game {
     v.heading += steer * Math.sign(this.vanSpeed) * Math.min(Math.abs(this.vanSpeed), 3.5) * dt * 0.22;
     const nx = v.pos.x + Math.sin(v.heading) * this.vanSpeed * dt, nz = v.pos.z + Math.cos(v.heading) * this.vanSpeed * dt;
     const res = resolveCircle({ x: nx, z: nz }, fork ? 0.8 : 1.15, this.collidersWithCars(v.id));
-    if (Math.hypot(res.x - nx, res.z - nz) > 0.01) this.vanSpeed *= 0.4; // bumped into something
+    if (Math.hypot(res.x - nx, res.z - nz) > 0.01) { if (Math.abs(this.vanSpeed) > 2) taxiBump(this.state); this.vanSpeed *= 0.4; } // bumped into something
     v.odometer += Math.hypot(res.x - v.pos.x, res.z - v.pos.z);
     // people in the way are hit (and knocked aside)
     if (Math.abs(this.vanSpeed) > 1.5) {

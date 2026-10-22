@@ -688,6 +688,8 @@ export interface GameState {
   /** text messages people have sent the player */
   inbox?: { from: Id; text: string; at: number; read: boolean }[];
   dogsInit?: boolean;
+  /** driving for HarbourCabs (taxi.ts) */
+  taxi?: { on: boolean; job: import('./taxi').TaxiJob | null; done?: number; earned?: number } | null;
   /** lottery tickets for the Saturday draw */
   lotto?: { owner: Id; draw: number; numbers: number[]; checked?: boolean }[];
   /** the player has died */

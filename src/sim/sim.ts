@@ -6,6 +6,7 @@ import { lifeDaily } from './life';
 import { healthDaily, healthMinute, healthSubstep } from './health';
 import { doorTick, housesTick } from './houses';
 import { followTick } from './talk';
+import { taxiTick } from './taxi';
 import { gatheringsTick } from './gatherings';
 import { incidentsTick, shopliftTick } from './incidents';
 import { dogTick, initDogs, joggersTick, lottoTick } from './leisure';
@@ -73,6 +74,7 @@ function substep(state: GameState, dt: number, ev: StepEvents) {
   }
   healthSubstep(state, dt);
   followTick(state);
+  taxiTick(state);
   housesTick(state);
   doorTick(state);
   logisticsTick(state, dt);
