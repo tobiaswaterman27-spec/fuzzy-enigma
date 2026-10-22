@@ -2,6 +2,7 @@
 // Fine-grained movement/actions run in sub-steps; economic and scheduled
 // systems run once per whole game minute so nothing is skipped when the
 // clock is accelerated (sleeping, fast-forward).
+import { billsTick } from './bills';
 import { lettingsTick } from './lettings';
 import { goodsInTick } from './forklift';
 import { carsTick } from './cars';
@@ -87,6 +88,7 @@ export function minuteTick(state: GameState) {
   carsTick(state);
   goodsInTick(state);
   lettingsTick(state);
+  billsTick(state);
   powerCutTick(state);
   npcTick(state);
   for (const p of Object.values(state.people)) if (p.npc) npcPostAction(state, p);

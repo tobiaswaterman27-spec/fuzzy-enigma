@@ -33,3 +33,4 @@ export * from './training';
 export * from './streetmarket';
 export * from './forklift';
 export * from './lettings';
+export * from './bills';

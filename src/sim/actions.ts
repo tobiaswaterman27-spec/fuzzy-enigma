@@ -1,6 +1,7 @@
 // InteractionSystem + TaskAndJobSystem execution.
 // Actions are timed, interruptible and validated. State changes happen in
 // unit callbacks or on completion - never because an animation finished.
+import { useEnergy } from './bills';
 import { canDriveForklift, mountForklift, palletsWaiting } from './forklift';
 import { buyAtStall, marketOn, stallPrice } from './streetmarket';
 import { COURSES, completeSession, sessionBlocker, sessionMinutes } from './training';
@@ -541,6 +542,7 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
   }
   const started = p.action as ActionState | null;
   if (started && arg !== undefined && started.arg === undefined) started.arg = arg;
+  if (started) useEnergy(state, p, type, arg);
   return { ok: true, msg: o.label };
 }
 

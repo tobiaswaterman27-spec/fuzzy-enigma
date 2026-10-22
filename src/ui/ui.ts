@@ -14,6 +14,7 @@ import { FRIEND_AT, inviteForCoffee, plannedMeetup, relationLabel } from '../sim
 import { buyProperty as buyHomeProperty, canBuyHome, mortgageTerms, ownedHome, ownershipLines, redemption, sellHome, SELL_SHARE, SERVICE_CHARGE } from '../sim/property';
 import { blockPrice, BLOCK, buyOut, buyOutPrice, holdings, TAKEOVER_AT, buyStake, canInvestIn, dividendsReceived, MAX_STAKE, sellStake, stakeOf, valuation, weeklyProfit } from '../sim/invest';
 import { hygieneOf, RATING_LABEL } from '../sim/inspections';
+import { billAccount, billEstimate } from '../sim/bills';
 import { AGENT_FEE, buyNewBuild, forSale, NEW_BUILD_PRICE, NEW_BUILD_RENT, ownedBuilds, RESALE_SHARE, sellNewBuild } from '../sim/lettings';
 import { PLOTS } from '../sim/world/plots';
 import { bookRetest, COURSES, enrol } from '../sim/training';
@@ -262,6 +263,7 @@ export class UI {
       <h3>Obligations</h3>
       ${own ? `<div class="card"><b>You own ${esc(own.label)}</b>${ownershipLines(s, p.id).slice(1).map((x) => `<div class="line"><span>${esc(x)}</span></div>`).join('')}<div class="line"><span>Service charge</span><span>${fmtMoney(SERVICE_CHARGE)} a week</span></div>${own.mortgage?.missed ? `<div class="line warn"><span>Missed payments</span><span>${own.mortgage.missed}/3</span></div>` : ''}<div class="line"><span>To pay it off now</span><span>${fmtMoney(redemption(own))}</span></div><div class="row"><button data-sellhome="1">Sell (to the landlord, ${fmtMoney(Math.round(own.price * SELL_SHARE))})</button></div></div>` : ''}
       ${!own && l && buy.price ? (() => { const t = mortgageTerms(buy.price); return `<div class="card"><b>Buy ${esc(l.label)}</b> for ${fmtMoney(buy.price)}<div class="line"><span>Deposit (10%)</span><span>${fmtMoney(t.deposit)}</span></div><div class="line"><span>Mortgage</span><span>${fmtMoney(t.weekly)} a week for 10 years</span></div>${buy.ok ? '<div class="row"><button class="primary" data-buyhome="1">Buy it</button></div>' : `<p class="muted">${esc(buy.reason)}</p>`}</div>`; })() : ''}
+      ${(() => { const e = billEstimate(s, p.id), ba = billAccount(s, p.id); return `<div class="line"><span>Energy so far (${Math.round(ba.kwh)} kWh) + council tax</span><span>${fmtMoney(e.total)} on ${fmtDate(ba.nextBill)}</span></div>${ba.arrears ? `<div class="line warn"><span>Bill arrears</span><span>${fmtMoney(ba.arrears)}</span></div>` : ''}`; })()}
       ${l ? `<div class="line"><span>Rent · ${esc(l.label)}</span><span>${fmtMoney(l.weeklyRent)} every Monday 09:00</span></div><div class="line"><span>Paid until</span><span>${fmtDate(l.paidThroughDay * 1440)}</span></div>${l.arrears ? `<div class="line warn"><span>Arrears (${l.missedPayments}/3 missed)</span><span>${fmtMoney(l.arrears)}</span></div>` : ''}` : '<p class="warn">You have no home.</p>'}
       ${ended ? `<div class="card"><b>${esc(ended.label)}</b> is available again for ${fmtMoney(ended.arrears + ended.weeklyRent)} (arrears + 1 week).<div class="row"><button data-rerent="${ended.id}" class="primary">Rent again</button></div></div>` : ''}
       ${(() => {

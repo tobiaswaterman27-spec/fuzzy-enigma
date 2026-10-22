@@ -603,6 +603,8 @@ export interface GameState {
   hygiene?: Record<Id, import('./inspections').HygieneRecord>;
   /** new houses bought to let (lettings.ts) */
   newBuilds?: Record<Id, import('./lettings').NewBuild>;
+  /** metered household bills (bills.ts) */
+  bills?: Record<Id, import('./bills').BillAccount>;
   creditBans?: Record<Id, boolean>;
   /** homes owned outright or with a mortgage (property.ts), by location */
   ownership?: Record<Id, import('./property').Ownership>;
