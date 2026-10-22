@@ -3,7 +3,8 @@
 Run with a Python that has the `bpy` module (pip install bpy):
     python tools/blender/vehicles.py public/assets/models
 
-Produces car.glb (a five-door hatchback) and van.glb (a delivery van).
+Produces car.glb (a five-door hatchback), saloon.glb (a four-door saloon), suv.glb (a family SUV),
+sports.glb (a low two-door coupe) and van.glb (a delivery van).
 Conventions: metres, +Y up in glTF (Blender +Z up is converted on export),
 vehicle front faces +Z in the game (Blender -Y here, converted by the exporter).
 Materials are named so the game can recolour the body paint per car.
@@ -96,6 +97,10 @@ def body_mesh(name, length, top, belt, width, bottom, inset, nose_round, section
     for r in (rings[0], rings[-1]):
         bm.faces.new(r if r is rings[-1] else list(reversed(r)))
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    # recalculation can settle on all-inward for some shapes: the roof must face up
+    roof = max(bm.faces, key=lambda f: f.calc_center_median().z)
+    if roof.normal.z < 0:
+        bmesh.ops.reverse_faces(bm, faces=list(bm.faces))
     bm.to_mesh(me)
     bm.free()
     ob = bpy.data.objects.new(name, me)
@@ -292,7 +297,82 @@ def build_van():
     export(f'{OUT}/van.glb')
 
 
+def build_styled(fname, L, top, belt, width, bottom, glass_ranges, screens, wb, r, track, inset=0.12, ride=0.0, lamp_h=0.72, tail_h=0.86):
+    """another body style from the same parts: lofted shell, arches, wheels, lights, trim"""
+    reset()
+    paint = mat('paint', (0.8, 0.8, 0.8), rough=0.28, metal=0.55, coat=1.0)
+    glass = mat('glass', (0.06, 0.08, 0.1), rough=0.05, metal=0.2)
+    trim = mat('trim', (0.03, 0.03, 0.035), rough=0.6)
+    chrome = mat('chrome', (0.85, 0.86, 0.88), rough=0.15, metal=1.0)
+    tyre = mat('tyre', (0.025, 0.025, 0.025), rough=0.85)
+    rim = mat('rim', (0.7, 0.72, 0.75), rough=0.25, metal=1.0)
+    hub = mat('rimdark', (0.12, 0.12, 0.13), rough=0.4, metal=0.6)
+    head = mat('headlight', (0.95, 0.95, 0.9), rough=0.1, emission=(1.0, 0.95, 0.8))
+    tail = mat('taillight', (0.6, 0.02, 0.02), rough=0.2, emission=(0.9, 0.05, 0.05))
+    body = body_mesh('body', L, top, belt, width, bottom, inset=inset, nose_round=0.18)
+    assign_glass(body, paint, glass, belt, top, width, L, glass_ranges, inset, screens)
+    modifiers(body, 1)
+    cut_arches(body, [(0, wy, r + ride) for wy in (-wb, wb)], r + 0.07)
+    for sx in (-1, 1):
+        for wy in (-wb, wb):
+            wheel('w', sx * track, wy, r, 0.21, tyre, rim, hub)
+    wmax = max(w for _, w in width)
+    rounded_box('bumper_f', (wmax * 1.9, 0.16, 0.22), (0, -L / 2 + 0.05, bottom[1][1] + 0.16), trim, 0.06)
+    rounded_box('bumper_r', (wmax * 1.88, 0.16, 0.22), (0, L / 2 - 0.05, bottom[-2][1] + 0.18), trim, 0.06)
+    rounded_box('grille', (wmax * 0.9, 0.06, 0.14), (0, -L / 2 + 0.03, lamp_h - 0.1), trim, 0.03)
+    for sd in (-1, 1):
+        rounded_box('head', (0.38, 0.08, 0.11), (sd * wmax * 0.62, -L / 2 + 0.07, lamp_h), head, 0.03, rot=(0, 0, -sd * 0.12))
+        rounded_box('tail', (0.32, 0.06, 0.14), (sd * wmax * 0.74, L / 2 - 0.02, tail_h), tail, 0.03)
+        rounded_box('mirror', (0.18, 0.08, 0.1), (sd * (wmax + 0.06), -L * 0.13, lerp_profile(belt, 0.62) + 0.1), paint, 0.03)
+        rounded_box('handle', (0.03, 0.14, 0.03), (sd * (wmax + 0.005), -L * 0.08, lerp_profile(belt, 0.5) - 0.02), chrome, 0.01)
+    rounded_box('plate_f', (0.5, 0.02, 0.11), (0, -L / 2 - 0.02, bottom[1][1] + 0.18), mat('plate', (0.95, 0.95, 0.92), 0.4), 0.01)
+    rounded_box('plate_r', (0.5, 0.02, 0.11), (0, L / 2 + 0.02, tail_h - 0.22), bpy.data.materials['plate'], 0.01)
+    export(f'{OUT}/{fname}')
+
+
+def build_saloon():
+    # three-box: long bonnet, upright cabin, separate boot
+    build_styled('saloon.glb', 4.7,
+                 top=[(0, 0.86), (0.04, 0.98), (0.2, 1.02), (0.27, 1.12), (0.36, 1.42), (0.56, 1.44), (0.66, 1.22), (0.72, 0.96), (0.94, 0.88), (1, 0.74)],
+                 belt=[(0, 0.9), (0.2, 0.96), (0.6, 0.94), (0.72, 0.92), (1, 0.8)],
+                 width=[(0, 0.82), (0.1, 0.89), (0.5, 0.91), (0.9, 0.88), (1, 0.8)],
+                 bottom=[(0, 0.32), (0.08, 0.25), (0.92, 0.25), (1, 0.32)],
+                 glass_ranges=[(0.31, 0.45), (0.465, 0.62)], screens=[(0.25, 0.34), (0.58, 0.71)],
+                 wb=1.45, r=0.32, track=0.83, tail_h=0.84)
+
+
+def build_suv():
+    # tall, boxy, high ground clearance
+    build_styled('suv.glb', 4.55,
+                 top=[(0, 1.3), (0.04, 1.62), (0.1, 1.72), (0.5, 1.74), (0.62, 1.62), (0.7, 1.24), (0.78, 1.16), (0.95, 1.08), (1, 0.92)],
+                 belt=[(0, 1.18), (0.1, 1.2), (0.6, 1.18), (0.72, 1.14), (1, 1.0)],
+                 width=[(0, 0.88), (0.1, 0.94), (0.5, 0.96), (0.9, 0.93), (1, 0.86)],
+                 bottom=[(0, 0.5), (0.08, 0.4), (0.92, 0.4), (1, 0.5)],
+                 glass_ranges=[(0.07, 0.23), (0.245, 0.43), (0.445, 0.63)], screens=[(0.0, 0.08), (0.6, 0.71)],
+                 wb=1.42, r=0.38, track=0.88, ride=0.04, lamp_h=0.92, tail_h=1.1)
+
+
+def build_sports():
+    # low two-door coupe: long nose, fastback
+    build_styled('sports.glb', 4.4,
+                 top=[(0, 0.82), (0.06, 0.92), (0.22, 1.06), (0.38, 1.22), (0.5, 1.24), (0.6, 1.08), (0.68, 0.84), (0.9, 0.74), (1, 0.6)],
+                 belt=[(0, 0.8), (0.2, 0.86), (0.55, 0.84), (0.68, 0.8), (1, 0.66)],
+                 width=[(0, 0.86), (0.15, 0.94), (0.5, 0.9), (0.85, 0.92), (1, 0.82)],
+                 bottom=[(0, 0.24), (0.08, 0.17), (0.92, 0.17), (1, 0.24)],
+                 glass_ranges=[(0.33, 0.56)], screens=[(0.12, 0.37), (0.55, 0.69)],
+                 wb=1.35, r=0.33, track=0.86, inset=0.15, lamp_h=0.58, tail_h=0.72)
+
+
 if __name__ == '__main__':
-    build_car()
-    build_van()
+    which = sys.argv[-2] if len(sys.argv) > 2 and sys.argv[-2] in ('car', 'van', 'saloon', 'suv', 'sports') else None
+    if which in (None, 'car'):
+        build_car()
+    if which in (None, 'van'):
+        build_van()
+    if which in (None, 'saloon'):
+        build_saloon()
+    if which in (None, 'suv'):
+        build_suv()
+    if which in (None, 'sports'):
+        build_sports()
     print('ok')

@@ -5,7 +5,8 @@ import type { GameState } from '../sim/types';
 import { buildCar } from './world';
 
 interface Lane { from: THREE.Vector2; to: THREE.Vector2 }
-interface Car { obj: THREE.Object3D; lane: number; t: number; speed: number; cruise: number; color: string }
+interface Car { obj: THREE.Object3D; lane: number; t: number; speed: number; cruise: number; color: string; body: string }
+const BODIES = ['car', 'saloon', 'suv', 'car', 'sports', 'saloon', 'suv'];
 
 // drive on the left: eastbound on the north side of the high street, southbound on the east side of the cross road
 const LANES: Lane[] = [
@@ -30,7 +31,7 @@ export class Traffic {
   }
   private taken = 0;
   /** a slow or stopped car within reach, pulled out of the traffic (for carjacking) */
-  take(x: number, z: number, reach = 3.4): { x: number; z: number; heading: number; color: string } | null {
+  take(x: number, z: number, reach = 3.4): { x: number; z: number; heading: number; color: string; body: string } | null {
     let best: Car | null = null, bd = reach;
     for (const c of this.cars) {
       const d = Math.hypot(c.obj.position.x - x, c.obj.position.z - z);
@@ -41,17 +42,18 @@ export class Traffic {
     this.cars.splice(this.cars.indexOf(best), 1);
     this.scene.remove(best.obj);
     this.taken++;
-    return { x: best.obj.position.x, z: best.obj.position.z, heading: best.obj.rotation.y, color: best.color };
+    return { x: best.obj.position.x, z: best.obj.position.z, heading: best.obj.rotation.y, color: best.color, body: best.body };
   }
   private respawnAt = 0;
 
   constructor(private scene: THREE.Scene, count = 14) {
     for (let i = 0; i < count; i++) {
       const lane = i % LANES.length;
-      const obj = buildCar(COLORS[i % COLORS.length], 0, 0, 0);
+      const body = BODIES[i % BODIES.length];
+      const obj = buildCar(COLORS[i % COLORS.length], 0, 0, 0, false, body);
       scene.add(obj);
-      const cruise = 7 + ((i * 37) % 5);
-      this.cars.push({ obj, lane, t: ((i * 0.37) % 1), speed: cruise, cruise, color: COLORS[i % COLORS.length] });
+      const cruise = 7 + ((i * 37) % 5) + (body === 'sports' ? 2 : 0);
+      this.cars.push({ obj, lane, t: ((i * 0.37) % 1), speed: cruise, cruise, color: COLORS[i % COLORS.length], body });
     }
   }
 
@@ -60,9 +62,10 @@ export class Traffic {
     if (this.taken > 0 && (this.respawnAt += dt) > 30) {
       this.respawnAt = 0; this.taken--;
       const lane = this.cars.length % LANES.length, color = COLORS[(this.cars.length * 3) % COLORS.length];
-      const obj = buildCar(color, 0, 0, 0);
+      const body = BODIES[this.cars.length % BODIES.length];
+      const obj = buildCar(color, 0, 0, 0, false, body);
       this.scene.add(obj);
-      this.cars.push({ obj, lane, t: 0, speed: 8, cruise: 8, color });
+      this.cars.push({ obj, lane, t: 0, speed: 8, cruise: 8, color, body });
     }
     const people = Object.values(state.people).filter((p) => p.visible);
     const vans = Object.values(state.vehicles);

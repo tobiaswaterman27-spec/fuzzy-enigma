@@ -282,7 +282,7 @@ export class Game {
         if (p.down != null || p.away || p.dead || p.sleeping || p.action) return;
         const c = this.traffic.take(p.pos.x, p.pos.z);
         if (!c) { this.onToast('No car close enough (walk up to a slow or stopped car and press G).'); return; }
-        this.onToast(stealCar(this.state, p.id, { x: c.x, z: c.z }, c.heading, c.color));
+        this.onToast(stealCar(this.state, p.id, { x: c.x, z: c.z }, c.heading, c.color, c.body));
         return;
       }
       if (e.code === 'KeyQ' && !this.drivingVan()) { this.onToast(nextWeapon(this.state, this.player.id)); return; }

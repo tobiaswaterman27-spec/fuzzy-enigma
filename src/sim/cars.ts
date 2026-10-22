@@ -11,12 +11,14 @@ import { locationOf } from './world/layout';
 import { resolveCircle } from './world/nav';
 import { crime } from './health';
 
-export interface CarModel { id: string; name: string; price: number; topSpeed: number; colors: string[]; blurb: string }
+export interface CarModel { id: string; name: string; price: number; topSpeed: number; colors: string[]; blurb: string; body: string }
 
 export const CAR_MODELS: CarModel[] = [
-  { id: 'hatch', name: 'Used hatchback (12 years old)', price: 280000, topSpeed: 12, colors: ['#8a8f94', '#7b2d26', '#2b4a6f'], blurb: 'High mileage, but it starts every morning.' },
-  { id: 'saloon', name: 'Family saloon (5 years old)', price: 720000, topSpeed: 14, colors: ['#1b2631', '#e5e7e9', '#5d6d7e'], blurb: 'Comfortable, economical, one careful owner.' },
-  { id: 'new', name: 'Brand-new compact', price: 1650000, topSpeed: 16, colors: ['#c0392b', '#1e8449', '#f0f3f4', '#d4ac0d'], blurb: 'Straight from the factory with a full warranty.' },
+  { id: 'hatch', name: 'Used hatchback (12 years old)', price: 280000, topSpeed: 12, colors: ['#8a8f94', '#7b2d26', '#2b4a6f'], blurb: 'High mileage, but it starts every morning.', body: 'car' },
+  { id: 'saloon', name: 'Family saloon (5 years old)', price: 720000, topSpeed: 14, colors: ['#1b2631', '#e5e7e9', '#5d6d7e'], blurb: 'Comfortable, economical, one careful owner.', body: 'saloon' },
+  { id: 'new', name: 'Brand-new compact', price: 1650000, topSpeed: 16, colors: ['#c0392b', '#1e8449', '#f0f3f4', '#d4ac0d'], blurb: 'Straight from the factory with a full warranty.', body: 'car' },
+  { id: 'suv', name: 'Family SUV (3 years old)', price: 2400000, topSpeed: 15, colors: ['#2c3e50', '#f2f3f4', '#6e2c00', '#566573'], blurb: 'Room for the whole family and the dog. Sits up high.', body: 'suv' },
+  { id: 'coupe', name: 'Sports coupe (2 years old)', price: 4800000, topSpeed: 20, colors: ['#c0392b', '#f1c40f', '#17202a', '#2e86c1'], blurb: 'Two doors, low and very quick. Turns heads on Harbour Road.', body: 'sports' },
 ];
 /** weekly insurance and road tax */
 export const CAR_WEEKLY = 3500;
@@ -65,11 +67,11 @@ export function sellCar(state: GameState, personId: Id): { ok: boolean; msg: str
 }
 
 /** take a car from the street: the driver is pulled out and runs; the police are called */
-export function stealCar(state: GameState, personId: Id, pos: { x: number; z: number }, heading: number, color: string): string {
+export function stealCar(state: GameState, personId: Id, pos: { x: number; z: number }, heading: number, color: string, body = 'car'): string {
   const p = state.people[personId];
   const id = `stolen_${Math.floor(state.minute)}_${Object.keys(state.vehicles).length}`;
   const boot = createContainer(state, 'van', 'traffic', id, 20, undefined, `${id}_boot`);
-  const model = CAR_MODELS[Object.keys(state.vehicles).length % CAR_MODELS.length];
+  const model = CAR_MODELS.find((m) => m.body === body && m.id !== 'new') ?? CAR_MODELS[0];
   state.vehicles[id] = {
     id, name: model.name.replace(/ \(.*\)$/, ''), ownerId: 'traffic', kind: 'car', model: model.id, color, price: model.price,
     pos: { ...pos }, heading, route: [], routeIdx: 0, speed: 0, state: 'manual_out', driverId: personId,

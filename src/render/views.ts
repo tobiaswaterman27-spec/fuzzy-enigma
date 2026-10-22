@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import type { GameState, Person } from '../sim/types';
 import { AnimationController, buildRig, dress, type Rig } from './character';
 import { buildCar } from './world';
+import { CAR_MODELS } from '../sim/cars';
 import { modelInstance } from './models';
 import { planRoute } from '../sim/world/nav';
 import { productGeometry, productMaterial, productUnitGeometry } from './products';
@@ -998,7 +999,7 @@ export class Views {
     for (const v of Object.values(state.vehicles)) {
       if (v.kind !== 'car') continue;
       let obj = this.cars.get(v.id);
-      if (!obj) { obj = buildCar(v.color ?? '#8a8f94', 0, 0, 0); this.scene.add(obj); this.cars.set(v.id, obj); }
+      if (!obj) { obj = buildCar(v.color ?? '#8a8f94', 0, 0, 0, false, CAR_MODELS.find((m) => m.id === v.model)?.body ?? 'car'); this.scene.add(obj); this.cars.set(v.id, obj); }
       obj.position.set(v.pos.x, 0, v.pos.z);
       obj.rotation.y = v.heading;
     }

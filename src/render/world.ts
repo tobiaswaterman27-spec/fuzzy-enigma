@@ -168,7 +168,7 @@ export function buildWorld(scene: THREE.Scene): WorldView {
   for (let i = 0; i < LIGHT_POOL; i++) { const pl = new THREE.PointLight('#ffcf80', 0, 18, 1.6); pl.position.y = 4.6; g.add(pl); lampLights.push(pl); }
 
   // ---------------- parked cars
-  for (const p of w.parked) g.add(buildCar(p.color, p.pos.x, p.pos.z, p.rot));
+  w.parked.forEach((p, i) => g.add(buildCar(p.color, p.pos.x, p.pos.z, p.rot, false, ['car', 'saloon', 'suv', 'car', 'sports'][i % 5])));
 
   // ---------------- hedges and paths in front of houses
   const hedge = M('#3f6b37', 1);
@@ -1418,11 +1418,13 @@ function buildObstacle(o: Obstacle): THREE.Object3D {
   return grp;
 }
 
-export function buildCar(color: string, x: number, z: number, rot: number, van = false): THREE.Group {
-  const model = modelInstance(van ? 'van' : 'car', color);
+/** body styles: car (hatchback), saloon, suv, sports */
+export function buildCar(color: string, x: number, z: number, rot: number, van = false, style = 'car'): THREE.Group {
+  const name = van ? 'van' : style;
+  const model = modelInstance(name, color) ?? (van ? null : modelInstance('car', color));
   if (model) {
     // full detail close up, a lighter model further away
-    const far = modelInstance(van ? 'van_lod' : 'car_lod', color);
+    const far = modelInstance(`${name}_lod`, color) ?? (van ? null : modelInstance('car_lod', color));
     const out = new THREE.Group();
     if (far) {
       const lod = new THREE.LOD();
