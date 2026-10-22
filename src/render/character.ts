@@ -308,6 +308,8 @@ export class AnimationController {
     next.enabled = true;
     next.setEffectiveWeight(1);
     next.play();
+    // a looping clip starts somewhere along its loop, so people never move in step with each other
+    if (!ONCE.has(clip) && clip !== 'sit_down' && clip !== 'stand_up') next.time = Math.random() * next.getClip().duration;
     const prev = this.current ? this.actions.get(this.current) : null;
     // locomotion to locomotion keeps the stride phase so the feet never skip
     const loco = (c: string) => c.startsWith('walk') || c === 'run' || c === 'carry_walk';
@@ -322,6 +324,8 @@ export class AnimationController {
   /** Decide the clip from authoritative state: an action wins over locomotion. */
   /** this person's way of walking (a clip name), set from who they are and how they are */
   walkStyle = 'walk';
+  /** this person's own pace for non-walking clips (0.88-1.12) */
+  tempo = 0.88 + Math.random() * 0.24;
 
   update(dt: number, speed: number, carrying: boolean, action: string | null) {
     let clip: string;
@@ -353,7 +357,8 @@ export class AnimationController {
     }
     if (this.transition) { this.mixer.update(dt); this.state = this.transition; return; }
     if (clip !== this.current) this.play(clip, clip === 'lie' || this.current === 'lie' ? 0.08 : 0.35);
-    this.get(clip).timeScale = rate;
+    // everyone has their own tempo for idling, talking and working
+    this.get(clip).timeScale = rate * (clip.startsWith('walk') || clip === 'run' || clip === 'carry_walk' ? 1 : this.tempo);
     this.state = clip;
     this.mixer.update(dt);
   }

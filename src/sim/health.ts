@@ -263,8 +263,9 @@ function policeMinute(state: GameState) {
   for (const o of officers) {
     if (!active(o) || o.down) continue;
     const d = dist(o.pos, me.pos);
-    if (d < 25 && me.visible && clearLine(o.pos, me.pos, 0.05)) sees = true;
-    if (!o.action && me.visible && me.where !== 'vehicle') goTo(state, o, me.pos, 'the suspect');
+    // in sight, or close behind you and closing in
+    if ((d < 25 && me.visible && clearLine(o.pos, me.pos, 0.05)) || d < 40) sees = true;
+    if (!o.action && me.visible && me.where !== 'vehicle' && (!o.move || dist(o.move.dest, me.pos) > 3)) goTo(state, o, me.pos, 'the suspect');
   }
   if (sees) w.unseen = 0;
   else if (++w.unseen >= 10 + w.level * 4) {

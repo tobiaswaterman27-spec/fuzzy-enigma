@@ -8,6 +8,7 @@ import { boat as harbourBoat } from './harbour';
 import { CAR_MODELS } from '../sim/cars';
 import { modelInstance } from './models';
 import { planRoute } from '../sim/world/nav';
+import { pace } from '../sim/npc';
 import { productGeometry, productMaterial, productUnitGeometry } from './products';
 import { buildingAt, getWorld, type Interactable, SHELF_LAYOUT, PALLET_X, SHOPS, U4_SECTIONS, U4_PALLET_Z, WH_PRODUCTS } from '../sim/world/layout';
 import { ITEMS } from '../sim/items';
@@ -110,6 +111,10 @@ export function walkStyleFor(p: Person): string {
   if (p.traits.ambition > 0.75 && p.needs.mood > 70) return 'walk_proud';
   if (p.gait) return p.gait;
   if (p.isPlayer) return 'walk';
+  // brisk walkers stride, slow ones amble; the rest have one of three ordinary gaits
+  const pc = pace(p);
+  if (pc > 1.1) return 'walk_brisk';
+  if (pc < 0.88) return 'walk_slow';
   let h = 0;
   for (let i = 0; i < p.id.length; i++) h = (h * 33 + p.id.charCodeAt(i)) >>> 0;
   return BASE_WALKS[h % BASE_WALKS.length];

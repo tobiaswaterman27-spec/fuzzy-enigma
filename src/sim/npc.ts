@@ -23,6 +23,14 @@ import { npcLog } from './events';
 import { raining } from './weather';
 
 export const WALK = 4.5; // metres per game minute (1.5 m/s real at the default 1/3 game-min per real second)
+/** each person's own walking pace: some stride out, some amble (fixed per person) */
+const paceCache = new Map<string, number>();
+export function pace(p: Person): number {
+  let v = paceCache.get(p.id);
+  if (p.police) return 1.12;
+  if (v === undefined) { let h = 0; for (let i = 0; i < p.id.length; i++) h = (h * 131 + p.id.charCodeAt(i)) >>> 0; v = 0.84 + (h % 1000) / 1000 * 0.32; paceCache.set(p.id, v); }
+  return v;
+}
 
 interface Workplace {
   mode: 'shop' | 'post' | 'hidden' | 'warehouse' | 'site';
@@ -93,7 +101,7 @@ export function tickMovement(state: GameState, p: Person, dt: number) {
   const m = p.move;
   if (!m) return;
   const hurry = p.down != null ? 0 : (p.fleeing ?? 0) > state.minute ? 2.3 : p.police || p.combat ? 2.0 : p.following ? 1.8 : (p.jogging ?? 0) > state.minute ? 2.1 : 1;
-  let step = WALK * capability(p).move * hurry * dt;
+  let step = WALK * capability(p).move * hurry * pace(p) * dt;
   // personal space: someone just ahead slows you down and you step round them (keeping left)
   const tgt0 = m.path[m.idx];
   if (tgt0) {
@@ -125,7 +133,7 @@ export function tickMovement(state: GameState, p: Person, dt: number) {
     if (mv >= d - 1e-6) m.idx++;
   }
   const remaining = dist(p.pos, m.dest);
-  const moved = WALK * capability(p).move * hurry * dt - step;
+  const moved = WALK * capability(p).move * hurry * pace(p) * dt - step;
   if (moved < 0.01 * dt) m.stuckTime += dt;
   else m.stuckTime = 0;
   if (m.idx >= m.path.length) {
@@ -166,7 +174,7 @@ function releaseClaim(state: GameState, p: Person) {
 function travelMinutes(p: Person, to: Vec2): number {
   const from = p.visible ? p.pos : homeDoor(p.homeId);
   const r = planRoute(from, to);
-  return r ? routeLength(from, r) / WALK : 60;
+  return r ? routeLength(from, r) / (WALK * pace(p) * capability(p).move) : 60;
 }
 
 const pantryFood = (state: GameState, p: Person) => {
