@@ -28,8 +28,10 @@ function mergeByMaterial(root: THREE.Object3D): THREE.Group {
     if (!m.isMesh) return;
     let g = m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone();
     g.applyMatrix4(m.matrixWorld);
-    for (const a of Object.keys(g.attributes)) if (a !== 'position' && a !== 'normal') g.deleteAttribute(a);
+    for (const a of Object.keys(g.attributes)) if (a !== 'position' && a !== 'normal' && a !== 'uv') g.deleteAttribute(a);
     if (!g.getAttribute('normal')) g.computeVertexNormals();
+    // textured models (bark, leaves) keep their UVs; untextured parts get zeros so meshes still merge
+    if (!g.getAttribute('uv')) g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(g.getAttribute('position').count * 2), 2));
     g = g.index ? g.toNonIndexed() : g;
     const mat = m.material as THREE.Material;
     byMat.set(mat, [...(byMat.get(mat) ?? []), g]);
