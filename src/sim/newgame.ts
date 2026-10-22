@@ -72,7 +72,7 @@ function randomAppearance(state: GameState, outfit: string): Appearance {
   };
 }
 
-function makePerson(state: GameState, id: Id, name: string, opts: { homeId: Id | null; cash: number; appearance?: Appearance; isPlayer?: boolean; accountId?: Id; traits?: Partial<Traits> }): Person {
+export function makePerson(state: GameState, id: Id, name: string, opts: { homeId: Id | null; cash: number; appearance?: Appearance; isPlayer?: boolean; accountId?: Id; traits?: Partial<Traits> }): Person {
   const acc = opts.accountId ?? openAccount(state, id, name, 'person').id;
   if (!opts.accountId) fund(state, acc, opts.cash, `Savings of ${name}`);
   const homeOutfit = pick(state, ['outfit_casual', 'outfit_smart', 'outfit_casual']);
@@ -333,4 +333,21 @@ const FIRST = ['Jamie', 'Chris', 'Pat', 'Morgan', 'Robin', 'Taylor', 'Jordan', '
 const LAST = ['Hughes', 'Patel', 'Kowalski', 'Nguyen', 'Murphy', 'Silva', 'Evans', 'Ahmed', 'Brooks', 'Fraser', 'Moreau', 'Okoye', 'Lund', 'Reid'];
 function ambientName(state: GameState) {
   return `${pick(state, FIRST)} ${pick(state, LAST)}`;
+}
+
+/** a newcomer moving into town: a home (renting it when it is a house), some savings, looking for work */
+export function spawnResident(state: GameState, homeId: Id): Person {
+  let n = 1;
+  while (state.people[`p_new${n}`]) n++;
+  const p = makePerson(state, `p_new${n}`, ambientName(state), { homeId, cash: 15000 + randInt(state, 0, 45000) });
+  p.age = 20 + randInt(state, 0, 30);
+  p.npc!.searchFrom = state.minute;
+  const pantry = state.containers[p.pantryId!];
+  for (let i = 0; i < 4; i++) addItems(pantry, pick(state, PRODUCTS.filter((k) => ITEMS[k].satiety > 0)), 1);
+  if ((HOUSE_IDS as readonly string[]).includes(homeId) || homeId === 'flat_upper') {
+    const day = Math.floor(state.minute / 1440);
+    const l = createLease(state, p.id, 'estates', homeId, homeId === 'flat_upper' ? 'Upper flat, Marlow Court' : homeId, 12000 + randInt(state, 0, 4000), day + 7);
+    l.dueDay = day % 7;
+  }
+  return p;
 }

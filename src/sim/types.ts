@@ -277,8 +277,11 @@ export interface Person {
   /** partner and family (life.ts) */
   partnerId?: Id | null;
   relationship?: 'single' | 'dating' | 'married' | 'divorced' | 'widowed';
-  childrenIds?: Id[];
-  parentIds?: Id[];
+  children?: { name: string; born: number }[];
+  /** when each relationship started (life.ts) */
+  dating?: Record<Id, number>;
+  /** moved away from Harbourside: no longer simulated */
+  left?: boolean;
   /** 0..100: injuries and illness bring it down (health.ts) */
   health?: number;
   /** hurt badly enough to need treatment */
@@ -622,6 +625,9 @@ export interface GameState {
   bills?: Record<Id, import('./bills').BillAccount>;
   /** net-worth milestones already announced (wealth.ts) */
   wealthMilestone?: number;
+  /** life simulation set up (ages, couples) and when the player started dating (life.ts) */
+  lifeInit?: boolean;
+  datingSince?: number;
   creditBans?: Record<Id, boolean>;
   /** homes owned outright or with a mortgage (property.ts), by location */
   ownership?: Record<Id, import('./property').Ownership>;

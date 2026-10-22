@@ -903,7 +903,7 @@ function shouldPreemptForTill(state: GameState, p: Person): boolean {
 export function npcTick(state: GameState) {
   sitePlot = state.build?.plot ?? 0;
   for (const p of Object.values(state.people)) {
-    if (p.isPlayer || !p.npc) continue;
+    if (p.isPlayer || !p.npc || p.dead || p.left) continue;
     const n = p.npc;
     if (state.meetups?.length && !n.ambient) goToMeetup(state, p);
     if (state.minute >= n.nextDecision && !p.action) decide(state, p);

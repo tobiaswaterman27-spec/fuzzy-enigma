@@ -15,6 +15,7 @@ import { buyProperty as buyHomeProperty, canBuyHome, mortgageTerms, ownedHome, o
 import { blockPrice, BLOCK, buyOut, buyOutPrice, holdings, TAKEOVER_AT, buyStake, canInvestIn, dividendsReceived, MAX_STAKE, sellStake, stakeOf, valuation, weeklyProfit } from '../sim/invest';
 import { hygieneOf, RATING_LABEL } from '../sim/inspections';
 import { applyAttitude, personaOf, personaPrompt, scriptedReply, type Topic } from '../sim/persona';
+import { askOut, breakUp, propose } from '../sim/life';
 import { aiReply, getApiKey, getModel, hasAi, setApiKey, type ChatTurn } from '../ai/openai';
 import { billAccount, billEstimate } from '../sim/bills';
 import { MILESTONES, netWorth, wealthTitle } from '../sim/wealth';
@@ -570,8 +571,15 @@ export class UI {
         <div class="card" style="max-height:38vh;overflow:auto">${log.map((l) => `<p><b>${l.who === 'you' ? 'You' : esc(q.first)}:</b> ${esc(l.text)}</p>`).join('') || '<p class="muted">...</p>'}${busy ? `<p class="muted">${esc(q.first)} is thinking…</p>` : ''}</div>
         ${ai ? `<div class="row"><input id="chat-in" type="text" maxlength="240" placeholder="Say something to ${esc(q.first)}…" style="flex:1"><button class="primary" data-send="1" ${busy ? 'disabled' : ''}>Say</button></div>` : '<p class="muted">Add an OpenAI API key in the Menu to talk freely; for now pick what to say.</p>'}
         <div class="row">${TOPICS.map(([t, l]) => `<button data-topic="${t}" ${busy ? 'disabled' : ''}>${l}</button>`).join('')}</div>
-        <div class="row"><button data-bye="1">Say goodbye</button></div>`, async (btn) => {
+        <div class="row">${me.partnerId === npcId ? `${me.relationship === 'dating' ? '<button data-rel="propose">Propose</button>' : ''}<button data-rel="breakup">Break up</button>` : !me.partnerId && !o.partnerId ? '<button data-rel="askout">Ask them out</button>' : ''}<button data-bye="1">Say goodbye</button></div>`, async (btn) => {
         if (busy) return;
+        if (btn.dataset.rel) {
+          const r = btn.dataset.rel === 'askout' ? askOut(s, npcId) : btn.dataset.rel === 'propose' ? propose(s, npcId) : breakUp(s, npcId);
+          say('them', btn.dataset.rel === 'breakup' ? 'Right. Fine. If that is how you feel.' : r.ok ? (btn.dataset.rel === 'propose' ? 'Yes! Of course, yes!' : "I'd love to.") : r.msg);
+          this.toast(r.msg);
+          render();
+          return;
+        }
         if (btn.dataset.bye) { const r = scriptedReply(s, npcId, 'bye'); say('them', r.reply); this.closeDialog(); return; }
         const text = btn.dataset.send ? ($('#chat-in') as HTMLInputElement)?.value.trim() : LINES[btn.dataset.topic ?? ''];
         if (!text) return;

@@ -47,13 +47,13 @@ export function personaOf(state: GameState, id: Id, viewerId: Id = state.playerI
   const lease = activeLease(state, p.id);
   const rel = p.relations[viewerId] ?? 0;
   const partner = p.partnerId ? state.people[p.partnerId] : null;
-  const kids = (p.childrenIds ?? []).map((k) => state.people[k]).filter(Boolean) as Person[];
+  const kids = p.children ?? [];
   const familyBits: string[] = [];
   if (partner) familyBits.push(`${p.relationship === 'married' ? 'married to' : 'seeing'} ${partner.name}`);
   else if (p.relationship === 'divorced') familyBits.push('divorced');
   else if (p.relationship === 'widowed') familyBits.push('widowed');
   else familyBits.push('single');
-  if (kids.length) familyBits.push(`${kids.length === 1 ? 'one child' : `${kids.length} children`} (${kids.map((k) => `${k.name.split(' ')[0]}, ${ageOf(k)}`).join('; ')})`);
+  if (kids.length) familyBits.push(`${kids.length === 1 ? 'one child' : `${kids.length} children`} (${kids.map((k) => `${k.name}, ${Math.max(0, Math.floor((state.minute - k.born) / (28 * 1440)))}`).join('; ')})`);
   const goal = p.npc?.goal ?? 'idle_home';
   const doing = p.action?.type === 'talk' ? 'chatting' : goal === 'work' || goal === 'go_work' ? `on the way to or at work${b ? ` at ${b.name}` : ''}` : goal === 'shop' ? 'out doing the food shopping' : goal === 'leisure' ? 'out and about, enjoying some free time' : goal === 'go_home' ? 'heading home' : 'at a loose end';
   const h = p.needs;

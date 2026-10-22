@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createNewGame, step, startAction, optionsFor, getWorld, choresOf, isDirty, retailTick, openTasks, addItems, auditLedger, hire, at, homeQueueSlot, creditLimit, takeLoan, transfer, loansTick, canBuyHome, mortgageTerms, HOME_PRICES, buyProperty, activeLease, hasHomeAccess, ownedHome, propertyTick, sellHome, inviteForCoffee, plannedMeetup, blockPrice, buyStake, sellStake, stakeOf, dividendsReceived, BLOCK, dailyEconomy, buyOut, holdings, inspect, hygieneOf, isOpen, inspectionsTick, buyCar, playerCar, enterCar, exitCar, carsTick, sellCar, FUEL_PER_KM, CAR_WEEKLY, allInteractables, enrol, marketOn, stallPrice, raining, forSale, buyNewBuild, sellNewBuild, NEW_BUILD_PRICE, lettingsTick, billAccount, billEstimate, billsTick, netWorth, wealthDaily, type GameState } from '../src/sim/index';
+import { createNewGame, step, startAction, optionsFor, getWorld, choresOf, isDirty, retailTick, openTasks, addItems, auditLedger, hire, at, homeQueueSlot, creditLimit, takeLoan, transfer, loansTick, canBuyHome, mortgageTerms, HOME_PRICES, buyProperty, activeLease, hasHomeAccess, ownedHome, propertyTick, sellHome, inviteForCoffee, plannedMeetup, blockPrice, buyStake, sellStake, stakeOf, dividendsReceived, BLOCK, dailyEconomy, buyOut, holdings, inspect, hygieneOf, isOpen, inspectionsTick, buyCar, playerCar, enterCar, exitCar, carsTick, sellCar, FUEL_PER_KM, CAR_WEEKLY, allInteractables, enrol, marketOn, stallPrice, raining, forSale, buyNewBuild, sellNewBuild, NEW_BUILD_PRICE, lettingsTick, billAccount, billEstimate, billsTick, netWorth, wealthDaily, initLife, residents, lifeDaily, askOut, propose, breakUp, type GameState } from '../src/sim/index';
 import { buyHome, ONLINE_DELIVERY, quoteHome } from '../src/sim/homestore';
 
 const setup = { name: 'Tester', appearance: { skin: '#e3b48f', hair: 'short' as const, hairColor: '#3b2416', build: 'average' as const } };
@@ -387,5 +387,37 @@ describe('Net worth', () => {
     expect(s.wealthMilestone).toBe(1);
     wealthDaily(s);
     expect(s.news.filter((n) => n.title.includes('net worth over')).length).toBe(1);
+  });
+});
+
+describe('Life', () => {
+  it('ages, couples, weddings, babies, break-ups, deaths and newcomers happen over time; the player can date and marry', () => {
+    const s = createNewGame(7, setup);
+    initLife(s);
+    const res = residents(s);
+    expect(res.every((p) => typeof p.age === 'number')).toBe(true);
+    // two singles who like each other
+    const singles = res.filter((p) => !p.partnerId && (p.age ?? 0) < 60);
+    const [a, b] = singles;
+    a.relations[b.id] = 80; b.relations[a.id] = 80;
+    b.age = a.age;
+    const old = res.find((p) => p !== a && p !== b)!;
+    old.age = 90;
+    for (let d = 1; d <= 120; d++) { s.minute = d * 1440 + 60; lifeDaily(s); }
+    const titles = s.news.map((n) => n.title).join(' | ');
+    expect(titles).toMatch(/seeing each other|Wedding|married/i);
+    expect(old.dead ?? null).not.toBeNull();
+    // the player and a single person who adores them
+    const me = s.people.player;
+    const c = residents(s).find((p) => !p.partnerId && !p.dead)!;
+    c.relations[me.id] = 90;
+    expect(askOut(s, c.id).ok).toBe(true);
+    expect(propose(s, c.id).ok).toBe(false);
+    s.minute += 8 * 1440;
+    (me.lastSeen ??= {})[c.id] = s.minute;
+    expect(propose(s, c.id).ok).toBe(true);
+    expect(c.homeId).toBe(me.homeId);
+    expect(breakUp(s, c.id).ok).toBe(true);
+    expect(me.relationship).toBe('divorced');
   });
 });
