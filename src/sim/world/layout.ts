@@ -922,7 +922,7 @@ function buildWorldData(homeDesign: HomeDesign): World {
   N('q_c', 0, 82); N('q_w', -30, 82); N('q_e', 30, 82); N('q_ww', -52, 82); N('q_ee', 52, 82);
   L('hs_e_72', 'q_c'); L('hs_w_72', 'q_c'); L('q_ww', 'q_w', 'q_c', 'q_e', 'q_ee');
   for (const f of FISH_SPOTS) { N(`q_${f.id}`, f.x, QUAY_EDGE - 1.6); L(`q_${f.id}`, f.x < -15 ? 'q_w' : f.x > 15 ? 'q_e' : 'q_c'); }
-  N('q_bait', BAIT_HUT.x, BAIT_HUT.z - 2.2); L('q_bait', 'q_w');
+  N('q_bait', BAIT_HUT.x, BAIT_HUT.z - 2.2); N('q_bait_c', BAIT_HUT.x + 4, BAIT_HUT.z - 2.2); L('q_bait', 'q_bait_c', 'q_w');
 
   // Corner Market: front door + interior
   N('mk_out', 17.5, -8.6); N('mk_in', 17.5, -11.4, 'market');
