@@ -4,6 +4,7 @@
 import { useEnergy } from './bills';
 import { buyWeapon, finishRob, startRob, WEAPONS } from './health';
 import { breakIn, houseOf, houseOpen, knock, searchValuables } from './houses';
+import { chopCandidate, chopPrice, mug, pickpocket, sellToChop } from './streetcrime';
 import { forceShop, lootTill, SHOP_IDS, shopLocked, shopOf, shopOpenNow } from './breakins';
 import { grabShoplifter } from './incidents';
 import { buyRound, PUB_PINT, pubOpen } from './pub';
@@ -337,6 +338,10 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
       if (p.isPlayer) out.push({ type: 'ui', label: `Talk to ${other.name}${fam ? ` (${relationLabel(fam).toLowerCase()} · ${fam})` : ''}`, enabled: other.action?.type !== 'serve_customer', reason: 'Busy serving', ui: 'chat', arg: other.id });
       if (p.isPlayer && canComplete(state, actorId, other.id)) out.unshift(opt('favour_done', canComplete(state, actorId, other.id)!.kind === 'deliver' ? `Hand ${other.name.split(' ')[0]} the parcel` : canComplete(state, actorId, other.id)!.kind === 'walk_dog' ? `Give ${other.name.split(' ')[0]} their dog back` : `Give ${other.name.split(' ')[0]} what they asked for`));
       if (p.isPlayer && !other.police && !other.npc?.ambient && !openFavour(state, other.id)) out.push(opt('favour_ask', `Ask ${other.name.split(' ')[0]} if they need a hand with anything`));
+      if (p.isPlayer && !other.police && !other.isPlayer) {
+        out.push(opt('pickpocket', `Pick ${other.name.split(' ')[0]}'s pocket`));
+        if (p.weapon) out.push(opt('mug', `Threaten ${other.name.split(' ')[0]} for their wallet (${p.weapon === 'knife' ? 'knife' : 'bat'} out)`));
+      }
       if (p.isPlayer && (other.npc as any)?.shoplift) out.unshift(opt('grab', `Grab ${other.name.split(' ')[0]} (shoplifter!)`));
       out.push(opt('talk', p.isPlayer ? `Wave and say hello` : `Chat with ${other.name}`, other.action?.type === 'serve_customer' ? 'Busy serving' : undefined));
       if (p.isPlayer && !other.npc?.ambient) out.push({ type: 'ui', label: `Invite ${other.name.split(' ')[0]} for a coffee`, enabled: fam >= FRIEND_AT && !plannedMeetup(state), reason: fam < FRIEND_AT ? 'Get to know them better first (chat more)' : 'You already have a meet-up arranged', ui: 'invite', arg: other.id });
@@ -369,6 +374,11 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
       }
       out.push({ type: 'ui', label: 'Browse furniture, wallpaper, flooring and rugs for your home', enabled: true, ui: 'homestore', reason: staffed ? undefined : 'Counter closed - you can still order online' });
       for (const k of ['bat', 'knife'] as const) out.push(opt('buy_weapon', `Buy a ${WEAPONS[k].label} · ${fmtMoney(WEAPONS[k].price)}`, !staffed ? 'Counter closed' : count(state.containers[p.bagId], WEAPONS[k].item) ? 'You already have one' : undefined, k));
+      break;
+    }
+    case 'chop_shop': {
+      const car = chopCandidate(state, it.pos);
+      out.push(opt('chop', car ? `Sell the stolen ${car.name} for parts · ${fmtMoney(chopPrice(state, car.id))}` : 'Sell a stolen car for parts', car ? undefined : 'Bring a stolen car round to the yard gate'));
       break;
     }
     case 'shopdoor': {
@@ -650,6 +660,15 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
       begin(p, type, itId, { duration: 1.2 }, now); break;
     case 'loot_till':
       begin(p, type, itId, { duration: 1.4 }, now); break;
+    case 'pickpocket': case 'mug': {
+      const o = state.people[itId.slice(7)];
+      if (!o) return { ok: false, msg: '' };
+      p.facing = Math.atan2(o.pos.x - p.pos.x, o.pos.z - p.pos.z);
+      if (type === 'mug') { o.move = null; o.facing = Math.atan2(p.pos.x - o.pos.x, p.pos.z - o.pos.z); if (o.npc) o.npc.plan = [{ kind: 'wait', until: now + 1.2 }]; o.gesture = { clip: 'scared', until: now + 1.1 }; }
+      begin(p, type, itId, { duration: type === 'mug' ? 1.0 : 0.45 }, now); break;
+    }
+    case 'chop':
+      begin(p, type, itId, { duration: 0.8 }, now); break;
     case 'search':
       begin(p, type, itId, { duration: 1.5 }, now); break;
     case 'buy_round': {
@@ -945,6 +964,9 @@ export function tickAction(state: GameState, p: Person, dt: number): string | nu
     case 'buy_tackle': case 'sell_catch': msg = null; break;
     case 'lotto': msg = null; break;
     case 'break_in': msg = SHOP_IDS.includes(shopOf(a.target)) ? forceShop(state, p.id, shopOf(a.target)) : breakIn(state, p.id, houseOf(a.target)).msg || null; break;
+    case 'pickpocket': msg = pickpocket(state, p.id, a.target.slice(7)) || null; break;
+    case 'mug': msg = mug(state, p.id, a.target.slice(7)) || null; break;
+    case 'chop': { const car = chopCandidate(state, interactable(state, a.target)?.pos ?? p.pos); msg = car ? sellToChop(state, p.id, car.id) : null; break; }
     case 'loot_till': msg = lootTill(state, p.id, interactable(state, a.target)?.businessId ?? ''); break;
     case 'search': msg = searchValuables(state, p.id, houseOf(a.target)).msg; break;
     case 'sit':

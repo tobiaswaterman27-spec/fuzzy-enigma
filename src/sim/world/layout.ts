@@ -191,6 +191,7 @@ export type InteractKind =
   | 'washer'
   | 'housedoor'
   | 'shopdoor'
+  | 'chop_shop'
   | 'valuables'
   | 'fishing'
   | 'bait_shop'
@@ -698,6 +699,8 @@ function buildWorldData(homeDesign: HomeDesign): World {
     homeNodes = furnished.nodes;
     obstacles.push({ kind: 'unitdoor', rect: F({ x0: 16.4, z0: 15.0, x1: 16.7, z1: 16.2 }), height: 2.1, solid: false, ref: 'flat' });
   }
+  // ---- Eastgate Motors' yard gate: stolen cars sold for parts
+  add({ id: 'chop_shop', kind: 'chop_shop', label: 'Eastgate Motors (yard gate)', pos: { x: 84, z: -10.4 }, facing: Math.PI, obj: { x: 84, z: -12 }, locationId: 'outside', range: 1.6 });
   // ---- shop doors: after hours they are locked, and can be forced
   for (const id of SHOP_IDS) {
     const b = B.find((x) => x.id === id);
