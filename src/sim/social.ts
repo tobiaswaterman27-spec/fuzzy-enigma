@@ -31,9 +31,9 @@ function freeAt(state: GameState, p: Person, minute: number): boolean {
 }
 
 /** invite a friend for a coffee: the next free hour, at least an hour from now */
-export function inviteForCoffee(state: GameState, playerId: Id, friendId: Id): { ok: boolean; msg: string } {
+export function inviteForCoffee(state: GameState, playerId: Id, friendId: Id, agreed = false): { ok: boolean; msg: string } {
   const p = state.people[playerId], f = state.people[friendId];
-  if (!f || (p.relations[friendId] ?? 0) < FRIEND_AT) return { ok: false, msg: 'You need to know them better first.' };
+  if (!f || (!agreed && (p.relations[friendId] ?? 0) < FRIEND_AT)) return { ok: false, msg: 'You need to know them better first.' };
   if (state.meetups?.some((m) => m.status === 'planned')) return { ok: false, msg: 'You already have a meet-up arranged.' };
   if (!state.businesses.cafe) return { ok: false, msg: 'Nowhere to meet.' };
   let t = Math.ceil((state.minute + 60) / 30) * 30;

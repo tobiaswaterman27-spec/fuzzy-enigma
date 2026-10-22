@@ -100,3 +100,10 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 #gameover .box { max-width: 460px; text-align: center; padding: 24px; }
 #gameover h1 { font-size: 34px; margin: 0 0 8px; color: #e0574f; letter-spacing: 1px; }
 #gameover button { margin: 6px; }
+
+#dialog.chatmode:not([hidden]) { background: transparent; align-content: end; padding-bottom: 14px; pointer-events: none; }
+#dialog.chatmode > * { pointer-events: auto; }
+#dialog.chatmode > h2, #dialog.chatmode > p { text-shadow: 0 1px 3px #000; }
+#dialog.chatmode .chatlog { max-height: 20vh !important; background: rgba(12,18,15,.78); }
+#dialog.chatmode { --w: min(640px, 94vw); }
+#dialog.chatmode > * { width: var(--w); }

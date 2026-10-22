@@ -14,9 +14,9 @@ import { FRIEND_AT, inviteForCoffee, plannedMeetup, relationLabel } from '../sim
 import { buyProperty as buyHomeProperty, canBuyHome, mortgageTerms, ownedHome, ownershipLines, redemption, sellHome, SELL_SHARE, SERVICE_CHARGE } from '../sim/property';
 import { blockPrice, BLOCK, buyOut, buyOutPrice, holdings, TAKEOVER_AT, buyStake, canInvestIn, dividendsReceived, MAX_STAKE, sellStake, stakeOf, valuation, weeklyProfit } from '../sim/invest';
 import { hygieneOf, RATING_LABEL } from '../sim/inspections';
-import { applyAttitude, personaOf, personaPrompt, scriptedReply, type Topic } from '../sim/persona';
-import { askOut, breakUp, propose } from '../sim/life';
-import { aiReply, getApiKey, getModel, hasAi, setApiKey, type ChatTurn } from '../ai/openai';
+import { personaOf } from '../sim/persona';
+import { applyTurn, beginTalk, characterBrief, gesture, parseTurn, remember, speechNotes } from '../sim/talk';
+import { aiJson, getApiKey, getModel, hasAi, setApiKey, type ChatTurn } from '../ai/openai';
 import { billAccount, billEstimate } from '../sim/bills';
 import { MILESTONES, netWorth, wealthTitle } from '../sim/wealth';
 import { HOSPITAL, WEAPONS, goToAandE } from '../sim/health';
@@ -54,8 +54,9 @@ export class UI {
 
   constructor(private game: Game) {
     game.onToast = (m) => this.toast(m);
-    game.onApproach = (id, line) => this.toast(`${this.s.people[id].name}: "${line}" (E to talk)`);
-    game.onUi = (w, arg) => (w === 'chat' ? this.openChat(arg!) : w === 'jobs' || w === 'laptop' ? this.openPhone(w === 'laptop' ? this.tab : 'jobs') : w === 'homestore' ? this.openPhone('home') : w === 'invite' ? this.toast(inviteForCoffee(this.s, this.p.id, arg!).msg) : w === 'interview' ? this.interviewInPerson(arg!) : this.advisor());
+    game.onApproach = (id) => void this.approached(id);
+    game.onAmbientChat = (a, b) => void this.ambientChat(a, b);
+    game.onUi = (w, arg) => (w === 'chat' ? this.openChat(arg!, false) : w === 'jobs' || w === 'laptop' ? this.openPhone(w === 'laptop' ? this.tab : 'jobs') : w === 'homestore' ? this.openPhone('home') : w === 'invite' ? this.toast(inviteForCoffee(this.s, this.p.id, arg!).msg) : w === 'interview' ? this.interviewInPerson(arg!) : this.advisor());
     game.onQualityAuto = () => this.toast(`Graphics lowered to ${game.quality === 'medium' ? 'Medium' : 'Low'} for smoother play (Menu > Graphics to change).`);
     game.onFrame = () => this.frame();
     game.onHurt = (n) => { const f = $('#hurt-flash'); f.classList.add('on'); f.style.setProperty('--a', String(Math.min(1, n / 30))); requestAnimationFrame(() => requestAnimationFrame(() => f.classList.remove('on'))); };
@@ -168,8 +169,10 @@ export class UI {
     } else shiftCard.hidden = true;
     // interaction prompt
     const f = this.game.focus;
+    this.doorWords();
     const pr = $('#prompt');
-    if (p.action && p.action.type !== 'attack') {
+    if (!$('#dialog').hidden) pr.hidden = true;
+    else if (p.action && p.action.type !== 'attack') {
       const a = p.action;
       const pct = a.duration > 0 ? Math.min(100, (a.progress / a.duration) * 100) : null;
       pr.hidden = false;
@@ -367,7 +370,7 @@ export class UI {
       const job = c ? `${c.title} at ${s.businesses[c.businessId]?.name ?? ''}` : o.npc?.retired ? 'Retired' : 'Looking for work';
       const seen = p.lastSeen?.[id];
       h += `<div class="card"><b>${esc(o.name)}</b> <span class="tag">${relationLabel(v)}</span><br><span class="muted">${esc(job)}${seen ? ` · last seen ${fmtDate(seen).split(',')[1]} ${fmtClock(seen)}` : ''}</span>
-        <div class="bar"><i style="width:${Math.round(v)}%"></i></div>${v >= FRIEND_AT && !m ? `<div class="row"><button data-invite="${id}">Invite for a coffee</button></div>` : ''}</div>`;
+        <div class="bar"><i style="width:${Math.round(v)}%"></i></div><div class="row">${this.s.people[id]?.knowsYou?.number ? `<button data-msg="${id}">Message</button>` : ''}${v >= FRIEND_AT && !m ? `<button data-invite="${id}">Invite for a coffee</button>` : ''}</div></div>`;
     }
     return h;
   }
@@ -551,6 +554,7 @@ export class UI {
     if (d.withdraw) this.toast(E.withdraw(s, Number(d.withdraw)).msg);
     if (d.buyhome) { this.toast(buyHomeProperty(s, this.p.id).msg); this.lastBody = ''; this.renderPhone(); return; }
     if (d.sellhome) { if (btn.dataset.confirm) { this.toast(sellHome(s, this.p.id).msg); this.lastBody = ''; this.renderPhone(); } else { btn.dataset.confirm = '1'; btn.textContent = 'Click again to confirm the sale'; } return; }
+    if (d.msg) { this.closePhone(); this.openChat(d.msg, true); return; }
     if (d.invite) { this.toast(inviteForCoffee(s, this.p.id, d.invite).msg); this.lastBody = ''; this.renderPhone(); return; }
     if (d.loan) { this.toast(takeLoan(s, this.p.id, Number(d.loan)).msg); this.lastBody = ''; this.renderPhone(); return; }
     if (d.stakebuy) { this.toast(buyStake(s, this.p.id, d.stakebuy).msg); this.lastBody = ''; this.renderPhone(); return; }
@@ -583,66 +587,146 @@ export class UI {
 
   // ------------------------------------------------------------ conversations
   /** talk to someone: topic buttons always; with an AI key, type anything and they answer in character */
-  openChat(npcId: string, opener?: string) {
+  /** opening lines people stopped you with in the street (said before you answered) */
+  private openers = new Map<string, string>();
+
+  /** talk to someone, face to face or (remote) by text on your phone. Needs the player's OpenAI key */
+  openChat(npcId: string, remote = false) {
     const s = this.s, me = this.p, o = s.people[npcId];
     if (!o) return;
-    // they stop and turn to you
-    o.move = null;
-    o.facing = Math.atan2(me.pos.x - o.pos.x, me.pos.z - o.pos.z);
-    me.facing = Math.atan2(o.pos.x - me.pos.x, o.pos.z - me.pos.z);
-    const ai = hasAi();
-    const log: { who: 'you' | 'them'; text: string }[] = [];
-    const history: ChatTurn[] = [{ role: 'system', content: personaPrompt(s, npcId) }];
-    let busy = false;
-    const say = (who: 'you' | 'them', text: string) => { log.push({ who, text }); if (who === 'them') this.game.say(npcId, text, 6); };
-    const TOPICS: [Topic, string][] = [['work', 'Ask about work'], ['life', 'How are you really?'], ['gossip', 'Any gossip?'], ['advice', 'Any advice?'], ['compliment', 'Pay a compliment'], ['joke', 'Crack a joke'], ['flirt', 'Flirt'], ['insult', 'Be rude']];
-    const LINES: Record<string, string> = { work: 'So, how is work going?', life: 'How are you, really?', gossip: 'Heard any gossip lately?', advice: 'Got any advice for someone new round here?', compliment: 'You know, you always look sharp.', joke: "Why don't seagulls fly over the bay? Because then they'd be bagels.", flirt: "I have to say, you're looking good today.", insult: "You're a bit of a waste of space, aren't you?" };
+    if (!hasAi()) { this.toast('To talk to people, add your OpenAI API key (Menu > AI conversations).'); return; }
+    const hold = () => {
+      if (remote) return;
+      o.move = null;
+      if (o.npc) { o.npc.plan = o.npc.plan.filter((x) => x.kind !== 'wait'); o.npc.plan.unshift({ kind: 'wait', until: s.minute + 4 }); }
+      o.facing = Math.atan2(me.pos.x - o.pos.x, me.pos.z - o.pos.z);
+      me.facing = Math.atan2(o.pos.x - me.pos.x, o.pos.z - me.pos.z);
+      this.game.frameTalk(npcId);
+    };
+    hold();
+    beginTalk(s, npcId);
+    const log: { who: 'you' | 'them' | 'fact'; text: string }[] = [];
+    const history: ChatTurn[] = [{ role: 'system', content: characterBrief(s, npcId, remote) }];
+    const said: string[] = [];
+    let busy = false, ended = false, lastSend = 0, exchanges = 0;
+    const first = o.name.split(' ')[0];
+    const say = (who: 'you' | 'them' | 'fact', text: string) => {
+      log.push({ who, text });
+      if (!remote && who === 'them') this.game.say(npcId, text, Math.min(9, 3 + text.length / 18));
+      if (!remote && who === 'you') { this.game.say(me.id, text, Math.min(7, 2 + text.length / 20)); gesture(s, me, 'talk', 2); }
+    };
+    const finish = () => {
+      if (ended) return;
+      ended = true;
+      this.closeDialog();
+      $('#dialog').classList.remove('chatmode');
+      if (!remote) this.game.frameTalk(null);
+      if (o.npc) o.npc.plan = o.npc.plan.filter((x) => x.kind !== 'wait');
+      // they remember the conversation: one line, in their own words
+      if (exchanges > 0) {
+        const transcript = log.map((l) => `${l.who === 'you' ? me.name.split(' ')[0] : l.who === 'them' ? first : '*'}: ${l.text}`).join('\n');
+        aiJson([{ role: 'system', content: `You are ${o.name}. In ONE short sentence, in the first person, note what you will remember about ${me.name.split(' ')[0]} from this conversation (what they said, asked, how they behaved, how you felt). Reply as JSON {"note": "..."}.` }, { role: 'user', content: transcript }], 80).then((r) => { if ('data' in r) remember(s, npcId, String((r.data as any)?.note ?? '').slice(0, 220)); });
+      }
+    };
+    const ask = async (content: string) => {
+      history.push({ role: 'user', content });
+      busy = true; render();
+      const r = await aiJson(history);
+      busy = false;
+      if (ended) return;
+      if ('error' in r) { say('fact', r.error); this.toast(r.error); render(); return; }
+      const turn = parseTurn(r.data);
+      history.push({ role: 'assistant', content: JSON.stringify(r.data) });
+      exchanges++;
+      hold();
+      if (turn.reply) say('them', turn.reply);
+      const fact = applyTurn(s, npcId, turn, remote);
+      if (fact) { say('fact', fact); this.toast(fact); }
+      render();
+      if (turn.action === 'leave' || turn.action === 'attack') setTimeout(finish, 1800);
+      else setTimeout(() => ($('#chat-in') as HTMLInputElement | null)?.focus(), 0);
+    };
     const render = () => {
+      if (ended) return;
       const q = personaOf(s, npcId);
-      this.dialog(`<h2>${esc(o.name)}</h2><p class="muted">${q.age} · ${esc(q.job)} · ${esc(q.relationToYou)} (${q.relationScore})${ai ? ' · AI conversation' : ''}</p>
-        <div class="card" style="max-height:38vh;overflow:auto">${log.map((l) => `<p><b>${l.who === 'you' ? 'You' : esc(q.first)}:</b> ${esc(l.text)}</p>`).join('') || '<p class="muted">...</p>'}${busy ? `<p class="muted">${esc(q.first)} is thinking…</p>` : ''}</div>
-        ${ai ? `<div class="row"><input id="chat-in" type="text" maxlength="240" placeholder="Say something to ${esc(q.first)}…" style="flex:1"><button class="primary" data-send="1" ${busy ? 'disabled' : ''}>Say</button></div>` : '<p class="muted">Add an OpenAI API key in the Menu to talk freely; for now pick what to say.</p>'}
-        <div class="row">${TOPICS.map(([t, l]) => `<button data-topic="${t}" ${busy ? 'disabled' : ''}>${l}</button>`).join('')}</div>
-        <div class="row">${me.partnerId === npcId ? `${me.relationship === 'dating' ? '<button data-rel="propose">Propose</button>' : ''}<button data-rel="breakup">Break up</button>` : !me.partnerId && !o.partnerId ? '<button data-rel="askout">Ask them out</button>' : ''}<button data-bye="1">Say goodbye</button></div>`, async (btn) => {
+      const k = o.knowsYou;
+      this.dialog(`<h2>${esc(o.name)}${remote ? ' <span class="muted">(messages)</span>' : ''}</h2><p class="muted">${q.age} · ${esc(q.job)} · ${esc(q.relationToYou)} (${q.relationScore})${k && k.talks > 1 ? ` · talked ${k.talks} times` : ''}</p>
+        <div class="card chatlog" style="max-height:42vh;overflow:auto">${log.map((l) => l.who === 'fact' ? `<p class="muted"><i>${esc(l.text)}</i></p>` : `<p><b>${l.who === 'you' ? 'You' : esc(first)}:</b> ${esc(l.text)}</p>`).join('')}${busy ? `<p class="muted">${esc(first)} ${remote ? 'is typing' : 'is answering'}…</p>` : ''}</div>
+        <div class="row"><input id="chat-in" type="text" maxlength="300" placeholder="${remote ? 'Message' : 'Say'} anything to ${esc(first)}…" style="flex:1" autocomplete="off"><button class="primary" data-send="1" ${busy ? 'disabled' : ''}>${remote ? 'Send' : 'Say'}</button></div>
+        <div class="row"><button data-bye="1">${remote ? 'Close' : 'Walk away'}</button></div>`, (btn) => {
+        btn.blur();
+        if (btn.dataset.bye) { finish(); return; }
         if (busy) return;
-        if (btn.dataset.rel) {
-          const r = btn.dataset.rel === 'askout' ? askOut(s, npcId) : btn.dataset.rel === 'propose' ? propose(s, npcId) : breakUp(s, npcId);
-          say('them', btn.dataset.rel === 'breakup' ? 'Right. Fine. If that is how you feel.' : r.ok ? (btn.dataset.rel === 'propose' ? 'Yes! Of course, yes!' : "I'd love to.") : r.msg);
-          this.toast(r.msg);
-          render();
-          return;
-        }
-        if (btn.dataset.bye) { const r = scriptedReply(s, npcId, 'bye'); say('them', r.reply); this.closeDialog(); return; }
-        const text = btn.dataset.send ? ($('#chat-in') as HTMLInputElement)?.value.trim() : LINES[btn.dataset.topic ?? ''];
+        const inp = $('#chat-in') as HTMLInputElement | null;
+        const text = inp?.value.trim() ?? '';
         if (!text) return;
+        const now = performance.now();
+        const notes = speechNotes(text, said, lastSend ? now - lastSend : 99999);
+        lastSend = now;
+        said.push(text);
         say('you', text);
-        if (ai) {
-          history.push({ role: 'user', content: text });
-          busy = true; render();
-          const r = await aiReply(history);
-          busy = false;
-          if ('error' in r) {
-            const fb = btn.dataset.topic ? scriptedReply(s, npcId, btn.dataset.topic as Topic) : { reply: '(They look at you blankly.)', attitude: 0 };
-            this.toast(r.error);
-            say('them', fb.reply); applyAttitude(s, npcId, fb.attitude);
-          } else {
-            history.push({ role: 'assistant', content: JSON.stringify(r) });
-            say('them', r.reply); applyAttitude(s, npcId, r.attitude);
-          }
-        } else {
-          const r = scriptedReply(s, npcId, btn.dataset.topic as Topic);
-          say('them', r.reply); applyAttitude(s, npcId, r.attitude);
-        }
-        render();
-        setTimeout(() => ($('#chat-in') as HTMLInputElement | null)?.focus(), 0);
+        void ask(notes.length ? `${text}\n\n[What you notice: ${notes.join('; ')}]` : text);
       });
+      // the conversation happens in real time, in the world: the panel sits low so you can watch them
+      $('#dialog').classList.add('chatmode');
+      this.liveDialog = true;
+      this.syncModal();
+      const log$ = document.querySelector('#dialog .chatlog');
+      if (log$) log$.scrollTop = log$.scrollHeight;
       const inp = $('#chat-in') as HTMLInputElement | null;
       if (inp) inp.onkeydown = (e) => { e.stopPropagation(); if (e.key === 'Enter') ($('#dialog [data-send]') as HTMLButtonElement | null)?.click(); };
     };
-    const hello = opener ?? scriptedReply(s, npcId, 'hello').reply;
-    say('them', hello);
-    applyAttitude(s, npcId, 1);
-    render();
+    const opener = this.openers.get(npcId);
+    this.openers.delete(npcId);
+    if (opener) { log.push({ who: 'them', text: opener }); history.push({ role: 'assistant', content: JSON.stringify({ reply: opener, emotion: 'neutral', attitude: 0, decision: null, action: 'none' }) }); render(); setTimeout(() => ($('#chat-in') as HTMLInputElement | null)?.focus(), 0); }
+    else void ask(remote ? `[${me.name.split(' ')[0]} has sent you a message to start a conversation. Reply to open it.]` : `[${me.name.split(' ')[0]} has walked up to you and wants to talk. They have not said anything yet. React as you naturally would.]`);
+  }
+
+  private doorSpoken = -1;
+  /** whoever answers a door you knocked on says something (in their own words, with a key) */
+  private doorWords() {
+    const c = this.s.doorCall;
+    if (!c || c.stage !== 'open' || !c.answerer || this.doorSpoken === c.at || !hasAi()) return;
+    this.doorSpoken = c.at;
+    const id = c.answerer, me = this.p.name.split(' ')[0];
+    void aiJson([{ role: 'system', content: characterBrief(this.s, id) }, { role: 'user', content: `[${me} knocked on your front door and you have just opened it. ${c.letIn ? 'You are happy to let them in.' : 'You are NOT letting them in, and are about to close the door.'} Say what you say at the door.]` }]).then((r) => {
+      if (!('data' in r)) return;
+      const t = parseTurn(r.data);
+      if (t.reply) this.game.say(id, t.reply, 5);
+    });
+  }
+
+  /** someone has stopped you in the street: what they say first comes from who they are */
+  async approached(npcId: string) {
+    const s = this.s, o = s.people[npcId];
+    if (!o) return;
+    if (!hasAi()) { gesture(s, o, 'wave', 2.2); return; }
+    gesture(s, o, 'wave', 2.2);
+    const r = await aiJson([{ role: 'system', content: characterBrief(s, npcId) }, { role: 'user', content: `[You have stopped ${this.p.name.split(' ')[0]} in the street because you want to talk to them. Say your opening line.]` }]);
+    if (!('data' in r)) return;
+    const t = parseTurn(r.data);
+    if (!t.reply) return;
+    this.openers.set(npcId, t.reply);
+    this.game.say(npcId, t.reply, 6);
+    this.toast(`${o.name}: "${t.reply}" (E to talk)`);
+  }
+
+  /** two townspeople chatting nearby: their exchange is written from who they both are */
+  async ambientChat(aId: string, bId: string) {
+    const s = this.s, a = s.people[aId], b = s.people[bId];
+    if (!a || !b || !hasAi()) return;
+    const qa = personaOf(s, aId), qb = personaOf(s, bId);
+    const brief = (q: typeof qa) => `${q.name}, ${q.age}, ${q.job}; ${q.personality.slice(0, 3).join(', ')}; ${q.mood}; family: ${q.family}; recently: ${q.recent.slice(-2).join('; ') || 'nothing much'}`;
+    const r = await aiJson([{ role: 'system', content: `Write a short, natural exchange (3 or 4 lines, each under 15 words) between two people chatting in Harbourside, a small British harbour town, ${qa.time}, ${qa.weather}. They talk about their own lives, people they know, work or the town, in character. A: ${brief(qa)}. B: ${brief(qb)}. How well they know each other: ${Math.round(a.relations[bId] ?? 0)}/100. Reply as JSON {"lines": [{"who": "A" or "B", "text": "..."}]}.` }], 200);
+    if (!('data' in r)) return;
+    const lines = ((r.data as any)?.lines ?? []).slice(0, 4);
+    lines.forEach((l: any, i: number) => setTimeout(() => {
+      const id = l.who === 'B' ? bId : aId;
+      const p = s.people[id];
+      if (!p?.visible) return;
+      this.game.say(id, String(l.text ?? '').slice(0, 140), 4);
+      gesture(s, p, 'talk', 3);
+    }, i * 3600));
   }
 
   // ------------------------------------------------------------ dialogs

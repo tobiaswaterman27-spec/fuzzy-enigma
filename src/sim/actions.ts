@@ -353,8 +353,8 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
     }
     case 'housedoor': {
       const h = houseOf(it.id);
-      if (houseOpen(state, h)) { out.push(opt('knock', 'The door is open - walk in', 'Just walk in')); break; }
-      out.push(opt('knock', 'Knock on the door'));
+      if (houseOpen(state, h)) break;
+      out.push(opt('knock', 'Knock on the door', state.doorCall && state.doorCall.house === h && state.doorCall.stage !== 'done' ? 'Someone is coming to the door' : undefined));
       out.push(opt('break_in', 'Force the door (break in)'));
       break;
     }
@@ -531,7 +531,7 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
       return r;
     }
     case 'knock':
-      begin(p, type, itId, { duration: 0.4 }, now); break;
+      begin(p, type, itId, { duration: 0.6 }, now); break;
     case 'break_in':
       begin(p, type, itId, { duration: 1.2 }, now); break;
     case 'search':
@@ -785,8 +785,8 @@ export function tickAction(state: GameState, p: Person, dt: number): string | nu
     case 'buy_weapon':
       msg = null;
       break;
-    case 'knock': msg = knock(state, p.id, houseOf(a.target)).msg; break;
-    case 'break_in': msg = breakIn(state, p.id, houseOf(a.target)).msg; break;
+    case 'knock': knock(state, p.id, houseOf(a.target)); msg = null; break;
+    case 'break_in': msg = breakIn(state, p.id, houseOf(a.target)).msg || null; break;
     case 'search': msg = searchValuables(state, p.id, houseOf(a.target)).msg; break;
     case 'sit':
     case 'watch_tv':

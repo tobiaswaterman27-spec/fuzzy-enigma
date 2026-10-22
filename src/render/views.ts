@@ -339,7 +339,8 @@ class PersonView {
     // site work looks like the job in hand: digging and shovelling, laying bricks, fixing and painting
     const siteClip = a?.type === 'site_work' ? (p.equipment === 'tool_spade' || p.equipment === 'tool_shovel' ? 'clean' : 'stock_shelf') : null;
     const floored = p.down != null || !!p.dead;
-    const clipAction = floored ? 'down' : stage ? (stage.walking ? null : stage.clip) : this.bedIt ? this.bedPose : stepping ? null : siteClip ?? a?.type ?? null;
+    const gest = p.gesture && state.minute < p.gesture.until && !p.move ? `g:${p.gesture.clip}` : null;
+    const clipAction = floored ? 'down' : gest ? gest : stage ? (stage.walking ? null : stage.clip) : this.bedIt ? this.bedPose : stepping ? null : siteClip ?? a?.type ?? null;
     this.anim.walkStyle = walkStyleFor(p);
     this.anim.update(dt, realSpeed, !!item, clipAction);
     // keep the feet on the floor: whatever the animation does, the lower foot rests on the ground

@@ -55,6 +55,8 @@ interface AnimDoor {
   center: THREE.Vector3;
   parts: { obj: THREE.Object3D; closed: THREE.Vector3; open: THREE.Vector3 | number }[];
   t: number;
+  /** a private house: the door only opens when someone answers it or it has been unlocked */
+  house?: string;
 }
 
 export interface WorldView {
@@ -187,7 +189,11 @@ export function buildWorld(scene: THREE.Scene): WorldView {
     for (const f of fixtures) f(state, dt);
     for (const d of doors) {
       let near = false;
-      for (const p of Object.values(state.people)) {
+      // a locked house door stays shut; it opens while someone is answering it
+      if (d.house && !((state.houseOpen?.[d.house] ?? 0) > state.minute)) {
+        const call = state.doorCall;
+        near = !!call && call.house === d.house && call.stage === 'open';
+      } else for (const p of Object.values(state.people)) {
         if (!p.visible) continue;
         if (Math.hypot(p.pos.x - d.center.x, p.pos.z - d.center.z) < 2.6) { near = true; break; }
       }
@@ -793,7 +799,7 @@ function addDoor(g: THREE.Group, b: BuildingDef, side: string, a: number, c: num
     leaf.position.set(w / 2, 0, 0);
     pivot.add(leaf);
     grp.add(pivot);
-    doors.push({ kind: 'swing', center, parts: [{ obj: pivot, closed: new THREE.Vector3(0, 0, 0), open: -out * 1.4 }], t: 0 });
+    doors.push({ kind: 'swing', center, parts: [{ obj: pivot, closed: new THREE.Vector3(0, 0, 0), open: -out * 1.4 }], t: 0, house: b.id.startsWith('house_') ? b.id : undefined });
     grp.add(box(w + 0.8, 0.1, 0.9, M(b.trim, 0.6), 0, h + 0.35, out * 0.45));
   } else if (b.id === 'wholesale' && w > 4) {
     const rm = M('#9aa0a6', 0.6, { metalness: 0.4 });

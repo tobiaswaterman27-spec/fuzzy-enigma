@@ -113,8 +113,18 @@ describe('Houses', () => {
     r.relations[me.id] = 0;
     knock(s, me.id, h);
     expect(houseOpen(s, h)).toBe(false);
+    for (let i = 0; i < 16; i++) step(s, 0.25);
+    expect(houseOpen(s, h)).toBe(false);
+    expect(s.doorCall?.stage).toBe('done');
+    // they are in again (and staying in) when you come back as a friend
+    r.where = h; r.visible = false; r.move = null; r.action = null; r.npc!.plan = []; r.npc!.nextDecision = s.minute + 600;
     r.relations[me.id] = 60;
-    expect(knock(s, me.id, h).msg).toMatch(/Come in/);
+    knock(s, me.id, h);
+    expect(houseOpen(s, h)).toBe(false);
+    // a moment later they come to the door and open it, and you are let in
+    for (let i = 0; i < 6; i++) step(s, 0.25);
+    expect(s.doorCall?.stage).toBe('open');
+    expect(r.visible).toBe(true);
     expect(houseOpen(s, h)).toBe(true);
     // another house, nobody home, quiet street: force the door and take the cash
     const h2 = HOUSE_IDS.find((id) => id !== h && res(s).some((p) => p.homeId === id))!;

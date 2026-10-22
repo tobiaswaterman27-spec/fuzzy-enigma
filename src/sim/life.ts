@@ -76,7 +76,7 @@ export function leaveTown(state: GameState, p: Person, why: string) {
   news(state, 'world', `${p.name} has left Harbourside`, why);
 }
 
-function split(state: GameState, a: Person, b: Person, divorce: boolean) {
+export function split(state: GameState, a: Person, b: Person, divorce: boolean) {
   a.partnerId = b.partnerId = null;
   a.relationship = b.relationship = divorce ? 'divorced' : 'single';
   a.relations[b.id] = Math.min(a.relations[b.id] ?? 0, 15);

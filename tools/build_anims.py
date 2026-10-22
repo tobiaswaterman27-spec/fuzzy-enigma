@@ -78,6 +78,17 @@ CLIPS = {
     'fight': ('13_17', None, True, 'free', (1.0, 2.5)),
     'fall': ('90_16', None, False, 'whole', None),
     'lie_ground': ('111_12', None, True, 'seated', (2.0, 4.0)),
+    # gestures and feelings, used in conversations
+    'wave': ('141_16', None, False, 'whole', None),
+    'shrug': ('141_21', None, False, 'whole', None),
+    'yawn': ('141_13', None, False, 'whole', None),
+    'laugh': ('13_14', None, True, 'free', (1.5, 3.0)),
+    'argue': ('18_10', (2.0, 30.0), True, 'free', (2.5, 5.0)),
+    'happy': ('79_69', None, True, 'free', (2.0, 4.0)),
+    'sad': ('79_71', None, True, 'free', (2.0, 5.0)),
+    'cry': ('79_72', None, True, 'free', (2.0, 5.0)),
+    'scared': ('79_73', None, True, 'free', (1.5, 4.0)),
+    'drink': ('79_33', None, True, 'free', (2.0, 4.0)),
 }
 
 

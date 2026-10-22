@@ -311,6 +311,12 @@ export interface Person {
   record?: string[];
   /** a police officer on duty */
   police?: boolean;
+  /** a gesture or feeling being acted out (a clip name) until a game minute */
+  gesture?: { clip: string; until: number } | null;
+  /** what this person knows of the player: since when, how many conversations, what they remember, whether you have their number */
+  knowsYou?: { since: number; talks: number; last: number; notes: string[]; number?: boolean };
+  /** walking along with someone until a time */
+  following?: { target: Id; until: number } | null;
   /** the way this person walks normally (a walk clip), when chosen */
   gait?: string;
   /** 0..100 how drunk: wears off over a few hours */
@@ -664,6 +670,8 @@ export interface GameState {
   wanted?: { level: number; unseen: number; crime: string } | null;
   /** house doors left open (let in, or forced) until a time, by house id */
   houseOpen?: Record<Id, number>;
+  /** someone is answering a house door the player knocked on */
+  doorCall?: { house: Id; by: Id; at: number; answerer: Id | null; stage: 'waiting' | 'open' | 'done'; letIn: boolean } | null;
   /** the player has died */
   gameOver?: { at: number; cause: string } | null;
   datingSince?: number;

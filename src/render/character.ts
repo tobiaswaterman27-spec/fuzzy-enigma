@@ -213,6 +213,8 @@ export const CLIP_DEFS: Record<string, ClipDef> = {
   scan: { dur: 0.7, bones: { armR: [[0, -0.95, 0.35, -0.1], [0.5, -0.95, -0.35, -0.1], [1, -0.95, 0.35, -0.1]], foreR: still(-0.9), armL: still(-0.7, 0, 0.1), foreL: still(-0.9), spine: still(0.12), head: still(0.35) } },
   type: { dur: 0.5, bones: { armL: still(-0.6, 0, 0.12), armR: still(-0.6, 0, -0.12), foreL: [[0, -1.1, 0.3, 0], [0.5, -1.0, 0.3, 0], [1, -1.1, 0.3, 0]], foreR: [[0, -1.0, -0.3, 0], [0.5, -1.1, -0.3, 0], [1, -1.0, -0.3, 0]], head: still(0.3), spine: still(0.06) } },
   mop: { dur: 1.3, bones: { armL: [[0, -0.7, 0.3, 0.2], [0.5, -0.5, -0.3, 0.1], [1, -0.7, 0.3, 0.2]], armR: [[0, -0.4, 0.3, -0.1], [0.5, -0.2, -0.3, -0.2], [1, -0.4, 0.3, -0.1]], foreL: still(-0.6), foreR: still(-0.5), spine: [[0, 0.25, 0.3, 0], [0.5, 0.25, -0.3, 0], [1, 0.25, 0.3, 0]] } },
+  // knuckles on a door: forearm raised, rapping three times
+  knock: { dur: 0.9, bones: { armR: still(-1.05, 0, -0.2), foreR: [[0, -1.2, 0, 0], [0.15, -1.75, 0, 0], [0.3, -1.2, 0, 0], [0.45, -1.75, 0, 0], [0.6, -1.2, 0, 0], [0.75, -1.75, 0, 0], [1, -1.2, 0, 0]], armL: still(0.02, 0, 0.08), foreL: still(-0.1), head: still(0.05) } },
   eat: { dur: 1.8, bones: { armR: [[0, -0.3, 0, -0.1], [0.4, -0.7, 0, -0.2], [0.6, -0.7, 0, -0.2], [1, -0.3, 0, -0.1]], foreR: [[0, -0.6, 0, 0], [0.4, -2.1, 0, 0], [0.6, -2.1, 0, 0], [1, -0.6, 0, 0]], armL: still(-0.5, 0, 0.1), foreL: still(-1.0), head: [[0, 0.1, 0, 0], [0.5, -0.05, 0, 0], [1, 0.1, 0, 0]] } },
   sit: { dur: 3, bones: { thighL: still(-1.5, 0, 0.05), thighR: still(-1.5, 0, -0.05), shinL: still(1.5), shinR: still(1.5), armL: still(-0.4, 0, 0.1), armR: still(-0.4, 0, -0.1), foreL: still(-0.6), foreR: still(-0.6), spine: [[0, -0.05, 0, 0], [0.5, -0.02, 0, 0], [1, -0.05, 0, 0]] }, hipsY: [[0, 0.5], [1, 0.5]] },
   lie: { dur: 4, bones: { armL: still(0, 0, 0.12), armR: still(0, 0, -0.12), spine: [[0, 0, 0, 0], [0.5, 0.04, 0, 0], [1, 0, 0, 0]], head: still(-0.1, 0.3, 0) } },
@@ -261,11 +263,13 @@ export const ACTION_CLIP: Record<string, string> = {
   serve_customer: 'scan', self_checkout: 'scan', take_mop: 'pickup', return_mop: 'pickup', clean: 'mop',
   check_in_delivery: 'clipboard', pick_item: 'place', sleep: 'lie', eat: 'eat', store_food: 'place',
   change_outfit: 'dress', buy_meal: 'eat', sit: 'sit', watch_tv: 'sit', talk: 'talk', shower: 'wash', cook: 'type', phone: 'phone',
-  take_order: 'talk', take_tool: 'pickup', return_tool: 'pickup', take_bricks: 'pickup', site_work: 'place', cook_meal: 'type', serve_meal: 'place', drive_van: 'pickup', drive_car: 'pickup', drive_forklift: 'pickup', attack: 'punch', knock: 'pickup', break_in: 'fight', search: 'pickup', down: 'fall', buy_pint: 'eat', buy_weapon: 'pickup', study: 'sit', buy_stall: 'talk', pick_case: 'pickup', stage_case: 'place', face_shelf: 'place', bale_cardboard: 'place', empty_bin: 'pickup', dump_rubbish: 'place', wash_up: 'type', laundry: 'pickup', tidy: 'pickup',
+  take_order: 'talk', take_tool: 'pickup', return_tool: 'pickup', take_bricks: 'pickup', site_work: 'place', cook_meal: 'type', serve_meal: 'place', drive_van: 'pickup', drive_car: 'pickup', drive_forklift: 'pickup', attack: 'punch', knock: 'knock', break_in: 'fight', search: 'pickup', down: 'fall', buy_pint: 'drink', buy_weapon: 'pickup', study: 'sit', buy_stall: 'talk', pick_case: 'pickup', stage_case: 'place', face_shelf: 'place', bale_cardboard: 'place', empty_bin: 'pickup', dump_rubbish: 'place', wash_up: 'type', laundry: 'pickup', tidy: 'pickup',
 };
 
 /** seated clips: getting into and out of them plays a real sit-down / stand-up move */
 const SEATED = new Set(['sit', 'sit_down']);
+/** clips that play once and hold their last pose (falls, one-off gestures) */
+const ONCE = new Set(['fall', 'wave', 'shrug', 'yawn', 'handshake']);
 
 /** ground speeds (m/s) the locomotion clips were captured at; playback rate scales with real speed */
 export let WALK_SPEED_REF = 1.5;
@@ -287,7 +291,7 @@ export class AnimationController {
     if (!a) {
       a = this.mixer.clipAction(getClip(name));
       if (name === 'pickup') { a.setLoop(THREE.LoopRepeat, Infinity); }
-      if (name === 'fall') { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; }
+      if (ONCE.has(name)) { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; }
       this.actions.set(name, a);
     }
     return a;
@@ -321,7 +325,8 @@ export class AnimationController {
     let clip: string;
     let rate = 1;
     if (action) {
-      clip = ACTION_CLIP[action] ?? 'idle';
+      // 'g:<clip>' plays a gesture or feeling directly (waving, shrugging, laughing, crying...)
+      clip = action.startsWith('g:') ? action.slice(2) : ACTION_CLIP[action] ?? 'idle';
       if (action === 'attack') rate = 1.7;
     } else if (speed > 2.6) {
       clip = 'run';

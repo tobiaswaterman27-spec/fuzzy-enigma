@@ -31,10 +31,9 @@ import { news } from '../sim/events';
 import { CAR_MODELS, exitCar, stealCar } from '../sim/cars';
 import { forkliftAction } from '../sim/forklift';
 import { attack, attackTarget, hitByVehicle, nextWeapon } from '../sim/health';
-import { openingLine } from '../sim/persona';
+import { hasAi } from '../ai/openai';
 import { inOutage } from '../sim/inspections';
 
-const CHATTER = ['How have you been?', 'Did you hear Corner Market is hiring again?', 'The rent on Harbour Road is daylight robbery.', 'Rosa\'s soup is the best thing in town.', 'They say rain again tomorrow.', 'My cousin started at the warehouse.', 'Those new houses are coming along.', 'Ha! No, really?', 'We should do this more often.', 'Long week. Glad it\'s nearly over.', 'Have you seen the prices at Harbour Home?', 'I passed my driving test!', 'The inspector came round the shop yesterday.', 'Exactly what I said!']; 
 import { fmtDate, fmtClock } from '../sim/clock';
 
 export const BASE_TIME_SCALE = 1 / 3; // game minutes per real second at 1x
@@ -82,6 +81,18 @@ export class Game {
   private sunAnchor = new THREE.Vector3();
   /** mouse look: the automatic camera waits until this time (ms) */
   private manualUntil = 0;
+  /** in conversation with someone: the camera looks past your shoulder at them */
+  frameTalk(npcId: string | null) {
+    if (!npcId) { this.manualUntil = 0; this.zoom = this.zoomBeforeTalk ?? this.zoom; this.zoomBeforeTalk = null; return; }
+    const me = this.player, o = this.state.people[npcId];
+    if (!o) return;
+    const f = Math.atan2(o.pos.x - me.pos.x, o.pos.z - me.pos.z);
+    this.camYaw = f + Math.PI + 0.38;
+    this.zoomBeforeTalk ??= this.zoom;
+    this.zoom = 0.75;
+    this.manualUntil = performance.now() + 3600000;
+  }
+  private zoomBeforeTalk: number | null = null;
   /** wheel zoom multiplier on the camera distance */
   zoom = 1;
   private distCur = 0;
@@ -396,23 +407,25 @@ export class Game {
     this.onFrame();
   }
 
-  /** townspeople talking near the player say something now and then */
+  /** townspeople chatting near the player: now and then their conversation is heard (written by the AI) */
   private chatter() {
     const now = performance.now();
     if (now < this.nextChatter) return;
-    this.nextChatter = now + 2500;
+    this.nextChatter = now + 40000;
+    if (!hasAi()) return;
     const me = this.player.pos;
-    const talkers = Object.values(this.state.people).filter((q) => q.action?.type === 'talk' && q.action.arg === 'long' && q.visible && Math.hypot(q.pos.x - me.x, q.pos.z - me.z) < 16 && !((this.speech.get(q.id)?.until ?? 0) > now));
-    if (!talkers.length) return;
-    const q = talkers[Math.floor(Math.random() * talkers.length)];
-    const busy = talkers.some((t) => t.action?.target === `person:${q.id}` && (this.speech.get(t.id)?.until ?? 0) > now);
-    if (!busy) this.say(q.id, CHATTER[Math.floor(Math.random() * CHATTER.length)], 4);
+    const talkers = Object.values(this.state.people).filter((q) => q.action?.type === 'talk' && q.action.arg === 'long' && q.visible && Math.hypot(q.pos.x - me.x, q.pos.z - me.z) < 16);
+    const a = talkers[0];
+    const b = a ? this.state.people[a.action!.target.replace('person:', '')] : null;
+    if (a && b) this.onAmbientChat(a.id, b.id);
+    else this.nextChatter = now + 5000;
   }
+  onAmbientChat: (a: string, b: string) => void = () => {};
   private nextChatter = 0;
   private nextApproach = 0;
   /** someone who has stopped you in the street to talk (press E on them) */
   approachBy: string | null = null;
-  onApproach: (id: string, line: string) => void = () => {};
+  onApproach: (id: string) => void = () => {};
 
   /** now and then someone you pass stops, turns to you and starts a conversation */
   private approaches() {
@@ -436,10 +449,8 @@ export class Game {
       o.move = null;
       o.npc.plan.unshift({ kind: 'wait', until: s.minute + 4 });
       o.facing = Math.atan2(me.pos.x - o.pos.x, me.pos.z - o.pos.z);
-      const line = openingLine(s, o.id);
-      this.say(o.id, line, 5);
       this.approachBy = o.id;
-      this.onApproach(o.id, line);
+      this.onApproach(o.id);
       return;
     }
   }
@@ -571,7 +582,10 @@ export class Game {
     const p = this.player;
     const it = p.action || p.sleeping ? null : focusInteractable(this.state, p);
     if (!it) { this.focus = null; return; }
-    this.focus = { id: it.id, label: it.label, options: optionsFor(this.state, p.id, it.id) };
+    const options = optionsFor(this.state, p.id, it.id);
+    // talking needs the player's own OpenAI key: there are no canned conversations
+    if (!hasAi()) for (const o of options) if (o.ui === 'chat') { o.enabled = false; o.reason = 'Add your OpenAI API key (Menu) to talk to people'; }
+    this.focus = { id: it.id, label: it.label, options };
   }
 
   private updateCamera(dt: number) {

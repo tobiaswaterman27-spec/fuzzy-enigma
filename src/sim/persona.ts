@@ -76,78 +76,6 @@ export function personaOf(state: GameState, id: Id, viewerId: Id = state.playerI
   };
 }
 
-/** the brief given to a language model to play this person */
-export function personaPrompt(state: GameState, id: Id): string {
-  const q = personaOf(state, id);
-  const you = state.people[state.playerId];
-  const yc = you.contractId ? state.contracts[you.contractId] : null;
-  const me = state.people[id];
-  const seen: string[] = [];
-  if (you.weapon) seen.push(`they are holding a ${you.weapon === 'bat' ? 'cricket bat' : 'kitchen knife'}, which frightens you`);
-  if ((you.drunk ?? 0) > 40) seen.push('they are obviously drunk');
-  if (you.injured) seen.push('they look hurt and battered');
-  if (you.record?.length) seen.push(`word in town is they have a criminal record (${you.record.join('; ')})`);
-  if (state.wanted) seen.push('the police are looking for them right now');
-  if (me.history.some((e) => e.text.includes(`attacked by ${you.name}`))) seen.push('THEY ATTACKED YOU: you are scared of and angry with them');
-  else if ((me.grudge ?? 0) > 0) seen.push('they have been rude to you before and you hold a grudge');
-  if ((me.drunk ?? 0) > 40) seen.push('you have had a few drinks yourself');
-  return [
-    `You are ${q.name}, a ${q.age}-year-old ${q.gender} living in Harbourside, a small British harbour town. Stay in character and speak naturally, in British English, in one to three short sentences.`,
-    `Your job: ${q.job}. You live at ${q.home}. Money: you are ${q.money}. Family: ${q.family}. Health: ${q.health}.`,
-    `Personality: ${q.personality.join('; ')}. Right now you are ${q.mood}, ${q.doing}. It is ${q.time}; weather: ${q.weather}.`,
-    q.recent.length ? `Recent events in your life: ${q.recent.join('; ')}.` : '',
-    `You are talking to ${you.name}, who ${yc ? `works as ${yc.title} at ${state.businesses[yc.businessId]?.name}` : 'is looking for work'}. To you they are ${q.relationToYou} (closeness ${q.relationScore}/100). Be warmer the closer you are; be cool or curt if they are rude.`,
-    seen.length ? `What you notice or know about them: ${seen.join('; ')}.` : '',
-    'Town: Corner Market (grocer), Harbour Wholesale (warehouse and depot), Tidewater Cafe, Harbour Home (furniture), the Job Centre, Marlow Court flats, the park (Saturday market), new houses going up on Harbour Road.',
-    'Reply ONLY as JSON: {"reply": "<what you say>", "attitude": <integer -3 to 3: how this exchange changed how you feel about them>}.',
-  ].filter(Boolean).join('\n');
-}
-
-export type Topic = 'hello' | 'work' | 'life' | 'gossip' | 'advice' | 'compliment' | 'joke' | 'insult' | 'flirt' | 'bye';
-
-/** a reply without a language model, from what this person knows and how they feel */
-export function scriptedReply(state: GameState, id: Id, topic: Topic): { reply: string; attitude: number } {
-  const q = personaOf(state, id);
-  const p = state.people[id];
-  const warm = q.relationScore >= FRIEND_AT;
-  const pick = <T,>(xs: T[]) => xs[(Math.floor(state.minute) + id.length) % xs.length];
-  const others = Object.values(state.people).filter((o) => o.id !== id && !o.isPlayer && !o.npc?.ambient && o.history.length);
-  const you = state.people[state.playerId];
-  if (topic !== 'bye' && p.history.some((e) => e.text.includes(`attacked by ${you.name}`))) return { reply: pick(['Stay away from me!', "Don't come near me. I'll call the police.", 'You. Get away from me.']), attitude: -1 };
-  if (topic !== 'bye' && you.weapon) return { reply: pick(["Why are you carrying that? Put it away.", 'Whoa, what do you need that for?']), attitude: -1 };
-  if (topic === 'hello' && (you.drunk ?? 0) > 50) return { reply: pick(["You're a bit worse for wear, aren't you?", 'Had a few, have we?']), attitude: 0 };
-  if (topic === 'life' && you.injured) return { reply: `Never mind me, what happened to you? You look like you've been in the wars.`, attitude: 1 };
-  switch (topic) {
-    case 'hello':
-      return { reply: warm ? pick([`${state.people[state.playerId].name.split(' ')[0]}! Good to see you.`, 'Hey you! How are things?']) : pick(['Hello there.', 'Alright?', `Morning. I'm ${q.first}, by the way.`]), attitude: 1 };
-    case 'work':
-      if (!p.contractId) return { reply: pick(["I'm between jobs. The Job Centre board's worth a look most mornings.", "Still looking for work, if I'm honest. It gets you down."]), attitude: 1 };
-      return { reply: pick([`I'm ${q.job}. ${p.traits.conscientiousness > 0.6 ? 'Busy, but I like keeping on top of it.' : "It pays the rent, that's about all I'll say."}`, `Work's ${p.needs.energy < 40 ? 'wearing me out' : 'alright'}. ${q.workplace} always needs a hand.`]), attitude: 1 };
-    case 'life':
-      return { reply: `${q.mood[0].toUpperCase()}${q.mood.slice(1)}, honestly. ${q.recent.length ? `${q.recent[q.recent.length - 1]}, you know.` : 'Not much happens to me.'} ${q.family.startsWith('single') ? '' : `Family's ${q.family}.`}`.trim(), attitude: 2 };
-    case 'gossip': {
-      const o = others.length ? pick(others) : null;
-      return { reply: o ? `Did you hear? ${o.name.split(' ')[0]}... ${o.history[o.history.length - 1].text.toLowerCase()}.` : 'Nothing much to tell. Quiet town, this.', attitude: warm ? 2 : 0 };
-    }
-    case 'advice':
-      return { reply: pick(['Keep your rent covered before anything else. Mondays come round fast.', 'Courses at the Job Centre are worth it. A forklift licence pays more at the warehouse.', 'If you want to get on, own something. Rent pays somebody else.', 'Turn up on time and they remember it.']), attitude: 1 };
-    case 'compliment':
-      return { reply: p.traits.sociability > 0.5 ? pick(["Aw, that's kind of you.", 'Ha, flattery will get you everywhere.']) : pick(['Oh. Er, thanks.', "That's... nice of you."]), attitude: 2 };
-    case 'joke':
-      return { reply: p.traits.patience > 0.5 || warm ? pick(['Ha! Good one.', "Stop, you'll set me off."]) : 'Hm. Right.', attitude: p.traits.sociability > 0.4 ? 2 : 0 };
-    case 'flirt': {
-      const taken = !!p.partnerId;
-      if (taken) return { reply: `Ha, I'm ${p.relationship === 'married' ? 'married' : 'seeing someone'}, love. But thanks.`, attitude: -1 };
-      if (q.relationScore >= 45) return { reply: pick(['Is that so? Maybe you should take me for a drink sometime.', "You're not so bad yourself."]), attitude: 3 };
-      return { reply: pick(["We've only just met!", 'Steady on.']), attitude: -1 };
-    }
-    case 'insult':
-      return { reply: p.traits.patience < 0.4 ? pick(['Say that again and see what happens.', 'Who do you think you are?']) : pick(["Wow. Okay. I'll leave you to it.", "That's out of order."]), attitude: -3 };
-    case 'bye':
-      return { reply: warm ? 'See you soon, yeah?' : 'Bye then.', attitude: 0 };
-  }
-}
-
 /** the effect of an exchange on how both of you feel */
 export function applyAttitude(state: GameState, id: Id, attitude: number) {
   const p = state.people[id], you = state.people[state.playerId];
@@ -160,15 +88,6 @@ export function applyAttitude(state: GameState, id: Id, attitude: number) {
   you.needs.mood = clamp(you.needs.mood + (a > 0 ? 1 : a < 0 ? -1 : 0), 0, 100);
   if (before < FRIEND_AT && p.relations[you.id] >= FRIEND_AT) news(state, 'good', `${p.name} is now a friend`, 'Invite them for a coffee at Tidewater Cafe to keep in touch.', true);
   if (a <= -3 && p.traits.patience < 0.3) p.grudge = (p.grudge ?? 0) + 1;
-}
-
-/** a greeting worth starting with, when someone stops you in the street */
-export function openingLine(state: GameState, id: Id): string {
-  const q = personaOf(state, id);
-  const warm = q.relationScore >= FRIEND_AT;
-  if (warm) return `Hey! Got a minute?`;
-  if (q.relationScore > 0) return `Oh, hello again. How's it going?`;
-  return `Hi, you're new round here, aren't you? I'm ${q.first}.`;
 }
 
 export const fmtWealth = (n: number) => fmtMoney(n);

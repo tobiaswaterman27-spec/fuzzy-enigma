@@ -21,7 +21,30 @@ export const hasAi = () => !!getApiKey();
 
 export interface ChatTurn { role: 'system' | 'user' | 'assistant'; content: string }
 
-/** one reply in character: { reply, attitude } parsed from the model's JSON, or null on any failure */
+/** a JSON answer from the model (parsed), or an error to show */
+export async function aiJson(messages: ChatTurn[], maxTokens = 220, signal?: AbortSignal): Promise<{ data: unknown } | { error: string }> {
+  const key = getApiKey();
+  if (!key) return { error: 'No API key set.' };
+  try {
+    const r = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+      body: JSON.stringify({ model: getModel(), messages, temperature: 0.9, max_tokens: maxTokens, response_format: { type: 'json_object' } }),
+      signal,
+    });
+    if (!r.ok) {
+      const t = await r.text().catch(() => '');
+      return { error: r.status === 401 ? 'Your OpenAI key was rejected. Check it in Menu.' : r.status === 429 ? 'OpenAI says too many requests or no credit left on the key.' : `The AI service said ${r.status}${t ? `: ${t.slice(0, 120)}` : ''}` };
+    }
+    const j = await r.json();
+    const content = j.choices?.[0]?.message?.content ?? '';
+    try { return { data: JSON.parse(content) }; } catch { return { data: { reply: String(content) } }; }
+  } catch (e) {
+    return { error: `Could not reach OpenAI (${(e as Error).message}).` };
+  }
+}
+
+/** one reply in character: { reply, attitude } parsed from the model's JSON, or an error */
 export async function aiReply(messages: ChatTurn[], signal?: AbortSignal): Promise<{ reply: string; attitude: number } | { error: string }> {
   const key = getApiKey();
   if (!key) return { error: 'No API key set.' };

@@ -8,6 +8,7 @@ import { FRIEND_AT } from './social';
 import { minuteOfDay, dayIndex } from './clock';
 import { transfer } from './ledger';
 import { crime, flee } from './health';
+import { goTo } from './npc';
 import { getWorld, HOUSE_IDS, locationOf } from './world/layout';
 
 export const houseOf = (id: string) => id.replace(/_(door|valuables)$/, '');
@@ -22,22 +23,48 @@ function open(state: GameState, houseId: Id, minutes: number) {
   (state.houseOpen ??= {})[houseId] = Math.max(state.houseOpen[houseId] ?? 0, state.minute + minutes);
 }
 
-/** knock: someone at home answers, and lets you in if they like you */
+/** knock: whoever is up and at home comes to the door. Friends (and, by day, people who know you)
+ * let you in; anyone else opens up, sees who it is and closes the door again. Acted out in doorTick */
 export function knock(state: GameState, personId: Id, houseId: Id): { ok: boolean; msg: string } {
   const me = state.people[personId];
-  const home = residentsHome(state, houseId).filter((p) => !p.sleeping || !night(state));
-  if (!home.length) return { ok: true, msg: residentsHome(state, houseId).length ? 'No answer. The lights are off; everyone is asleep.' : 'No answer. Nobody seems to be home.' };
-  const best = home.reduce((a, b) => ((b.relations[me.id] ?? 0) > (a.relations[me.id] ?? 0) ? b : a));
+  const awake = residentsHome(state, houseId).filter((p) => !p.sleeping);
+  if (!awake.length) { state.doorCall = { house: houseId, by: personId, at: state.minute, answerer: null, stage: 'done', letIn: false }; return { ok: true, msg: '' }; }
+  const best = awake.reduce((a, b) => ((b.relations[me.id] ?? 0) > (a.relations[me.id] ?? 0) ? b : a));
   const rel = best.relations[me.id] ?? 0;
-  const first = best.name.split(' ')[0];
-  if (best.history.some((e) => e.text.includes(`attacked by ${me.name}`) || e.text.includes('Burgled'))) return { ok: true, msg: `${first} sees it is you and won't open the door.` };
-  if (rel >= FRIEND_AT || (rel >= 20 && !night(state))) {
-    open(state, houseId, 45);
-    best.relations[me.id] = clamp(rel + 2, 0, 100);
-    return { ok: true, msg: `${first} opens the door: "Oh, hello! Come in."` };
+  const hostile = best.history.some((e) => e.text.includes(`attacked by ${me.name}`) || e.text.includes('Burgled'));
+  const letIn = !hostile && (rel >= FRIEND_AT || (rel >= 20 && !night(state)));
+  state.doorCall = { house: houseId, by: personId, at: state.minute, answerer: best.id, stage: 'waiting', letIn };
+  if (night(state) && !letIn) best.relations[me.id] = Math.max(0, rel - 3);
+  return { ok: true, msg: '' };
+}
+
+/** the answering of the door, step by step: footsteps, the door opens, they let you in or close it */
+export function doorTick(state: GameState) {
+  const c = state.doorCall;
+  if (!c || c.stage === 'done' || !c.answerer) return;
+  const p = state.people[c.answerer];
+  const idx = HOUSE_IDS.indexOf(c.house) + 1;
+  const door = getWorld().nodes[`door_house_${idx}`], inside = getWorld().nodes[`in_house_${idx}`];
+  if (!p || !door || !inside || p.dead || p.away) { c.stage = 'done'; return; }
+  const t = state.minute - c.at;
+  const east = inside.x > door.x;
+  if (c.stage === 'waiting' && t > 0.8) {
+    // they come to the door: standing just inside the open door, facing out
+    p.visible = true; p.move = null; p.action = null;
+    p.pos = { x: door.x + (east ? 1.25 : -1.25), z: door.z };
+    p.facing = east ? -Math.PI / 2 : Math.PI / 2;
+    (p.npc as any).shownIn = c.house;
+    if (p.npc) { p.npc.plan = [{ kind: 'wait', until: state.minute + 3 }]; }
+    c.stage = 'open';
+    if (c.letIn) { open(state, c.house, 45); p.relations[c.by] = clamp((p.relations[c.by] ?? 0) + 2, 0, 100); }
+    p.gesture = { clip: c.letIn ? 'wave' : night(state) ? 'argue' : 'shrug', until: state.minute + 1 };
+  } else if (c.stage === 'open' && t > (c.letIn ? 2.2 : 2.6)) {
+    // let in: they step back into the front room; not: they close the door and go back inside
+    c.stage = 'done';
+    if (p.npc) p.npc.plan = [];
+    if (c.letIn) goTo(state, p, { x: inside.x + (east ? 2.4 : -2.4), z: inside.z + 1 }, 'front room');
+    else { p.visible = false; (p.npc as any).shownIn = undefined; p.pos = { x: door.x, z: door.z }; }
   }
-  if (night(state)) { best.relations[me.id] = Math.max(0, rel - 3); return { ok: true, msg: `${first} shouts through the door: "Do you know what time it is? Go away!"` }; }
-  return { ok: true, msg: `${first} opens the door a crack: "Can I help you?" ... and closes it again. You don't know each other well enough.` };
 }
 
 /** force the door: noisy; anyone home or nearby calls the police */
@@ -49,10 +76,23 @@ export function breakIn(state: GameState, personId: Id, houseId: Id): { ok: bool
   const nearby = Object.values(state.people).some((o) => !o.isPlayer && o.visible && !o.dead && !o.police && dist(o.pos, me.pos) < 18);
   if (home.length || nearby || rand(state) < 0.2) {
     crime(state, 'burglary', 3);
-    for (const p of home) { p.relations[me.id] = 0; lifeEvent(state, p, `Burgled by ${me.name}`); }
-    return { ok: true, msg: `The door gives way with a crack. ${home.length ? 'Someone inside screams and calls 999!' : 'A neighbour has seen you.'}` };
+    for (const p of home) { p.relations[me.id] = 0; p.sleeping = false; lifeEvent(state, p, `Burgled by ${me.name}`); }
+    // whoever is in comes into the hall, frightened, phone in hand
+    const idx = HOUSE_IDS.indexOf(houseId) + 1;
+    const door = getWorld().nodes[`door_house_${idx}`], inside = getWorld().nodes[`in_house_${idx}`];
+    const p = home[0];
+    if (p && door && inside) {
+      const east = inside.x > door.x;
+      p.visible = true; p.move = null; p.action = null; (p.npc as any).shownIn = houseId;
+      p.pos = { x: door.x + (east ? 3.2 : -3.2), z: door.z - 0.6 };
+      p.facing = east ? -Math.PI / 2 : Math.PI / 2;
+      p.gesture = { clip: 'scared', until: state.minute + 1.2 };
+      if (p.npc) p.npc.plan = [{ kind: 'wait', until: state.minute + 4 }];
+    }
+    return { ok: true, msg: '' };
   }
-  return { ok: true, msg: `You force the door of ${name}. Nobody seems to have noticed.` };
+  void name;
+  return { ok: true, msg: '' };
 }
 
 /** go through the drawers for cash: a little of what the household has */
@@ -92,7 +132,7 @@ export function housesTick(state: GameState) {
       p.pos = { x: n.x + (n.x > 0 ? 2.8 : -2.8), z: n.z + 0.8 - residentsHome(state, id).indexOf(p) * 1.2 };
       p.facing = Math.atan2(me.pos.x - p.pos.x, me.pos.z - p.pos.z);
       (p.npc as any).shownIn = id;
-    } else if (!inside && p.visible && (p.npc as any)?.shownIn === id && !p.move && !p.action && !p.combat) {
+    } else if (!inside && p.visible && (p.npc as any)?.shownIn === id && !p.move && !p.action && !p.combat && !(state.doorCall?.answerer === p.id && state.doorCall.stage !== 'done') && !(p.gesture && state.minute < p.gesture.until)) {
       p.visible = false;
       (p.npc as any).shownIn = undefined;
     }
