@@ -49,6 +49,7 @@ export interface BuildingDef {
 
 export type ObstacleKind =
   | 'bait_hut'
+  | 'kennel_gate'
   | 'dartboard'
   | 'railing'
   | 'planter'
@@ -183,7 +184,9 @@ export type InteractKind =
   | 'bait_shop'
   | 'boat_hire'
   | 'pub_bar'
-  | 'darts';
+  | 'darts'
+  | 'kennel'
+  | 'rescue_desk';
 
 export interface Interactable {
   id: string;
@@ -355,6 +358,15 @@ const B: BuildingDef[] = [
 export const QUAY_EDGE = 90;
 export const FISH_SPOTS = [{ id: 'fish_1', x: -22 }, { id: 'fish_2', x: -4 }, { id: 'fish_3', x: 14 }, { id: 'fish_4', x: 34 }];
 export const BAIT_HUT = { x: -34, z: 79 };
+
+// Harbourside Dog Rescue, on the open ground east of the park
+B.push({
+  id: 'rescue', name: 'Harbourside Dog Rescue', category: 'functional', role: 'Dogs looking for a home: come in and meet them',
+  rect: { x0: 76, z0: 46, x1: 92, z1: 60 }, height: 4, floors: 1, color: '#d8c9a8', trim: '#3b6b4a', roof: '#4a4a44',
+  sign: { text: 'DOG RESCUE', side: 'xmin', color: '#ffffff', bg: '#3b6b4a' },
+  doors: [{ side: 'xmin', a: 52, b: 54.2, open: true }], interior: true, floorColor: '#b9b2a2',
+  internalWalls: [{ x0: 86.6, z0: 50.1, x1: 92, z1: 50.25 }, { x0: 86.6, z0: 53.6, x1: 92, z1: 53.75 }, { x0: 86.6, z0: 57.1, x1: 92, z1: 57.25 }],
+});
 
 // The Anchor: the pub at the east end of the quay
 B.push({
@@ -650,6 +662,13 @@ function buildWorldData(homeDesign: HomeDesign): World {
     add({ id: `${id}_door`, kind: 'housedoor', label: `${b.name} (front door)`, pos: P(-0.9, 0), facing: east ? Math.PI / 2 : -Math.PI / 2, obj: P(0, 0), locationId: 'outside', range: 1.6 });
     add({ id: `${id}_valuables`, kind: 'valuables', label: 'Chest of drawers', pos: P(4.4, -3.2), facing: Math.PI, obj: P(4.4, -4.05), locationId: id });
   }
+  // ---- the dog rescue: the front desk, and four kennels along the back wall behind low gates
+  obstacles.push({ kind: 'counter', rect: { x0: 78.6, z0: 47, x1: 79.6, z1: 50.5 }, height: 1.0, solid: true, color: '#3b6b4a' });
+  for (const [i, zc] of [47.9, 51.85, 55.35, 58.6].entries()) {
+    obstacles.push({ kind: 'kennel_gate', rect: { x0: 86.45, z0: zc - 1.4, x1: 86.6, z1: zc + 1.4 }, height: 1.0, solid: true });
+    add({ id: `kennel_${i}`, kind: 'kennel', label: 'Kennel', pos: { x: 85.4, z: zc }, facing: Math.PI / 2, obj: { x: 88.5, z: zc }, locationId: 'rescue', range: 1.8 });
+  }
+  add({ id: 'rescue_desk', kind: 'rescue_desk', label: 'Rescue front desk', pos: { x: 80.6, z: 48.7 }, facing: -Math.PI / 2, obj: { x: 79.1, z: 48.7 }, locationId: 'rescue', range: 1.8 });
   // ---- The Anchor: the bar along the back wall, tables, and the dartboard on the north wall
   obstacles.push({ kind: 'counter', rect: { x0: 76.6, z0: 74, x1: 77.6, z1: 84 }, height: 1.05, solid: true, color: '#4a2f1e' });
   obstacles.push({ kind: 'kitchen', rect: { x0: 81.2, z0: 74.5, x1: 81.85, z1: 83.5 }, height: 0.95, solid: true, rot: -Math.PI / 2 });
@@ -948,6 +967,9 @@ function buildWorldData(homeDesign: HomeDesign): World {
   // to The Anchor, and about inside it
   N('pub_out', 62.4, 78.1); N('pub_in', 66, 78.1, 'pub'); N('pub_bar', 75.4, 79, 'pub'); N('pub_mid', 70, 78.1, 'pub'); N('pub_darts', 74, 83.2, 'pub'); N('pub_t', 69.5, 76.8, 'pub');
   L('q_ee', 'pub_out', 'pub_in', 'pub_mid', 'pub_bar'); L('pub_mid', 'pub_darts'); L('pub_mid', 'pub_t');
+  // to the dog rescue, up the east side of the park
+  N('res_a', 73, 10); N('res_b', 73, 40); N('res_out', 73.6, 53.1); N('res_in', 78, 53.1, 'rescue'); N('res_desk', 80.6, 50.4, 'rescue'); N('res_k', 84.6, 53.1, 'rescue');
+  L('se_56', 'res_a', 'res_b', 'res_out', 'res_in', 'res_k'); L('res_in', 'res_desk'); N('res_pub', 63, 68); L('res_out', 'res_pub', 'pub_out');
   N('q_bait', BAIT_HUT.x, BAIT_HUT.z - 2.2); N('q_bait_c', BAIT_HUT.x + 4, BAIT_HUT.z - 2.2); L('q_bait', 'q_bait_c', 'q_w');
 
   // Corner Market: front door + interior

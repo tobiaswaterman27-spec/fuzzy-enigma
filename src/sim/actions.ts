@@ -6,6 +6,7 @@ import { buyWeapon, finishRob, startRob, WEAPONS } from './health';
 import { breakIn, houseOf, houseOpen, knock, searchValuables } from './houses';
 import { grabShoplifter } from './incidents';
 import { buyRound, PUB_PINT, pubOpen } from './pub';
+import { ADOPTION, adoptFromKennel, rescueDogs } from './rescue';
 import { BOAT_ID, BOAT_PRICE, hireBoat } from './boats';
 import { askFavour, canComplete, completeFavour, openFavour } from './favours';
 import { buyLotto, LOTTO_PRICE, SCRATCH_PRICE, scratchcard } from './leisure';
@@ -390,6 +391,16 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
       out.push(opt('buy_round', 'Buy a round for the pub', !open ? 'Closed' : undefined));
       break;
     }
+    case 'kennel': {
+      const idx = Number(it.id.slice(7));
+      const d = rescueDogs(state)[idx];
+      if (!d) { out.push(opt('adopt', 'An empty kennel', 'Empty')); break; }
+      out.push(opt('adopt', `Adopt ${d.name} (${d.years} yrs, ${d.nature}) · ${fmtMoney(ADOPTION)}`, p.dog ? `You already have ${p.dog.name}` : undefined, String(idx)));
+      break;
+    }
+    case 'rescue_desk':
+      out.push(opt('adopt', `"Have a look round the kennels: they're all looking for homes."`, 'Talk to the dogs in the kennels to adopt'));
+      break;
     case 'darts':
       out.push({ type: 'ui', label: 'Play darts (301)', enabled: true, ui: 'darts' });
       break;
@@ -611,6 +622,12 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
     }
     case 'hire_boat':
       return hireBoat(state, p.id);
+    case 'adopt': {
+      const r = adoptFromKennel(state, p.id, Number(arg));
+      if (!r.ok) return r;
+      begin(p, type, itId, { duration: 0.8 }, now);
+      return r;
+    }
     case 'rob': {
       const r = startRob(state, p.id, it.businessId!, itId);
       if (!r.ok) return r;
@@ -912,6 +929,7 @@ export function tickAction(state: GameState, p: Person, dt: number): string | nu
     case 'scratch': msg = scratchcard(state, p.id).msg; break;
     case 'rob': msg = finishRob(state, p.id) || null; break;
     case 'hand_over_cash': msg = null; break;
+    case 'adopt': msg = null; break;
     case 'fish': if (!p.isPlayer) npcCatch(state, p); msg = null; break;
     case 'buy_tackle': case 'sell_catch': msg = null; break;
     case 'lotto': msg = null; break;

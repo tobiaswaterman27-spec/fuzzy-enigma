@@ -1004,7 +1004,7 @@ export class Views {
   }
 
   /** dogs out with their owners, on a lead (yours walks free at heel) */
-  private dogs = new Map<string, { view: DogView; lead: THREE.Line | null; seen: boolean }>();
+  dogs = new Map<string, { view: DogView; lead: THREE.Line | null; seen: boolean }>();
   private updateDogs(state: GameState, dt: number, viewer?: { x: number; z: number }) {
     for (const d of this.dogs.values()) d.seen = false;
     const borrowed = (state.people[state.playerId] as any)?.borrowedDog;
@@ -1041,6 +1041,27 @@ export class Views {
         d.lead.visible = pv.rig.root.visible;
       }
       d.view.root.visible = !pv || pv.rig.root.visible || o.isPlayer;
+    }
+    // the rescue's dogs pace their kennels, coming up to the gate when you're near
+    if (!viewer || Math.hypot(viewer.x - 84, viewer.z - 53) < 40) {
+      const me = state.people[state.playerId];
+      (state.rescue?.dogs ?? []).forEach((rd, i) => {
+        const key = `kennel:${i}:${rd.name}`;
+        let d = this.dogs.get(key);
+        if (!d) {
+          const view = new DogView(rd.color, rd.size);
+          view.pos.set(88.5, [47.9, 51.85, 55.35, 58.6][i]);
+          this.scene.add(view.root);
+          d = { view, lead: null, seen: true };
+          this.dogs.set(key, d);
+        }
+        d.seen = true;
+        const zc = [47.9, 51.85, 55.35, 58.6][i];
+        const near = me && me.where === 'rescue' && Math.abs(me.pos.z - zc) < 1.6 && me.pos.x > 83;
+        const t = performance.now() / 1000 + i * 7.3;
+        const tx = near ? 86.95 : 88.4 + Math.sin(t * 0.23) * 0.9, tz = near ? zc + Math.sin(t * 1.7) * 0.2 : zc + Math.sin(t * 0.31 + 1) * 0.9;
+        d.view.update(dt, tx, tz, near ? -Math.PI / 2 : d.view.facing);
+      });
     }
     for (const [id, d] of this.dogs) if (!d.seen) { this.scene.remove(d.view.root); if (d.lead) this.scene.remove(d.lead); this.dogs.delete(id); }
   }

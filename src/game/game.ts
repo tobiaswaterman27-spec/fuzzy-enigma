@@ -19,6 +19,7 @@ import { capability } from '../sim/needs';
 import { daylight, hourOfDay } from '../sim/clock';
 import { buildWorld, type WorldView } from '../render/world';
 import { Views } from '../render/views';
+import { dogDies } from '../sim/rescue';
 import { Traffic } from '../render/traffic';
 import { PoliceCar } from '../render/police';
 import { GatheringProps } from '../render/gatherings';
@@ -34,7 +35,7 @@ import { safeWrite, loadSlot, type KV } from '../sim/save';
 import { news } from '../sim/events';
 import { CAR_MODELS, exitCar, stealCar } from '../sim/cars';
 import { forkliftAction } from '../sim/forklift';
-import { attack, attackTarget, hitByVehicle, nextWeapon } from '../sim/health';
+import { attack, attackTarget, crime, hitByVehicle, nextWeapon } from '../sim/health';
 import { fitnessFactor, trainRun } from '../sim/leisure';
 import { taxiBump, taxiTarget } from '../sim/taxi';
 import { castFromBoat, fishingBlocker, strike } from '../sim/fishing';
@@ -605,6 +606,17 @@ export class Game {
         o.pos = resolveCircle({ x: o.pos.x + Math.sign(side || 1) * fz * 1.2 + fx * Math.sign(this.vanSpeed) * 0.8, z: o.pos.z - Math.sign(side || 1) * fx * 1.2 + fz * Math.sign(this.vanSpeed) * 0.8 }, 0.3);
         this.vanSpeed *= 0.7;
         this.onToast(`You hit ${o.name}!`);
+      }
+      // a dog in the road
+      for (const [owner, d] of this.views.dogs) {
+        const o = this.state.people[owner];
+        if (!o?.dog || o.isPlayer) continue;
+        const dx = d.view.pos.x - res.x, dz = d.view.pos.y - res.z;
+        if (Math.abs(dx * fx + dz * fz) > 2.2 || Math.abs(dx * fz - dz * fx) > 1.0) continue;
+        const name = o.dog.name;
+        dogDies(this.state, o, 'hit by a car');
+        crime(this.state, 'ran over a dog', 1);
+        this.onToast(`You ran over ${o.name.split(' ')[0]}'s dog ${name}!`);
       }
     }
     v.pos = res;

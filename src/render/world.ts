@@ -1117,6 +1117,14 @@ function buildObstacle(o: Obstacle): THREE.Object3D {
       }
       break;
     }
+    case 'kennel_gate': {
+      // a low galvanised gate: top and bottom rails with upright bars
+      const steel = metal('#9aa3a8');
+      const L = Math.max(W, D), along = D > W;
+      for (const y of [0.06, o.height - 0.03]) grp.add(along ? box(0.05, 0.05, L, steel, cx, y, cz) : box(L, 0.05, 0.05, steel, cx, y, cz));
+      for (let t = -L / 2 + 0.06; t <= L / 2 - 0.05; t += 0.12) grp.add(along ? cyl(0.012, 0.012, o.height, steel, cx, o.height / 2, cz + t, 6) : cyl(0.012, 0.012, o.height, steel, cx + t, o.height / 2, cz, 6));
+      break;
+    }
     case 'pallet': {
       if (fit('pallet', r, o.rot ?? (W > D ? 0 : Math.PI / 2), undefined, o.height)) return grp;
       const wood = M('#a5814f', 0.9);

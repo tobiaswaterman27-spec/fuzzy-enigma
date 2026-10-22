@@ -13,6 +13,7 @@ import { favoursTick } from './favours';
 import { achievementsTick } from './achievements';
 import { newYearTick } from './newyear';
 import { pubTick } from './pub';
+import { dogsDaily, rescueDogs } from './rescue';
 import { anglersTick, dogTick, initDogs, joggersTick, lottoTick, seasonalWardrobe } from './leisure';
 import { wealthDaily } from './wealth';
 import { billsTick } from './bills';
@@ -81,6 +82,7 @@ function substep(state: GameState, dt: number, ev: StepEvents) {
   followTick(state);
   taxiTick(state);
   housesTick(state);
+  if (!state.rescue) rescueDogs(state);
   doorTick(state);
   logisticsTick(state, dt);
 }
@@ -151,6 +153,7 @@ export function minuteTick(state: GameState) {
     wealthDaily(state);
     lifeDaily(state);
     initDogs(state);
+    dogsDaily(state);
     seasonalWardrobe(state);
     healthDaily(state);
     for (const b of Object.values(state.businesses)) dailyClose(state, b);

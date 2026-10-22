@@ -154,6 +154,7 @@ export type ActionType =
   | 'buy_pint'
   | 'knock'
   | 'grab'
+  | 'adopt'
   | 'hand_over_cash'
   | 'buy_round'
   | 'hire_boat'
@@ -708,6 +709,8 @@ export interface GameState {
   /** text messages people have sent the player */
   inbox?: { from: Id; text: string; at: number; read: boolean }[];
   dogsInit?: boolean;
+  /** the dogs at the rescue this week */
+  rescue?: { week: number; dogs: import('./rescue').RescueDog[] };
   /** achievements unlocked (id -> minute) */
   achievements?: Record<string, number>;
   /** favours the player is doing for townspeople (favours.ts) */

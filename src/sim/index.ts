@@ -50,3 +50,4 @@ export * from './achievements';
 export * from './newyear';
 export * from './boats';
 export * from './pub';
+export * from './rescue';

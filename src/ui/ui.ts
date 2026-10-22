@@ -20,7 +20,8 @@ import { aiJson, claudeAi, getApiKey, getModel, hasAi, setApiKey, type ChatTurn 
 import { billAccount, billEstimate } from '../sim/bills';
 import { MILESTONES, netWorth, wealthTitle } from '../sim/wealth';
 import { HOSPITAL, WEAPONS, goToAandE } from '../sim/health';
-import { ADOPTION_FEE, adoptDog, call999, DOG_FOOD_WEEK } from '../sim/leisure';
+import { call999, DOG_FOOD_WEEK } from '../sim/leisure';
+import { ADOPTION } from '../sim/rescue';
 import { startTaxi, stopTaxi, taxiTarget } from '../sim/taxi';
 import { biting } from '../sim/fishing';
 import { ACHIEVEMENTS } from '../sim/achievements';
@@ -361,7 +362,7 @@ export class UI {
     const favs = (s.favours ?? []).filter((f) => f.status === 'open');
     return `${favs.length ? `<h3>Favours</h3>${favs.map((f) => `<div class="card">${esc(f.text)}<br><span class="muted">${fmtMoney(f.reward)} · by ${fmtClock(f.until)}${dayIndex(f.until) > dayIndex(s.minute) ? ' tomorrow' : ''}</span></div>`).join('')}` : ''}<h3>Fitness</h3><div class="card">Fitness ${fit}/100 <div class="bar"><i style="width:${fit}%"></i></div><span class="muted">Run (hold Shift) to get fitter: you run faster, tire less and hit harder. It fades if you stop.</span></div>
       <h3>Dog</h3>${d ? `<div class="card"><b>${esc(d.name)}</b> · with you since day ${dayIndex(d.since) + 1} · ${d.happy >= 70 ? 'happy' : d.happy >= 40 ? 'all right' : 'fed up'} (${Math.round(d.happy)})<br><span class="muted">${d.walkedDay === dayIndex(s.minute) ? 'Walked today.' : 'Not walked yet today: be out and about together for half an hour.'} Food ${fmtMoney(DOG_FOOD_WEEK)} a week.</span></div>`
-      : `<div class="card">Harbourside Dog Rescue has dogs looking for a home. Adoption fee ${fmtMoney(ADOPTION_FEE)}, then ${fmtMoney(DOG_FOOD_WEEK)} a week for food. They go everywhere with you and need a walk every day.<div class="row"><input id="dog-name" type="text" maxlength="16" placeholder="Name your dog" style="flex:1"><button data-adopt="1">Adopt</button></div></div>`}
+      : `<div class="card">Harbourside Dog Rescue (past Unit 4, by the park) has dogs looking for a home. Go in and meet them in the kennels. Adoption fee ${fmtMoney(ADOPTION)}, then ${fmtMoney(DOG_FOOD_WEEK)} a week for food. They go everywhere with you and need a walk every day.</div>`}
       <h3>Lottery</h3><div class="card">${tickets.length ? tickets.map((t) => `Ticket for ${fmtDate(t.draw).split(',')[0]}: <b>${t.numbers.join(' ')}</b>`).join('<br>') : 'No ticket for this week.'}<br><span class="muted">Tickets and scratchcards at the Corner Market self-checkout. Draw Saturday 20:00: 3 numbers ${fmtMoney(3000)}, 4 ${fmtMoney(14000)}, 5 ${fmtMoney(175000)}, all 6 ${fmtMoney(200000000)}.</span></div>
       <h3>Achievements (${Object.keys(s.achievements ?? {}).length}/${ACHIEVEMENTS.length})</h3><div class="card">${ACHIEVEMENTS.map((a) => `<div class="line"><span>${s.achievements?.[a.id] !== undefined ? '★' : '☆'} <b>${esc(a.title)}</b></span><span class="muted">${esc(a.how)}</span></div>`).join('')}</div>
       <h3>Emergency</h3><div class="row"><button data-999="ambulance">Call 999: ambulance</button><button data-999="police">Call 999: police</button></div>`;
@@ -594,7 +595,6 @@ export class UI {
       else if (d.cab === 'talk' && s.taxi?.job) { this.closePhone(); this.openChat(s.taxi.job.passenger, true, `sitting in the back of ${this.p.name.split(' ')[0]}'s car, who is your HarbourCabs driver, on the way to ${s.taxi.job.to}`); return; }
       this.lastBody = ''; this.renderPhone(); return;
     }
-    if (d.adopt) { const name = ($('#dog-name') as HTMLInputElement | null)?.value ?? ''; this.toast(adoptDog(s, this.p.id, name).msg); this.lastBody = ''; this.renderPhone(); return; }
     if (d['999']) { this.toast(call999(s, this.p.id, d['999'] as 'ambulance' | 'police')); this.closePhone(); return; }
     if (d.reply) {
       const msg = s.inbox?.find((x) => x.from === d.reply && String(x.at) === d.at);
