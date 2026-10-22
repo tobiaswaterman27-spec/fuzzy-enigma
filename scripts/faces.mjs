@@ -6,7 +6,7 @@ const out = process.argv[2];
 const browser = await pw.chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: 520, height: 520 } });
 page.on('pageerror', (e) => console.log('pageerror', e.message));
-await page.goto('http://localhost:4173/?skipcreator'); await page.waitForTimeout(3000);
+await page.goto('http://localhost:4173/?skipcreator'); await page.waitForTimeout(6000);
 await page.evaluate(() => { for (const el of document.querySelectorAll('#hud')) el.style.display = 'none'; });
 const looks = [
   ['m', 1.6, { frame: 'm', hair: 'short', hairColor: '#2a1b10', skin: '#c58c6a', outfit: 'outfit_casual', build: 'average' }],
