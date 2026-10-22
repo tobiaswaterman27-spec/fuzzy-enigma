@@ -11,6 +11,7 @@ import { CASUAL_TOPS } from './render/human';
 import { requestHuman, startHumanBuilder, workerActive } from './render/humanBuilder';
 import { hasHumanBuild } from './render/humanAsset';
 import { buildRig, loadMocap } from './render/character';
+import { hasAi, setApiKey } from './ai/openai';
 
 await Promise.all([loadHumanAsset(), loadMocap(), loadModels(['car', 'van', 'car_lod', 'van_lod', 'gondola_bay', 'checkout', 'sofa', 'bed', 'wardrobe', 'table', 'chair', 'tvunit', 'kitchen_base', 'cooker', 'fridge', 'coffee_table', 'bookcase', 'drawers', 'armchair', 'desk', 'sideboard', 'bedside', 'basin', 'baler', 'dumpster', 'shopbin', 'washer', 'binbag', 'carton', 'storage_shelf', 'ironing_board', 'laundry_basket', 'drying_rack', 'bike', 'vacuum', 'rack_bay', 'pallet_load', 'pallet', 'forklift', 'roller_door', 'terminal', 'locker', 'kiosk', 'notice_board', 'office_desk', 'tree', 'park_bench', 'street_bin', 'bus_shelter', 'house_plant', 'floor_lamp', 'cafe_counter', 'bistro_set', 'waiting_chairs', 'water_cooler', 'leaflet_stand', 'shoe_trainer', 'shoe_oxford', 'shoe_boot', 'site_cabin', 'cement_mixer', 'heras_panel', 'wheelbarrow', 'tool_spade', 'tool_shovel', 'tool_hammer', 'tool_drill', 'tool_roller'])]);
 const canvas = document.getElementById('view') as HTMLCanvasElement;
@@ -29,6 +30,9 @@ const game = new Game(canvas, state);
 const ui = new UI(game);
 (window as any).__bigshot = { game, ui, sim, THREE, buildRig, buildRealHuman, bodies: { workerActive, hasHumanBuild } };
 document.getElementById('boot')!.remove();
+
+const EYE_COLORS = ['#4a6b8a', '#5a4632', '#3b2a1c', '#4f6b3a', '#6b7f8c', '#7a5a2a'] as const;
+const GAITS = [['walk', 'normal'], ['walk_b', 'relaxed'], ['walk_c', 'casual'], ['walk_brisk', 'brisk'], ['walk_proud', 'confident']] as const;
 
 // --- character creator: edits the real player appearance live
 function creator() {
@@ -52,8 +56,13 @@ function creator() {
       <label>Build</label>${chip('build', BUILDS, a.build)}
       <label>Everyday clothes</label><div class="chips">${CASUAL_TOPS.map(([c], i) => `<button data-g="style" data-v="${i}" class="swatch ${(a.style ?? 0) % CASUAL_TOPS.length === i && a.style !== undefined ? 'on' : ''}" style="background:${c}" aria-label="top ${i + 1}"></button>`).join('')}</div>
       <label>Height</label><div class="chips">${[0.94, 1, 1.06].map((h) => `<button data-g="height" data-v="${h}" class="${a.height === h ? 'on' : ''}">${h < 1 ? 'shorter' : h > 1 ? 'taller' : 'average'}</button>`).join('')}</div>
+      <label>Eyes</label>${chip('eyes', EYE_COLORS, a.eyes ?? '', true)}
+      <label>Walk</label><div class="chips">${GAITS.map(([v, l]) => `<button data-g="gait" data-v="${v}" class="${(p().gait ?? 'walk') === v ? 'on' : ''}">${l}</button>`).join('')}</div>
+      <label for="cc-ai">OpenAI API key <span class="muted">(optional)</span></label>
+      <input id="cc-ai" type="password" placeholder="${hasAi() ? 'Key saved in this browser - leave blank to keep it' : 'sk-… - leave blank to play without'}" autocomplete="off">
+      <p class="muted" style="margin-top:4px">With a key, people answer anything you say to them, in character, from their job, family, money, mood and history. It is stored only in this browser and sent only to OpenAI. Without one, conversations use built-in replies. You can change it later in Menu.</p>
       <button class="primary" id="cc-start">Start life in Harbourside</button>
-      <p class="muted">Controls: WASD to walk, Shift to run, E to use, Tab for your phone. The camera follows behind you; drag with the mouse to look around and scroll to zoom.</p>`;
+      <p class="muted">Controls: WASD to walk, Shift to run, E to use, F to fight, G to take a car, Tab for your phone. The camera follows behind you; drag with the mouse to look around and scroll to zoom.</p>`;
   };
   render();
   el.onclick = (e) => {
@@ -62,6 +71,8 @@ function creator() {
     if (b.id === 'cc-start') {
       const name = (document.getElementById('cc-name') as HTMLInputElement).value.trim();
       if (name) p().name = name;
+      const key = (document.getElementById('cc-ai') as HTMLInputElement).value.trim();
+      if (key) setApiKey(key);
       el.hidden = true;
       document.body.classList.remove('creating');
       game.uiOpen = false;
@@ -71,6 +82,7 @@ function creator() {
       return;
     }
     const g = b.dataset.g as keyof Appearance;
+    if ((g as string) === 'gait') { p().gait = b.dataset.v === 'walk' ? undefined : b.dataset.v; render(); return; }
     if (g === 'style') {
       // keep the chosen top; step through trousers and shoes when the same top is picked again
       const cur = p().appearance.style;

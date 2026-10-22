@@ -1105,7 +1105,7 @@ function buildRealHumanUncached(a: Appearance): HumanBuild {
       }
     }
     // eyes
-    const eyeColor = ['#4a6b8a', '#5a4632', '#3b2a1c', '#4f6b3a'][Math.abs(hashStr(a.skin + a.hairColor)) % 4];
+    const eyeColor = a.eyes ?? ['#4a6b8a', '#5a4632', '#3b2a1c', '#4f6b3a'][Math.abs(hashStr(a.skin + a.hairColor)) % 4];
     // both eyeballs in one mesh on the head bone; texture centre faces +z
     const eyeGeo = mergeGeometries(eyes.map((e) => new THREE.SphereGeometry(e.r * 0.98, 20, 16).rotateY(-Math.PI / 2).translate(e.c.x - joints.head.x, e.c.y - joints.head.y, e.c.z - joints.head.z)))!;
     const em = new THREE.Mesh(eyeGeo, mat('eye', eyeColor));

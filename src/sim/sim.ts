@@ -8,7 +8,7 @@ import { wealthDaily } from './wealth';
 import { billsTick } from './bills';
 import { lettingsTick } from './lettings';
 import { goodsInTick } from './forklift';
-import { carsTick } from './cars';
+import { carsTick, stolenTick } from './cars';
 import { inspectionsTick, powerCutTick } from './inspections';
 import type { GameState, Person } from './types';
 import { MIN_PER_DAY, minuteOfDay, dayIndex } from './clock';
@@ -90,6 +90,7 @@ export function minuteTick(state: GameState) {
   socialMinute(state);
   inspectionsTick(state);
   carsTick(state);
+  stolenTick(state);
   healthMinute(state);
   goodsInTick(state);
   lettingsTick(state);

@@ -109,6 +109,8 @@ export interface Appearance {
   frame?: 'm' | 'f'; // body frame
   /** which of the outfit's variations this person wears (colours, sleeves, tie); unset = the standard one */
   style?: number;
+  /** eye colour; unset = one that suits the skin and hair */
+  eyes?: string;
 }
 
 export interface Needs {
@@ -306,6 +308,8 @@ export interface Person {
   record?: string[];
   /** a police officer on duty */
   police?: boolean;
+  /** the way this person walks normally (a walk clip), when chosen */
+  gait?: string;
   /** 0..100 how drunk: wears off over a few hours */
   drunk?: number;
   /** died: kept for the record, no longer simulated */
@@ -561,6 +565,8 @@ export interface Vehicle {
   billedOdo?: number;
   nextCharge?: number;
   uninsured?: boolean;
+  /** taken from someone in the street: no papers, no bills; recovered by the police a day later */
+  stolen?: number;
   pos: Vec2;
   heading: number;
   route: Vec2[];

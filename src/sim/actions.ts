@@ -62,7 +62,7 @@ export function interactable(state: GameState, id: Id): Interactable | null {
     const v = state.vehicles[id.slice(4)];
     if (v && v.state === 'parked') {
       const door = { x: v.pos.x + Math.sin(v.heading - Math.PI / 2) * 1.6, z: v.pos.z + Math.cos(v.heading - Math.PI / 2) * 1.6 };
-      return { id, kind: 'vehicle', label: `Your ${v.name}`, pos: door, facing: v.heading + Math.PI / 2, obj: v.pos, locationId: locationOf(door), range: 2.6 };
+      return { id, kind: 'vehicle', label: v.stolen ? `${v.name} (stolen)` : `Your ${v.name}`, pos: door, facing: v.heading + Math.PI / 2, obj: v.pos, locationId: locationOf(door), range: 2.6 };
     }
   }
   if (id.startsWith('person:')) {
@@ -328,7 +328,7 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
       }
       if (it.id.startsWith('car:')) {
         const car = state.vehicles[it.id.slice(4)];
-        out.push(opt('drive_car', `Get in and drive your ${car?.name ?? 'car'}`, !car || car.ownerId !== actorId ? 'Not your car' : canDriveCar(state, car)));
+        out.push(opt('drive_car', car?.stolen ? `Get back in the stolen ${car.name}` : `Get in and drive your ${car?.name ?? 'car'}`, !car || (car.ownerId !== actorId && !car.stolen) ? 'Not your car' : canDriveCar(state, car)));
         break;
       }
       const v = state.vehicles[it.id.slice(4)];

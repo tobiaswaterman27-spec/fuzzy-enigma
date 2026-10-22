@@ -26,7 +26,7 @@ import { MarketStalls } from '../render/marketStalls';
 import { raining } from '../sim/weather';
 import { safeWrite, loadSlot, type KV } from '../sim/save';
 import { news } from '../sim/events';
-import { CAR_MODELS, exitCar } from '../sim/cars';
+import { CAR_MODELS, exitCar, stealCar } from '../sim/cars';
 import { forkliftAction } from '../sim/forklift';
 import { attack, attackTarget, hitByVehicle, nextWeapon } from '../sim/health';
 import { openingLine } from '../sim/persona';
@@ -275,6 +275,14 @@ export class Game {
         const t = attackTarget(this.state, p.id);
         const msg = attack(this.state, p.id, t?.id ?? null);
         if (msg) this.onToast(msg);
+        return;
+      }
+      if (e.code === 'KeyG' && !this.drivingVan()) {
+        const p = this.player;
+        if (p.down != null || p.away || p.dead || p.sleeping || p.action) return;
+        const c = this.traffic.take(p.pos.x, p.pos.z);
+        if (!c) { this.onToast('No car close enough (walk up to a slow or stopped car and press G).'); return; }
+        this.onToast(stealCar(this.state, p.id, { x: c.x, z: c.z }, c.heading, c.color));
         return;
       }
       if (e.code === 'KeyQ' && !this.drivingVan()) { this.onToast(nextWeapon(this.state, this.player.id)); return; }

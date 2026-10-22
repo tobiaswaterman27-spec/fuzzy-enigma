@@ -81,12 +81,23 @@ export function personaPrompt(state: GameState, id: Id): string {
   const q = personaOf(state, id);
   const you = state.people[state.playerId];
   const yc = you.contractId ? state.contracts[you.contractId] : null;
+  const me = state.people[id];
+  const seen: string[] = [];
+  if (you.weapon) seen.push(`they are holding a ${you.weapon === 'bat' ? 'cricket bat' : 'kitchen knife'}, which frightens you`);
+  if ((you.drunk ?? 0) > 40) seen.push('they are obviously drunk');
+  if (you.injured) seen.push('they look hurt and battered');
+  if (you.record?.length) seen.push(`word in town is they have a criminal record (${you.record.join('; ')})`);
+  if (state.wanted) seen.push('the police are looking for them right now');
+  if (me.history.some((e) => e.text.includes(`attacked by ${you.name}`))) seen.push('THEY ATTACKED YOU: you are scared of and angry with them');
+  else if ((me.grudge ?? 0) > 0) seen.push('they have been rude to you before and you hold a grudge');
+  if ((me.drunk ?? 0) > 40) seen.push('you have had a few drinks yourself');
   return [
     `You are ${q.name}, a ${q.age}-year-old ${q.gender} living in Harbourside, a small British harbour town. Stay in character and speak naturally, in British English, in one to three short sentences.`,
     `Your job: ${q.job}. You live at ${q.home}. Money: you are ${q.money}. Family: ${q.family}. Health: ${q.health}.`,
     `Personality: ${q.personality.join('; ')}. Right now you are ${q.mood}, ${q.doing}. It is ${q.time}; weather: ${q.weather}.`,
     q.recent.length ? `Recent events in your life: ${q.recent.join('; ')}.` : '',
     `You are talking to ${you.name}, who ${yc ? `works as ${yc.title} at ${state.businesses[yc.businessId]?.name}` : 'is looking for work'}. To you they are ${q.relationToYou} (closeness ${q.relationScore}/100). Be warmer the closer you are; be cool or curt if they are rude.`,
+    seen.length ? `What you notice or know about them: ${seen.join('; ')}.` : '',
     'Town: Corner Market (grocer), Harbour Wholesale (warehouse and depot), Tidewater Cafe, Harbour Home (furniture), the Job Centre, Marlow Court flats, the park (Saturday market), new houses going up on Harbour Road.',
     'Reply ONLY as JSON: {"reply": "<what you say>", "attitude": <integer -3 to 3: how this exchange changed how you feel about them>}.',
   ].filter(Boolean).join('\n');
@@ -101,6 +112,11 @@ export function scriptedReply(state: GameState, id: Id, topic: Topic): { reply: 
   const warm = q.relationScore >= FRIEND_AT;
   const pick = <T,>(xs: T[]) => xs[(Math.floor(state.minute) + id.length) % xs.length];
   const others = Object.values(state.people).filter((o) => o.id !== id && !o.isPlayer && !o.npc?.ambient && o.history.length);
+  const you = state.people[state.playerId];
+  if (topic !== 'bye' && p.history.some((e) => e.text.includes(`attacked by ${you.name}`))) return { reply: pick(['Stay away from me!', "Don't come near me. I'll call the police.", 'You. Get away from me.']), attitude: -1 };
+  if (topic !== 'bye' && you.weapon) return { reply: pick(["Why are you carrying that? Put it away.", 'Whoa, what do you need that for?']), attitude: -1 };
+  if (topic === 'hello' && (you.drunk ?? 0) > 50) return { reply: pick(["You're a bit worse for wear, aren't you?", 'Had a few, have we?']), attitude: 0 };
+  if (topic === 'life' && you.injured) return { reply: `Never mind me, what happened to you? You look like you've been in the wars.`, attitude: 1 };
   switch (topic) {
     case 'hello':
       return { reply: warm ? pick([`${state.people[state.playerId].name.split(' ')[0]}! Good to see you.`, 'Hey you! How are things?']) : pick(['Hello there.', 'Alright?', `Morning. I'm ${q.first}, by the way.`]), attitude: 1 };

@@ -104,6 +104,7 @@ export function walkStyleFor(p: Person): string {
   if (p.needs.mood < 25) return 'walk_sad';
   if (ageOf(p) > 70) return 'walk_slow';
   if (p.traits.ambition > 0.75 && p.needs.mood > 70) return 'walk_proud';
+  if (p.gait) return p.gait;
   if (p.isPlayer) return 'walk';
   let h = 0;
   for (let i = 0; i < p.id.length; i++) h = (h * 33 + p.id.charCodeAt(i)) >>> 0;

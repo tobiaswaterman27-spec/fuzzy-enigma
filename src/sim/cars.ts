@@ -9,6 +9,7 @@ import { news, lifeEvent } from './events';
 import { createContainer } from './inventory';
 import { locationOf } from './world/layout';
 import { resolveCircle } from './world/nav';
+import { crime } from './health';
 
 export interface CarModel { id: string; name: string; price: number; topSpeed: number; colors: string[]; blurb: string }
 
@@ -27,7 +28,7 @@ export const RESALE = 0.6;
 export const HOME_SPOT = { x: 19.5, z: 4 };
 
 export function playerCar(state: GameState, personId: Id): Vehicle | null {
-  return Object.values(state.vehicles).find((v) => v.kind === 'car' && v.ownerId === personId) ?? null;
+  return Object.values(state.vehicles).find((v) => v.kind === 'car' && v.ownerId === personId && !v.stolen) ?? null;
 }
 
 export function buyCar(state: GameState, personId: Id, modelId: string, color: string): { ok: boolean; msg: string } {
@@ -63,7 +64,34 @@ export function sellCar(state: GameState, personId: Id): { ok: boolean; msg: str
   return { ok: true, msg: `Sold the ${v.name} for ${fmtMoney(amount)}.` };
 }
 
+/** take a car from the street: the driver is pulled out and runs; the police are called */
+export function stealCar(state: GameState, personId: Id, pos: { x: number; z: number }, heading: number, color: string): string {
+  const p = state.people[personId];
+  const id = `stolen_${Math.floor(state.minute)}_${Object.keys(state.vehicles).length}`;
+  const boot = createContainer(state, 'van', 'traffic', id, 20, undefined, `${id}_boot`);
+  const model = CAR_MODELS[Object.keys(state.vehicles).length % CAR_MODELS.length];
+  state.vehicles[id] = {
+    id, name: model.name.replace(/ \(.*\)$/, ''), ownerId: 'traffic', kind: 'car', model: model.id, color, price: model.price,
+    pos: { ...pos }, heading, route: [], routeIdx: 0, speed: 0, state: 'manual_out', driverId: personId,
+    cargoId: boot.id, shipmentId: null, waitUntil: 0, condition: 85, odometer: 0, billedOdo: 0, stolen: state.minute,
+  };
+  p.where = 'vehicle'; p.visible = false; p.pos = { ...pos };
+  lifeEvent(state, p, `Stole a ${model.name.replace(/ \(.*\)$/, '').toLowerCase()}`);
+  crime(state, 'taking a vehicle without consent', 2);
+  return 'You drag the driver out and take the car. W/S to drive, A/D to steer, E to get out.';
+}
+
+/** abandoned stolen cars are recovered by the police after a day */
+export function stolenTick(state: GameState) {
+  for (const v of Object.values(state.vehicles)) {
+    if (!v.stolen || v.driverId || state.minute - v.stolen < 1440) continue;
+    delete state.containers[v.cargoId];
+    delete state.vehicles[v.id];
+  }
+}
+
 export function canDriveCar(state: GameState, v: Vehicle): string | undefined {
+  if (v.stolen) return undefined;
   if (!state.people[v.ownerId]?.quals?.includes('driving')) return 'You need a driving licence (course and test at the Job Centre)';
   if (v.uninsured) return 'Uninsured: pay the overdue insurance first (keep money in your account)';
   return undefined;
@@ -72,7 +100,7 @@ export function canDriveCar(state: GameState, v: Vehicle): string | undefined {
 export function enterCar(state: GameState, personId: Id, carId: Id): string {
   const v = state.vehicles[carId];
   const p = state.people[personId];
-  if (!v || v.kind !== 'car' || v.ownerId !== personId || v.state !== 'parked') return 'You cannot drive that.';
+  if (!v || v.kind !== 'car' || (v.ownerId !== personId && !v.stolen) || v.state !== 'parked') return 'You cannot drive that.';
   const why = canDriveCar(state, v);
   if (why) return why;
   v.state = 'manual_out';
@@ -85,7 +113,7 @@ export function enterCar(state: GameState, personId: Id, carId: Id): string {
 
 /** park where it is and step out on the kerb side */
 export function exitCar(state: GameState, personId: Id): { ok: boolean; msg: string } {
-  const v = playerCar(state, personId);
+  const v = Object.values(state.vehicles).find((c) => c.kind === 'car' && c.driverId === personId) ?? playerCar(state, personId);
   const p = state.people[personId];
   if (!v || !p || v.driverId !== personId) return { ok: false, msg: 'You are not driving.' };
   v.state = 'parked';
@@ -96,6 +124,7 @@ export function exitCar(state: GameState, personId: Id): { ok: boolean; msg: str
   p.pos = free ?? resolveCircle(spots[0], 0.35);
   p.where = locationOf(p.pos);
   p.visible = true;
+  if (v.stolen) return { ok: true, msg: 'You leave the stolen car where it is.' };
   const km = Math.max(0, (v.odometer - (v.billedOdo ?? 0)) / 1000);
   const fuel = Math.round(km * FUEL_PER_KM);
   v.billedOdo = v.odometer;

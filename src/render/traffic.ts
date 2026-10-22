@@ -5,7 +5,7 @@ import type { GameState } from '../sim/types';
 import { buildCar } from './world';
 
 interface Lane { from: THREE.Vector2; to: THREE.Vector2 }
-interface Car { obj: THREE.Object3D; lane: number; t: number; speed: number; cruise: number }
+interface Car { obj: THREE.Object3D; lane: number; t: number; speed: number; cruise: number; color: string }
 
 // drive on the left: eastbound on the north side of the high street, southbound on the east side of the cross road
 const LANES: Lane[] = [
@@ -28,17 +28,42 @@ export class Traffic {
       return { x0: p.x - hx, z0: p.z - hz, x1: p.x + hx, z1: p.z + hz };
     });
   }
-  constructor(scene: THREE.Scene, count = 14) {
+  private taken = 0;
+  /** a slow or stopped car within reach, pulled out of the traffic (for carjacking) */
+  take(x: number, z: number, reach = 3.4): { x: number; z: number; heading: number; color: string } | null {
+    let best: Car | null = null, bd = reach;
+    for (const c of this.cars) {
+      const d = Math.hypot(c.obj.position.x - x, c.obj.position.z - z);
+      // a car that has stopped for you can be reached from in front of it (it stops a few metres short)
+      if (c.speed < 2.5 && (d < bd || (c.speed < 0.6 && d < 7.5 && !best))) { best = c; bd = Math.min(bd, d); }
+    }
+    if (!best) return null;
+    this.cars.splice(this.cars.indexOf(best), 1);
+    this.scene.remove(best.obj);
+    this.taken++;
+    return { x: best.obj.position.x, z: best.obj.position.z, heading: best.obj.rotation.y, color: best.color };
+  }
+  private respawnAt = 0;
+
+  constructor(private scene: THREE.Scene, count = 14) {
     for (let i = 0; i < count; i++) {
       const lane = i % LANES.length;
       const obj = buildCar(COLORS[i % COLORS.length], 0, 0, 0);
       scene.add(obj);
       const cruise = 7 + ((i * 37) % 5);
-      this.cars.push({ obj, lane, t: ((i * 0.37) % 1), speed: cruise, cruise });
+      this.cars.push({ obj, lane, t: ((i * 0.37) % 1), speed: cruise, cruise, color: COLORS[i % COLORS.length] });
     }
   }
 
   update(state: GameState, dt: number) {
+    // a replacement for a taken car joins at the edge of the map after a while
+    if (this.taken > 0 && (this.respawnAt += dt) > 30) {
+      this.respawnAt = 0; this.taken--;
+      const lane = this.cars.length % LANES.length, color = COLORS[(this.cars.length * 3) % COLORS.length];
+      const obj = buildCar(color, 0, 0, 0);
+      this.scene.add(obj);
+      this.cars.push({ obj, lane, t: 0, speed: 8, cruise: 8, color });
+    }
     const people = Object.values(state.people).filter((p) => p.visible);
     const vans = Object.values(state.vehicles);
     for (const c of this.cars) {
