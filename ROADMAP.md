@@ -29,7 +29,7 @@ Status vocabulary: **planned → implemented → integrated → tested → playa
 | Blender-modelled chore equipment (baler, dumpster, litter bin, washing machine, bin bag, cartons) | **integrated** (v11) |
 | CMU motion capture retargeted to the body (walk, run, idle, sit down/stand up, wash, cook, mop, …) | **integrated** |
 | Seeded interior designer for homes; wallpaper, flooring, rugs and extras in a Home tab | **integrated** |
-| Real block of flats (Marlow Court), see-through windows | **integrated** |
+| Real block of flats (Marlow Court), see-through windows | **integrated** (redesigned v19: glazed stair tower, render and cladding, glass balconies, solar roof, front garden, bin store, bike shelter) |
 | Product packaging with printed labels | planned |
 | Strand-like hair cards, better shoes | **integrated** (v12) |
 | Faces: hair-stroke brows, lash line, lid crease, round irises, solid lashes | **integrated** (v17) |

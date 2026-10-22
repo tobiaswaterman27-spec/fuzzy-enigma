@@ -51,7 +51,7 @@ function creator() {
       <label>Build</label>${chip('build', BUILDS, a.build)}
       <label>Height</label><div class="chips">${[0.94, 1, 1.06].map((h) => `<button data-g="height" data-v="${h}" class="${a.height === h ? 'on' : ''}">${h < 1 ? 'shorter' : h > 1 ? 'taller' : 'average'}</button>`).join('')}</div>
       <button class="primary" id="cc-start">Start life in Harbourside</button>
-      <p class="muted">Controls: WASD to walk (the camera follows behind you), Shift to run, E to use, Tab for your phone. The camera follows you.</p>`;
+      <p class="muted">Controls: WASD to walk, Shift to run, E to use, Tab for your phone. The camera follows behind you; drag with the mouse to look around and scroll to zoom.</p>`;
   };
   render();
   el.onclick = (e) => {

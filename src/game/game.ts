@@ -70,6 +70,11 @@ export class Game {
   say(personId: string, text: string, seconds = 5) { this.speech.set(personId, { text, until: performance.now() + seconds * 1000 }); }
   private vel = { x: 0, z: 0 };
   private stillFor = 0;
+  /** mouse look: the automatic camera waits until this time (ms) */
+  private manualUntil = 0;
+  /** wheel zoom multiplier on the camera distance */
+  zoom = 1;
+  private distCur = 0;
   /** debug/photo mode: the camera is positioned externally */
   freeCam = false;
   private raycaster = new THREE.Raycaster();
@@ -176,13 +181,31 @@ export class Game {
   private autoLowered = false;
   onQualityAuto: () => void = () => {};
 
+  /** render resolution scale (0.6..1): lowered while frames are slow, raised again when there is headroom */
+  resScale = 1;
+  private dtAcc = 0;
+  private dtN = 0;
+  private adaptResolution(dt: number) {
+    if (document.hidden || this.frameCount < 120) return;
+    this.dtAcc += dt; this.dtN++;
+    if (this.dtAcc < 1) return;
+    const avg = this.dtAcc / this.dtN;
+    this.dtAcc = 0; this.dtN = 0;
+    const was = this.resScale;
+    if (avg > 1 / 45) this.resScale = Math.max(0.6, this.resScale - 0.1);
+    else if (avg < 1 / 57) this.resScale = Math.min(1, this.resScale + 0.05);
+    if (this.resScale !== was) this.resize();
+  }
+
   /** If high quality cannot keep up (sustained frames over ~35 ms), drop to low once, automatically. */
   private watchFrameRate(dt: number) {
-    if (this.quality !== 'high' || this.autoLowered || document.hidden) return;
     this.frameCount++;
+    this.adaptResolution(dt);
+    if (this.quality !== 'high' || this.autoLowered || document.hidden) return;
     if (this.frameCount < 120) return; // ignore start-up and shader compilation
     this.slowFrames = dt > 0.035 ? this.slowFrames + 1 : Math.max(0, this.slowFrames - 2);
-    if (this.slowFrames > 150) {
+    // only once lowering the resolution has not been enough
+    if (this.slowFrames > 150 && this.resScale <= 0.6) {
       this.autoLowered = true;
       this.setQuality('low');
       this.onQualityAuto();
@@ -198,7 +221,7 @@ export class Game {
 
   resize() {
     // post-processing already anti-aliases, so high quality caps the pixel ratio; low renders at CSS pixels
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.quality === 'high' ? 1.5 : 1));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.quality === 'high' ? 1.5 : 1) * this.resScale);
     const w = this.canvas.clientWidth || window.innerWidth;
     const h = this.canvas.clientHeight || window.innerHeight;
     this.renderer.setSize(w, h, false);
@@ -221,6 +244,23 @@ export class Game {
       if (/^Digit[1-6]$/.test(e.code)) this.interact(Number(e.code.slice(5)) - 1);
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
+    // look around: drag with the mouse (either button) or a finger; the camera recentres by itself a few
+    // seconds after you let go once you walk forward. Wheel to zoom.
+    let drag: { x: number; y: number; id: number } | null = null;
+    this.canvas.addEventListener('pointerdown', (e) => { if (this.uiOpen) return; drag = { x: e.clientX, y: e.clientY, id: e.pointerId }; this.canvas.setPointerCapture?.(e.pointerId); });
+    this.canvas.addEventListener('pointermove', (e) => {
+      if (!drag || drag.id !== e.pointerId) return;
+      const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+      drag.x = e.clientX; drag.y = e.clientY;
+      this.camYaw -= dx * 0.006;
+      this.camPitch = Math.max(-0.12, Math.min(1.25, this.camPitch + dy * 0.004));
+      this.manualUntil = performance.now() + 4000;
+    });
+    const end = (e: PointerEvent) => { if (drag?.id === e.pointerId) drag = null; };
+    this.canvas.addEventListener('pointerup', end);
+    this.canvas.addEventListener('pointercancel', end);
+    this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    this.canvas.addEventListener('wheel', (e) => { e.preventDefault(); this.zoom = Math.max(0.55, Math.min(2.2, this.zoom * (1 + Math.sign(e.deltaY) * 0.1))); }, { passive: false });
     window.addEventListener('blur', () => this.keys.clear());
     // the camera is fully automatic: no mouse look, zoom or camera keys
   }
@@ -420,6 +460,10 @@ export class Game {
       this.camPitch += (0.3 - this.camPitch) * Math.min(1, dt * 2);
       this.camDist = Math.max(this.camDist, 7.5);
       this.camDist += (9 - this.camDist) * Math.min(1, dt * 2);
+    } else if (!this.camLocked && performance.now() < this.manualUntil) {
+      // the player is looking around with the mouse: leave the angle alone, keep the distance
+      const wantDist = (p.sleeping ? 3.4 : inside ? 3.3 : 4.4) * this.zoom;
+      this.camDist += (wantDist - this.camDist) * Math.min(1, dt * 3);
     } else if (!this.camLocked) {
       // automatic camera: settles behind the player; closer and higher indoors so rooms read clearly
       const behind = p.facing + Math.PI;
@@ -432,8 +476,10 @@ export class Game {
       if (spd > 0.3 || p.action) this.stillFor = 0; else this.stillFor += dt;
       const rate = spd > 0.3 ? (fwdKey && !backKey ? 0.8 + 0.4 * Math.min(1, spd / 4) : 0) : p.action ? 0.6 : this.stillFor > 1.5 ? 0.5 : 0;
       this.camYaw += dYaw * Math.min(1, dt * rate);
-      const wantPitch = p.sleeping ? 0.75 : inside ? 0.42 : 0.24;
-      const wantDist = p.sleeping ? 3.4 : inside ? 3.3 : 4.4;
+      // in a small room the walls pull the camera in: look down from higher up instead
+      const cramped = inside && this.distCur > 0 && this.distCur < 1.6;
+      const wantPitch = p.sleeping ? 0.75 : cramped ? 0.6 : inside ? 0.42 : 0.24;
+      const wantDist = (p.sleeping ? 3.4 : inside ? 3.3 : 4.4) * this.zoom;
       this.camPitch += (wantPitch - this.camPitch) * Math.min(1, dt * 2);
       this.camDist += (wantDist - this.camDist) * Math.min(1, dt * 2);
       void dYaw;
@@ -453,12 +499,15 @@ export class Game {
     this.raycaster.far = dist + 0.3;
     const hits = this.raycaster.intersectObjects(this.world.occluders, false);
     if (hits.length) dist = Math.max(0.35, hits[0].distance - 0.28);
-    const want = origin.clone().addScaledVector(dir, dist);
-    if (this.camCur.lengthSq() === 0 || this.camCur.distanceTo(want) > 12) this.camCur.copy(want);
-    // pull in instantly when blocked, ease back out otherwise
-    const k = hits.length ? 1 : Math.min(1, dt * 10);
-    this.camCur.lerp(want, k);
+    // the distance is smoothed rather than the position: quick to pull in when a wall comes between,
+    // slow to ease back out, and no lag behind the player when running (which made the view swim)
+    if (this.distCur <= 0 || this.camCur.distanceTo(origin) > 15) this.distCur = dist;
+    this.distCur += (dist - this.distCur) * Math.min(1, dt * (dist < this.distCur ? 18 : 3));
+    if (hits.length) this.distCur = Math.min(this.distCur, dist);
+    this.camCur.copy(origin).addScaledVector(dir, this.distCur);
     this.camera.position.copy(this.camCur);
+    // too close to see past: hide the player's own body
+    this.views.hidePlayer = this.distCur < 0.6 && !van;
     this.camera.lookAt(origin.x - dir.x * 2, origin.y - dir.y * 2 + (this.overview ? 0 : 0.05), origin.z - dir.z * 2);
     this.sun.target.position.set(p.pos.x, 0, p.pos.z);
   }

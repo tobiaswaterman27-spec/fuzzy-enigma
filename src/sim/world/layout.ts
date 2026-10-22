@@ -47,6 +47,10 @@ export interface BuildingDef {
 }
 
 export type ObstacleKind =
+  | 'railing'
+  | 'planter'
+  | 'bin_store'
+  | 'bike_shelter'
   | 'gondola'
   | 'toilet'
   | 'basin'
@@ -247,8 +251,8 @@ const B: BuildingDef[] = [
   },
   {
     id: 'flat', name: 'Marlow Court', category: 'functional', role: 'Block of flats - your Flat 1 is on the ground floor',
-    rect: { x0: 12, z0: 10, x1: 30, z1: 26 }, height: 12.8, floors: 4, color: '#b5654a', trim: '#e6e1d6', roof: '#3d3f42',
-    sign: { text: 'MARLOW COURT', side: 'zmin', color: '#222222', bg: '#e6e1d6' },
+    rect: { x0: 12, z0: 10, x1: 30, z1: 26 }, height: 12.8, floors: 4, color: '#9c5a44', trim: '#3a3e42', roof: '#3d3f42',
+    sign: { text: 'MARLOW COURT', side: 'zmin', color: '#f2f2f2', bg: '#2f3337' },
     doors: [
       { side: 'zmin', a: 15, b: 17, open: true },
       { side: 'zmin', a: 26, b: 28, open: false },
@@ -596,6 +600,14 @@ function buildWorldData(homeDesign: HomeDesign): World {
     for (const u of furnished.uses) add({ ...u, kind: u.kind as InteractKind, locationId: 'flat' });
     homeNodes = furnished.nodes;
   }
+  // Marlow Court's front garden: railings with a gap for the path, planting, the bin store by the
+  // service door and a covered bike stand at the side
+  obstacles.push({ kind: 'railing', rect: { x0: 12, z0: 8.3, x1: 15.0, z1: 8.4 }, height: 1.0, solid: true });
+  obstacles.push({ kind: 'railing', rect: { x0: 17.6, z0: 8.3, x1: 25.0, z1: 8.4 }, height: 1.0, solid: true });
+  obstacles.push({ kind: 'planter', rect: { x0: 12.2, z0: 8.6, x1: 14.8, z1: 9.6 }, height: 0.55, solid: true });
+  obstacles.push({ kind: 'planter', rect: { x0: 18.4, z0: 8.6, x1: 24.6, z1: 9.6 }, height: 0.55, solid: true });
+  obstacles.push({ kind: 'bin_store', rect: { x0: 25.2, z0: 8.2, x1: 29.6, z1: 9.8 }, height: 1.5, solid: true });
+  obstacles.push({ kind: 'bike_shelter', rect: { x0: 30.7, z0: 11.0, x1: 32.4, z1: 15.6 }, height: 2.1, solid: true });
   // communal lobby
   obstacles.push({ kind: 'stairs', rect: { x0: 12.2, z0: 10.2, x1: 14.6, z1: 12.4 }, height: 3.2, solid: true });
   obstacles.push({ kind: 'mailboxes', rect: { x0: 17.4, z0: 11.0, x1: 17.85, z1: 12.6 }, height: 1.5, solid: true });

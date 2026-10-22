@@ -554,6 +554,8 @@ function hygieneSticker(rating: number | null): THREE.CanvasTexture {
 export class Views {
   people = new Map<string, PersonView>();
   stickers = new Map<string, { mesh: THREE.Mesh; rating: number | null }>();
+  /** the camera is right against the player: do not draw them */
+  hidePlayer = false;
   /** privately owned cars */
   cars = new Map<string, THREE.Object3D>();
   shelfMeshes = new Map<string, { mesh: THREE.InstancedMesh; bid: string; product: string; base: THREE.Vector3[]; side: number[]; mess: number }>();
@@ -771,6 +773,7 @@ export class Views {
       }
       v.culled = !near;
       v.update(state, p, dt);
+      if (p.isPlayer && this.hidePlayer) v.rig.root.visible = false;
       const sp = speech?.get(p.id);
       v.setSpeech(sp && sp.until > performance.now() ? sp.text : null);
     }
