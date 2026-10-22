@@ -51,6 +51,7 @@ export const ITEMS: Record<string, ItemDef> = {
   fish_bass: { id: 'fish_bass', name: 'Sea Bass', category: 'grocery', caseSize: 1, wholesale: 0, importCost: 0, retail: 1400, satiety: 55, energy: 5, color: '#9aa4ad', demand: 0, needsCooking: true },
   fish_cod: { id: 'fish_cod', name: 'Fresh Cod', category: 'grocery', caseSize: 1, wholesale: 0, importCost: 0, retail: 1100, satiety: 55, energy: 4, color: '#a89a7a', demand: 0, needsCooking: true },
   crab: { id: 'crab', name: 'Crab', category: 'grocery', caseSize: 1, wholesale: 0, importCost: 0, retail: 400, satiety: 30, energy: 2, color: '#c0392b', demand: 0, needsCooking: true },
+  parcel: { id: 'parcel', name: 'Parcel', category: 'household', caseSize: 1, wholesale: 0, importCost: 0, retail: 0, satiety: 0, energy: 0, color: '#b08850', demand: 0 },
   mop: { id: 'mop', name: 'Mop & Bucket', category: 'supplies', caseSize: 1, wholesale: 0, importCost: 0, retail: 0, satiety: 0, energy: 0, color: '#2a7fd4', demand: 0 },
 };
 

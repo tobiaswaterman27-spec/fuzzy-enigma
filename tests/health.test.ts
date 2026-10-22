@@ -155,7 +155,7 @@ describe('Robbery', () => {
     const before = s.ledger.accounts[me.accountId].balance;
     expect(robTill(s, me.id, 'market')).toMatch(/empties the till/);
     expect(s.ledger.accounts[me.accountId].balance).toBeGreaterThan(before);
-    expect(s.wanted?.level).toBeGreaterThanOrEqual(4);
+    expect((s.wanted as { level: number } | null)?.level).toBeGreaterThanOrEqual(4);
     st(s, 1);
     expect(auditLedger(s)).toEqual([]);
   });

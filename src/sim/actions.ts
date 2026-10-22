@@ -5,6 +5,7 @@ import { useEnergy } from './bills';
 import { buyWeapon, robTill, WEAPONS } from './health';
 import { breakIn, houseOf, houseOpen, knock, searchValuables } from './houses';
 import { grabShoplifter } from './incidents';
+import { askFavour, canComplete, completeFavour, openFavour } from './favours';
 import { buyLotto, LOTTO_PRICE, SCRATCH_PRICE, scratchcard } from './leisure';
 import { BAIT_PRICE, buyTackle, cast, fishingBlocker, fishingTick, hasCatch, npcCatch, ROD_PRICE, sellCatch } from './fishing';
 
@@ -328,6 +329,8 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
       if (iv) out.push({ type: 'ui', label: `Interview with ${other.name}`, enabled: false, reason: 'Held at the window table in Tidewater Cafe - sit down there', ui: 'interview', arg: iv.id });
       const fam = Math.round(p.relations?.[other.id] ?? 0);
       if (p.isPlayer) out.push({ type: 'ui', label: `Talk to ${other.name}${fam ? ` (${relationLabel(fam).toLowerCase()} · ${fam})` : ''}`, enabled: other.action?.type !== 'serve_customer', reason: 'Busy serving', ui: 'chat', arg: other.id });
+      if (p.isPlayer && canComplete(state, actorId, other.id)) out.unshift(opt('favour_done', canComplete(state, actorId, other.id)!.kind === 'deliver' ? `Hand ${other.name.split(' ')[0]} the parcel` : canComplete(state, actorId, other.id)!.kind === 'walk_dog' ? `Give ${other.name.split(' ')[0]} their dog back` : `Give ${other.name.split(' ')[0]} what they asked for`));
+      if (p.isPlayer && !other.police && !other.npc?.ambient && !openFavour(state, other.id)) out.push(opt('favour_ask', `Ask ${other.name.split(' ')[0]} if they need a hand with anything`));
       if (p.isPlayer && (other.npc as any)?.shoplift) out.unshift(opt('grab', `Grab ${other.name.split(' ')[0]} (shoplifter!)`));
       out.push(opt('talk', p.isPlayer ? `Say hello in passing` : `Chat with ${other.name}`, other.action?.type === 'serve_customer' ? 'Busy serving' : undefined));
       if (p.isPlayer && !other.npc?.ambient) out.push({ type: 'ui', label: `Invite ${other.name.split(' ')[0]} for a coffee`, enabled: fam >= FRIEND_AT && !plannedMeetup(state), reason: fam < FRIEND_AT ? 'Get to know them better first (chat more)' : 'You already have a meet-up arranged', ui: 'invite', arg: other.id });
@@ -578,6 +581,19 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
       if (!r.ok) return r;
       begin(p, type, itId, { duration: 0.3 }, now);
       return r;
+    }
+    case 'favour_ask': {
+      const r = askFavour(state, p.id, itId.slice(7));
+      if (!r.ok) return r;
+      begin(p, 'talk', itId, { duration: 0.5 }, now);
+      return r;
+    }
+    case 'favour_done': {
+      const m = completeFavour(state, p.id, itId.slice(7));
+      begin(p, 'talk', itId, { duration: 0.5 }, now);
+      const o = state.people[itId.slice(7)];
+      if (o) o.gesture = { clip: 'happy', until: state.minute + 0.8 };
+      return { ok: true, msg: m };
     }
     case 'rob':
       begin(p, type, itId, { duration: 0.3 }, now);

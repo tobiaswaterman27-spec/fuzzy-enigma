@@ -963,8 +963,10 @@ export class Views {
   private dogs = new Map<string, { view: DogView; lead: THREE.Line | null; seen: boolean }>();
   private updateDogs(state: GameState, dt: number, viewer?: { x: number; z: number }) {
     for (const d of this.dogs.values()) d.seen = false;
+    const borrowed = (state.people[state.playerId] as any)?.borrowedDog;
     for (const o of Object.values(state.people)) {
-      const dog = o.dog;
+      // a dog you are walking for its owner goes with you, not with them
+      const dog = o.isPlayer ? o.dog ?? borrowed?.dog : borrowed?.owner === o.id ? null : o.dog;
       if (!dog || !o.visible || o.dead || o.away || o.where === 'vehicle' || o.down != null) continue;
       if (!o.isPlayer && (o.npc?.goal === 'work' || o.npc?.goal === 'go_work' || o.where !== 'outside' && o.where !== 'park')) continue;
       if (viewer && Math.hypot(o.pos.x - viewer.x, o.pos.z - viewer.z) > 45) continue;

@@ -53,3 +53,30 @@ describe('Leisure', () => {
     expect(v.away?.place).toBe('hospital');
   });
 });
+
+describe('Favours', () => {
+  it('ask someone if they need a hand, do it, get paid; leave it and they are let down', async () => {
+    const { askFavour, canComplete, completeFavour, favoursTick, addItems, openFavour } = await import('../src/sim/index');
+    const s = createNewGame(7, setup);
+    initLife(s);
+    const me = s.people.player;
+    const o = residents(s).find((p) => !p.dog)!;
+    const r = askFavour(s, me.id, o.id);
+    expect(r.ok).toBe(true);
+    const f = openFavour(s, o.id)!;
+    if (f.kind === 'fetch') addItems(s.containers[me.bagId], f.item!, 1);
+    if (f.kind === 'fish') addItems(s.containers[me.bagId], 'fish_mackerel', 1);
+    const target = f.kind === 'deliver' ? f.to! : o.id;
+    expect(canComplete(s, me.id, target)).toBeTruthy();
+    const before = s.ledger.accounts[me.accountId].balance;
+    expect(completeFavour(s, me.id, target)).toMatch(/grateful|pleased/);
+    expect(s.ledger.accounts[me.accountId].balance).toBe(before + f.reward);
+    // a second one, left too long
+    const o2 = residents(s).find((p) => p !== o && !p.dog)!;
+    askFavour(s, me.id, o2.id);
+    s.minute += 9 * 60;
+    favoursTick(s);
+    expect(s.favours!.some((x) => x.status === 'failed')).toBe(true);
+    expect(auditLedger(s)).toEqual([]);
+  });
+});
