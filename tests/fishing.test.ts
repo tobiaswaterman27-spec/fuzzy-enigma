@@ -43,3 +43,32 @@ describe('Fishing', () => {
     expect(angler).toBeTruthy();
   });
 });
+
+describe('Boat hire', () => {
+  it('hire the boat, fish offshore, bring it back (late costs extra)', async () => {
+    const { hireBoat, returnBoat, castFromBoat, BOAT_ID } = await import('../src/sim/index');
+    const s = createNewGame(7, setup);
+    const me = s.people.player;
+    transfer(s, { from: s.externalId, to: me.accountId, amount: 20000, reason: 'transfer', memo: 'test' });
+    expect(hireBoat(s, me.id).ok).toBe(true);
+    expect(me.where).toBe('vehicle');
+    const v = s.vehicles[BOAT_ID];
+    v.pos = { x: 0, z: 140 };
+    expect(returnBoat(s, me.id).ok).toBe(false);
+    buyTackle(s, me, 'rod'); buyTackle(s, me, 'bait');
+    let big = 0;
+    for (let k = 0; k < 6; k++) {
+      castFromBoat(s, me);
+      s.minute = s.fishing!.biteAt + 0.1;
+      if (/bass|cod|pollock|crab/.test(strike(s, me))) big++;
+    }
+    expect(big).toBeGreaterThan(1);
+    v.pos = { x: 24, z: 94 };
+    s.minute = v.waitUntil + 20;
+    const r = returnBoat(s, me.id);
+    expect(r.ok).toBe(true);
+    expect(r.msg).toMatch(/extra/);
+    expect(me.visible).toBe(true);
+    expect(auditLedger(s)).toEqual([]);
+  });
+});

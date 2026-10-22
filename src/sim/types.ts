@@ -154,6 +154,7 @@ export type ActionType =
   | 'buy_pint'
   | 'knock'
   | 'grab'
+  | 'hire_boat'
   | 'favour_ask'
   | 'favour_done'
   | 'rob'
@@ -588,7 +589,7 @@ export interface Vehicle {
   id: Id;
   name: string;
   ownerId: Id;
-  kind: 'van' | 'car' | 'forklift';
+  kind: 'van' | 'car' | 'forklift' | 'boat';
   /** cars: model id, paint colour and what was paid */
   model?: string;
   color?: string;

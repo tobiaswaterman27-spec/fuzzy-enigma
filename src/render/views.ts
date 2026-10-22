@@ -4,6 +4,7 @@ import type { GameState, Person } from '../sim/types';
 import { AnimationController, buildRig, dress, type Rig } from './character';
 import { buildCar } from './world';
 import { DogView } from './dog';
+import { boat as harbourBoat } from './harbour';
 import { CAR_MODELS } from '../sim/cars';
 import { modelInstance } from './models';
 import { planRoute } from '../sim/world/nav';
@@ -1157,6 +1158,14 @@ export class Views {
     this.updateForklift(state);
     for (const [id, obj] of this.cars) if (!state.vehicles[id]) { this.scene.remove(obj); this.cars.delete(id); }
     for (const v of Object.values(state.vehicles)) {
+      if (v.kind === 'boat') {
+        let obj = this.cars.get(v.id);
+        if (!obj) { obj = harbourBoat('#f0eee8', '#2b6cb0'); obj.scale.setScalar(0.62); this.scene.add(obj); this.cars.set(v.id, obj); }
+        const t = performance.now() / 1000;
+        obj.position.set(v.pos.x, -1.15 + Math.sin(t * 1.3) * 0.05, v.pos.z);
+        obj.rotation.set(Math.sin(t * 0.9) * 0.03, v.heading, Math.sin(t * 1.1) * 0.035);
+        continue;
+      }
       if (v.kind !== 'car') continue;
       let obj = this.cars.get(v.id);
       if (!obj) { obj = buildCar(v.color ?? '#8a8f94', 0, 0, 0, false, CAR_MODELS.find((m) => m.id === v.model)?.body ?? 'car'); this.scene.add(obj); this.cars.set(v.id, obj); }

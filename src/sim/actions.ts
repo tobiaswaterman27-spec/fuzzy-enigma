@@ -5,6 +5,7 @@ import { useEnergy } from './bills';
 import { buyWeapon, robTill, WEAPONS } from './health';
 import { breakIn, houseOf, houseOpen, knock, searchValuables } from './houses';
 import { grabShoplifter } from './incidents';
+import { BOAT_ID, BOAT_PRICE, hireBoat } from './boats';
 import { askFavour, canComplete, completeFavour, openFavour } from './favours';
 import { buyLotto, LOTTO_PRICE, SCRATCH_PRICE, scratchcard } from './leisure';
 import { BAIT_PRICE, buyTackle, cast, fishingBlocker, fishingTick, hasCatch, npcCatch, ROD_PRICE, sellCatch } from './fishing';
@@ -382,6 +383,9 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
       out.push(opt('sell_catch', 'Sell your catch', hasCatch(state, p) ? undefined : 'Nothing to sell'));
       break;
     }
+    case 'boat_hire':
+      out.push(opt('hire_boat', `Hire a boat for half an hour · ${fmtMoney(BOAT_PRICE)}`, state.vehicles[BOAT_ID] ? 'The hire boat is out' : undefined));
+      break;
     case 'valuables':
       out.push(opt('search', 'Search the drawers for cash'));
       break;
@@ -595,6 +599,8 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
       if (o) o.gesture = { clip: 'happy', until: state.minute + 0.8 };
       return { ok: true, msg: m };
     }
+    case 'hire_boat':
+      return hireBoat(state, p.id);
     case 'rob':
       begin(p, type, itId, { duration: 0.3 }, now);
       return { ok: true, msg: robTill(state, p.id, it.businessId!) };

@@ -22,7 +22,7 @@ import { Views } from '../render/views';
 import { Traffic } from '../render/traffic';
 import { PoliceCar } from '../render/police';
 import { GatheringProps } from '../render/gatherings';
-import { Harbour } from '../render/harbour';
+import { Harbour, MOORED } from '../render/harbour';
 import { Football } from '../render/football';
 import { Fireworks } from '../render/fireworks';
 import { Rain } from '../render/rain';
@@ -37,7 +37,8 @@ import { forkliftAction } from '../sim/forklift';
 import { attack, attackTarget, hitByVehicle, nextWeapon } from '../sim/health';
 import { fitnessFactor, trainRun } from '../sim/leisure';
 import { taxiBump, taxiTarget } from '../sim/taxi';
-import { strike } from '../sim/fishing';
+import { castFromBoat, fishingBlocker, strike } from '../sim/fishing';
+import { returnBoat, WATER } from '../sim/boats';
 import { hasAi } from '../ai/openai';
 import { inOutage } from '../sim/inspections';
 
@@ -330,6 +331,16 @@ export class Game {
         this.onToast(forkliftAction(this.state, this.player.id).msg);
         return;
       }
+      if (e.code === 'KeyE' && this.drivingVan()?.kind === 'boat') {
+        if (Math.abs(this.vanSpeed) > 1) { this.onToast('Ease off first.'); return; }
+        const r = returnBoat(this.state, this.player.id);
+        if (r.ok) { this.onToast(r.msg); return; }
+        const why = fishingBlocker(this.state, this.player);
+        if (why) { this.onToast(r.msg ? `${r.msg} (${why} to fish out here.)` : why); return; }
+        castFromBoat(this.state, this.player);
+        this.onToast('You cast a line over the side.');
+        return;
+      }
       if (e.code === 'KeyE' && this.drivingVan()?.kind === 'car') {
         if (Math.abs(this.vanSpeed) > 1.5) { this.onToast('Slow down to park.'); return; }
         this.onToast(exitCar(this.state, this.player.id).msg);
@@ -562,8 +573,9 @@ export class Game {
     const car = v.kind === 'car' ? CAR_MODELS.find((m) => m.id === v.model) : undefined;
     const thr = canDrive ? (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0) : 0;
     const steer = canDrive ? (k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0) - (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) : 0;
-    const fork = v.kind === 'forklift';
-    const MAX = fork ? 4.5 : car?.topSpeed ?? 11, REV = fork ? 2.5 : 3;
+    const fork = v.kind === 'forklift', boat = v.kind === 'boat';
+    const MAX = fork ? 4.5 : boat ? 7.5 : car?.topSpeed ?? 11, REV = fork ? 2.5 : 3;
+    if (boat && this.player.action?.type === 'fish' && thr !== 0) cancelAction(this.state, this.player, 'moved');
     if (thr > 0) this.vanSpeed += (this.vanSpeed < 0 ? 9 : 3.5) * dt;
     else if (thr < 0) this.vanSpeed -= (this.vanSpeed > 0 ? 9 : 2.5) * dt;
     else this.vanSpeed -= Math.sign(this.vanSpeed) * Math.min(Math.abs(this.vanSpeed), 2.2 * dt);
@@ -571,11 +583,16 @@ export class Game {
     // steering: tighter at low speed, the turn rate scales with how fast the wheels roll
     v.heading += steer * Math.sign(this.vanSpeed) * Math.min(Math.abs(this.vanSpeed), 3.5) * dt * 0.22;
     const nx = v.pos.x + Math.sin(v.heading) * this.vanSpeed * dt, nz = v.pos.z + Math.cos(v.heading) * this.vanSpeed * dt;
-    const res = resolveCircle({ x: nx, z: nz }, fork ? 0.8 : 1.15, this.collidersWithCars(v.id));
+    // a boat keeps to the water: the quay wall on one side, open sea (within reason) on the other
+    const res = boat ? { x: Math.max(WATER.x0, Math.min(WATER.x1, nx)), z: Math.max(WATER.z0, Math.min(WATER.z1, nz)) } : resolveCircle({ x: nx, z: nz }, fork ? 0.8 : 1.15, this.collidersWithCars(v.id));
+    if (boat) for (const [mx, mz] of MOORED) {
+      const dx = res.x - mx, dz = res.z - mz, d = Math.hypot(dx, dz);
+      if (d < 3.4 && d > 1e-3) { res.x = mx + (dx / d) * 3.4; res.z = mz + (dz / d) * 3.4; }
+    }
     if (Math.hypot(res.x - nx, res.z - nz) > 0.01) { if (Math.abs(this.vanSpeed) > 2) taxiBump(this.state); this.vanSpeed *= 0.4; } // bumped into something
     v.odometer += Math.hypot(res.x - v.pos.x, res.z - v.pos.z);
     // people in the way are hit (and knocked aside)
-    if (Math.abs(this.vanSpeed) > 1.5) {
+    if (Math.abs(this.vanSpeed) > 1.5 && !boat) {
       const now = performance.now();
       const fx = Math.sin(v.heading), fz = Math.cos(v.heading);
       for (const o of Object.values(this.state.people)) {
@@ -708,7 +725,7 @@ export class Game {
     }
     // follow the drawn body (it may be acting out a multi-step action away from its sim spot)
     const drawn = p.action ? this.views.people.get(p.id)?.rig.root.position : null;
-    const pivot = new THREE.Vector3(drawn?.x ?? p.pos.x, van ? (van.kind === 'forklift' ? 2.0 : 2.7) : p.sleeping ? 1.0 : 1.62, drawn?.z ?? p.pos.z);
+    const pivot = new THREE.Vector3(drawn?.x ?? p.pos.x, van ? (van.kind === 'forklift' ? 2.0 : van.kind === 'boat' ? 1.0 : 2.7) : p.sleeping ? 1.0 : 1.62, drawn?.z ?? p.pos.z);
     const pitch = this.camPitch;
     const dir = new THREE.Vector3(Math.sin(this.camYaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(this.camYaw) * Math.cos(pitch));
     // over-the-shoulder offset to the right of the view direction

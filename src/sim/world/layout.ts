@@ -179,7 +179,8 @@ export type InteractKind =
   | 'housedoor'
   | 'valuables'
   | 'fishing'
-  | 'bait_shop';
+  | 'bait_shop'
+  | 'boat_hire';
 
 export interface Interactable {
   id: string;
@@ -641,6 +642,7 @@ function buildWorldData(homeDesign: HomeDesign): World {
   // ---- the quay: fishing spots at the edge, a bait and tackle hut, benches looking out to sea
   for (const f of FISH_SPOTS) add({ id: f.id, kind: 'fishing', label: 'Fishing spot', pos: { x: f.x, z: QUAY_EDGE - 1.2 }, facing: 0, obj: { x: f.x, z: QUAY_EDGE + 0.6 }, locationId: 'outside', range: 1.6 });
   obstacles.push({ kind: 'bait_hut', rect: { x0: BAIT_HUT.x - 2, z0: BAIT_HUT.z - 1.5, x1: BAIT_HUT.x + 2, z1: BAIT_HUT.z + 1.5 }, height: 2.6, solid: true });
+  add({ id: 'boat_hire', kind: 'boat_hire', label: 'Harbour Boat Hire', pos: { x: 24, z: QUAY_EDGE - 1.2 }, facing: 0, obj: { x: 24, z: QUAY_EDGE + 0.4 }, locationId: 'outside', range: 1.8 });
   add({ id: 'bait_hut', kind: 'bait_shop', label: 'Bait & Tackle', pos: { x: BAIT_HUT.x, z: BAIT_HUT.z - 2.3 }, facing: 0, obj: { x: BAIT_HUT.x, z: BAIT_HUT.z - 1.5 }, locationId: 'outside', range: 1.8 });
   for (const x of [-42, -8, 22, 44]) obstacles.push({ kind: 'bench', rect: { x0: x - 0.9, z0: 86.2, x1: x + 0.9, z1: 86.8 }, height: 0.9, solid: true });
   // Marlow Court's front garden: railings with a gap for the path, planting, the bin store by the
@@ -922,6 +924,7 @@ function buildWorldData(homeDesign: HomeDesign): World {
   N('q_c', 0, 82); N('q_w', -30, 82); N('q_e', 30, 82); N('q_ww', -52, 82); N('q_ee', 52, 82);
   L('hs_e_72', 'q_c'); L('hs_w_72', 'q_c'); L('q_ww', 'q_w', 'q_c', 'q_e', 'q_ee');
   for (const f of FISH_SPOTS) { N(`q_${f.id}`, f.x, QUAY_EDGE - 1.6); L(`q_${f.id}`, f.x < -15 ? 'q_w' : f.x > 15 ? 'q_e' : 'q_c'); }
+  N('q_boat', 24, QUAY_EDGE - 1.6); L('q_boat', 'q_e');
   N('q_bait', BAIT_HUT.x, BAIT_HUT.z - 2.2); N('q_bait_c', BAIT_HUT.x + 4, BAIT_HUT.z - 2.2); L('q_bait', 'q_bait_c', 'q_w');
 
   // Corner Market: front door + interior

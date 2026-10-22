@@ -3,6 +3,9 @@
 import * as THREE from 'three';
 import { BAIT_HUT, QUAY_EDGE } from '../sim/world/layout';
 
+/** the fishing boats on their moorings (the hire boat steers round them) */
+export const MOORED: [number, number][] = [[-30, 98], [-8, 104], [18, 99], [42, 108]];
+
 function waterNormals(): THREE.CanvasTexture {
   const s = 256;
   const cv = document.createElement('canvas');
@@ -24,7 +27,7 @@ function waterNormals(): THREE.CanvasTexture {
   return t;
 }
 
-function boat(hull: string, trim: string): THREE.Group {
+export function boat(hull: string, trim: string): THREE.Group {
   const g = new THREE.Group();
   const shape = new THREE.Shape();
   shape.moveTo(-1.1, 0); shape.lineTo(1.1, 0); shape.quadraticCurveTo(1.35, 0.6, 1.2, 1.0); shape.lineTo(-1.2, 1.0); shape.quadraticCurveTo(-1.35, 0.6, -1.1, 0);
@@ -73,7 +76,7 @@ export class Harbour {
     this.water = new THREE.Mesh(new THREE.PlaneGeometry(900, 400), new THREE.MeshStandardMaterial({ color: '#2f5868', roughness: 0.14, metalness: 0.35, normalMap: this.normals, normalScale: new THREE.Vector2(0.55, 0.55) }));
     this.water.rotation.x = -Math.PI / 2;
     this.water.position.set(0, -1.05, QUAY_EDGE + 200);
-    this.water.receiveShadow = true;
+    this.water.receiveShadow = false;
     this.group.add(this.water);
     // the harbour wall: dressed stone face from the quay down into the water, with a capping course
     const stone = new THREE.MeshStandardMaterial({ color: '#8b877d', roughness: 0.92 });
@@ -93,7 +96,7 @@ export class Harbour {
     }
     // fishing boats on their moorings
     const colours: [string, string][] = [['#1f4f7a', '#c0392b'], ['#e8e2d0', '#2b4f8c'], ['#7a2b2b', '#f1c40f'], ['#2e5a3a', '#f0eee8']];
-    [[-30, 98], [-8, 104], [18, 99], [42, 108]].forEach(([x, z], i) => {
+    MOORED.forEach(([x, z], i) => {
       const b = boat(...colours[i]);
       b.position.set(x, -1.2, z);
       b.rotation.y = 0.3 * (i % 2 ? 1 : -1);

@@ -30,6 +30,11 @@ export function fishingBlocker(state: GameState, p: Person): string | undefined 
 }
 
 /** cast: bait on, line out; the bite comes some time in the next few minutes (sooner at dawn and dusk) */
+export function castFromBoat(state: GameState, p: Person) {
+  cast(state, p);
+  p.action = { type: 'fish', target: 'boat', started: state.minute, progress: 0, unitTime: 0, duration: 999, units: 0 };
+}
+
 export function cast(state: GameState, p: Person) {
   removeItems(state.containers[p.bagId], 'bait', 1);
   const mod = minuteOfDay(state.minute);
@@ -42,7 +47,8 @@ export function cast(state: GameState, p: Person) {
 export const biting = (state: GameState) => !!state.fishing && state.minute >= state.fishing.biteAt && state.minute < state.fishing.biteAt + state.fishing.window;
 
 function landFish(state: GameState, p: Person): string {
-  let r = rand(state), f = CATCH[0];
+  // out on the water the mackerel shoals give way to bigger fish
+  let r = p.where === 'vehicle' ? 0.42 + rand(state) * 0.58 : rand(state), f = CATCH[0];
   for (const c of CATCH) { if (r < c.chance) { f = c; break; } r -= c.chance; }
   const kg = Math.round((f.weight[0] + rand(state) * (f.weight[1] - f.weight[0])) * 100) / 100;
   if (f.id === 'old_boot') return 'You reel in... an old boot. You throw it back.';

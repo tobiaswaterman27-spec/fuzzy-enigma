@@ -48,3 +48,4 @@ export * from './fishing';
 export * from './favours';
 export * from './achievements';
 export * from './newyear';
+export * from './boats';
