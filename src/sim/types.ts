@@ -153,6 +153,9 @@ export type ActionType =
   | 'knock'
   | 'grab'
   | 'scratch'
+  | 'fish'
+  | 'buy_tackle'
+  | 'sell_catch'
   | 'lotto'
   | 'break_in'
   | 'search'
@@ -322,6 +325,9 @@ export interface Person {
   following?: { target: Id; until: number } | null;
   /** the way this person walks normally (a walk clip), when chosen */
   gait?: string;
+  /** fish landed, and the heaviest of each kind */
+  fishCaught?: number;
+  fishingBest?: Record<string, number>;
   /** a dog of their own */
   dog?: import('./leisure').Dog;
   /** 0..100, from running: speed, stamina, punches */
@@ -688,6 +694,8 @@ export interface GameState {
   /** text messages people have sent the player */
   inbox?: { from: Id; text: string; at: number; read: boolean }[];
   dogsInit?: boolean;
+  /** a line in the water (fishing.ts) */
+  fishing?: { by: Id; biteAt: number; window: number; struck: boolean } | null;
   /** driving for HarbourCabs (taxi.ts) */
   taxi?: { on: boolean; job: import('./taxi').TaxiJob | null; done?: number; earned?: number } | null;
   /** lottery tickets for the Saturday draw */

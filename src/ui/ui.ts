@@ -22,6 +22,7 @@ import { MILESTONES, netWorth, wealthTitle } from '../sim/wealth';
 import { HOSPITAL, WEAPONS, goToAandE } from '../sim/health';
 import { ADOPTION_FEE, adoptDog, call999, DOG_FOOD_WEEK } from '../sim/leisure';
 import { startTaxi, stopTaxi, taxiTarget } from '../sim/taxi';
+import { biting } from '../sim/fishing';
 import { AGENT_FEE, buyNewBuild, forSale, NEW_BUILD_PRICE, NEW_BUILD_RENT, ownedBuilds, RESALE_SHARE, sellNewBuild } from '../sim/lettings';
 import { PLOTS } from '../sim/world/plots';
 import { bookRetest, COURSES, enrol } from '../sim/training';
@@ -178,7 +179,11 @@ export class UI {
     this.rowWords();
     const pr = $('#prompt');
     if (!$('#dialog').hidden) pr.hidden = true;
-    else if (p.action && p.action.type !== 'attack') {
+    else if (p.action?.type === 'fish') {
+      pr.hidden = false;
+      const bite = biting(s);
+      pr.innerHTML = bite ? '<div class="busy" style="font-size:22px;color:#f4c20d"><b>BITE! Press E to strike!</b></div>' : '<div class="busy">Waiting for a bite… watch the float<span class="muted">E to strike when it goes under · move to stop</span></div>';
+    } else if (p.action && p.action.type !== 'attack') {
       const a = p.action;
       const pct = a.duration > 0 ? Math.min(100, (a.progress / a.duration) * 100) : null;
       pr.hidden = false;

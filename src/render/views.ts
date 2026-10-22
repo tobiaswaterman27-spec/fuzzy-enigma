@@ -45,6 +45,7 @@ const BASKET_GEO = (() => { const g = new THREE.CylinderGeometry(0.17, 0.14, 0.1
 const BAG_MAT = new THREE.MeshStandardMaterial({ color: '#f2f2ee', roughness: 0.7, side: THREE.DoubleSide, transparent: true, opacity: 0.92 });
 
 const BASE_WALKS = ['walk', 'walk_b', 'walk_c'];
+const GEAR = new Set(['fishing_rod', 'bait', 'cricket_bat', 'kitchen_knife']);
 
 /** a cricket bat or a kitchen knife, gripped in the fist (the hand bone's -y runs out past the fingers) */
 function weaponMesh(kind: 'bat' | 'knife'): THREE.Group {
@@ -336,6 +337,7 @@ class PersonView {
     this.syncHeld(state, p);
     this.syncWeapon(p);
     this.syncPhone();
+    this.syncRod(state, p);
     const stepping = a?.type === 'shower' && this.showerStep;
     const realSpeed = stage ? (stage.walking ? Math.max(0.6, this.speed) : 0) : stepping ? 0.9 : a || this.bedIt ? 0 : this.speed;
     // site work looks like the job in hand: digging and shovelling, laying bricks, fixing and painting
@@ -526,6 +528,32 @@ class PersonView {
     }
   }
 
+  private rod: { rod: THREE.Mesh; line: THREE.Line; float: THREE.Mesh } | null = null;
+  /** a rod in the hands while fishing, the line out to a float on the water that dips at a bite */
+  private syncRod(state: GameState, p: Person) {
+    const on = p.action?.type === 'fish';
+    if (on && !this.rod) {
+      const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.02, 2.6, 6), new THREE.MeshStandardMaterial({ color: '#1f2d24', roughness: 0.4 }));
+      rod.geometry.translate(0, 1.3, 0);
+      const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), new THREE.LineBasicMaterial({ color: '#e8e8e8', transparent: true, opacity: 0.7 }));
+      const float = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 8), new THREE.MeshStandardMaterial({ color: '#e74c3c', roughness: 0.4 }));
+      this.rig.root.parent!.add(rod, line, float);
+      this.rod = { rod, line, float };
+    } else if (!on && this.rod) { for (const o of [this.rod.rod, this.rod.line, this.rod.float]) o.parent?.remove(o); this.rod = null; }
+    if (!this.rod) return;
+    const hr = this.rig.bones.handR.getWorldPosition(new THREE.Vector3());
+    const f = p.facing;
+    this.rod.rod.position.copy(hr);
+    const dir = new THREE.Vector3(Math.sin(f) * 0.8, 0.6, Math.cos(f) * 0.8).normalize();
+    this.rod.rod.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+    const tip = hr.clone().addScaledVector(dir, 2.6);
+    const fish = state.fishing?.by === p.id ? state.fishing : null;
+    const bite = !!fish && state.minute >= fish.biteAt;
+    const t = performance.now() / 1000;
+    const fx = p.pos.x + Math.sin(f) * 5, fz = p.pos.z + Math.cos(f) * 5;
+    this.rod.float.position.set(fx, -1.0 + (bite ? -0.09 + Math.sin(t * 22) * 0.03 : Math.sin(t * 1.6) * 0.015), fz);
+    (this.rod.line.geometry as THREE.BufferGeometry).setFromPoints([tip, new THREE.Vector3((tip.x + fx) / 2, (tip.y - 1.0) / 2 - 0.3, (tip.z + fz) / 2), this.rod.float.position.clone()]);
+  }
   private phone: THREE.Mesh | null = null;
   /** a phone in the hand while the phone clip plays */
   private syncPhone() {
@@ -572,7 +600,9 @@ class PersonView {
       this.basketKey = key;
     }
     const bagC = state.containers[p.bagId];
-    const hasBag = !!bagC && total(bagC) > 0 && p.where !== (p.homeId ?? '-');
+    // gear you keep with you (rod, bait, weapons) is not shopping: no carrier bag for that
+    const shopping = bagC ? Object.entries(bagC.items).some(([k, n]) => n > 0 && !GEAR.has(k)) : false;
+    const hasBag = shopping && p.where !== (p.homeId ?? '-');
     if (hasBag && !this.bag) {
       const g = new THREE.Group();
       const sack = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.15, 0.32, 10), BAG_MAT);

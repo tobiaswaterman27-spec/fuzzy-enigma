@@ -22,6 +22,7 @@ import { Views } from '../render/views';
 import { Traffic } from '../render/traffic';
 import { PoliceCar } from '../render/police';
 import { GatheringProps } from '../render/gatherings';
+import { Harbour } from '../render/harbour';
 import { Rain } from '../render/rain';
 import { Audio } from '../render/audio';
 import { Sites } from '../render/sites';
@@ -34,6 +35,7 @@ import { forkliftAction } from '../sim/forklift';
 import { attack, attackTarget, hitByVehicle, nextWeapon } from '../sim/health';
 import { fitnessFactor, trainRun } from '../sim/leisure';
 import { taxiBump, taxiTarget } from '../sim/taxi';
+import { strike } from '../sim/fishing';
 import { hasAi } from '../ai/openai';
 import { inOutage } from '../sim/inspections';
 
@@ -66,6 +68,7 @@ export class Game {
   traffic: Traffic;
   police: PoliceCar;
   gatheringProps: GatheringProps;
+  harbour: Harbour;
   private cabMarker: THREE.Mesh | null = null;
   private seasonKey = '';
   private seasonTick = 0;
@@ -195,6 +198,7 @@ export class Game {
     this.traffic = new Traffic(this.scene);
     this.police = new PoliceCar(this.scene);
     this.gatheringProps = new GatheringProps(this.scene);
+    this.harbour = new Harbour(this.scene);
     this.rain = new Rain(this.scene);
     this.sites = new Sites(this.scene);
     this.market = new MarketStalls(this.scene);
@@ -340,6 +344,7 @@ export class Game {
         return;
       }
       if (e.code === 'KeyQ' && !this.drivingVan()) { this.onToast(nextWeapon(this.state, this.player.id)); return; }
+      if (e.code === 'KeyE' && this.player.action?.type === 'fish') { const m = strike(this.state, this.player); if (m) this.onToast(m); return; }
       if (e.code === 'KeyE') this.interact(0);
       if (/^Digit[1-6]$/.test(e.code)) this.interact(Number(e.code.slice(5)) - 1);
     });
@@ -437,6 +442,7 @@ export class Game {
     }
     this.sites.update(s);
     this.gatheringProps.update(s);
+    this.harbour.update(dt);
     // where HarbourCabs wants you to go: a glowing ring on the kerb
     const cab = taxiTarget(s);
     if (cab) {

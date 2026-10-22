@@ -5,7 +5,7 @@ import { clamp, dist, fmtMoney, rand, randInt } from './core';
 import { lifeEvent, news } from './events';
 import { dayIndex, minuteOfDay, at } from './clock';
 import { transfer } from './ledger';
-import { getWorld } from './world/layout';
+import { FISH_SPOTS, getWorld } from './world/layout';
 import { openAttendance } from './employment';
 import { crime } from './health';
 
@@ -174,4 +174,29 @@ export function call999(state: GameState, callerId: Id, service: 'ambulance' | '
   if (state.wanted) return 'You are put through... and it is you they are looking for. You hang up.';
   crime(state, 'wasting police time', 1);
   return 'There is nothing to report. Wasting police time is an offence.';
+}
+
+/** early mornings and evenings: a few townspeople fish off the quay */
+export function anglersTick(state: GameState) {
+  const mod = minuteOfDay(state.minute);
+  if (!((mod > 6 * 60 && mod < 9 * 60) || (mod > 17 * 60 && mod < 20 * 60)) || Math.floor(state.minute) % 7 !== 0) return;
+  const day = dayIndex(state.minute);
+  const taken = new Set(Object.values(state.people).filter((q) => q.action?.type === 'fish' || (q.npc?.plan ?? []).some((s) => s.kind === 'act' && s.type === 'fish')).map((q) => q.action?.target ?? (q.npc?.plan.find((s) => s.kind === 'act' && s.type === 'fish') as { it?: string } | undefined)?.it));
+  if (state.fishing) taken.add(Object.values(state.people).find((q) => q.id === state.fishing!.by)?.action?.target);
+  const spot = FISH_SPOTS.find((f) => !taken.has(f.id));
+  if (!spot) return;
+  for (const p of Object.values(state.people)) {
+    const n = p.npc;
+    if (!n || p.isPlayer || n.ambient || p.police || p.dead || p.away || p.sleeping || p.action || p.move || n.goal !== 'idle_home') continue;
+    if ((n as any).fishDay === day || openAttendance(state, p.id)) continue;
+    const keen = (hash(p.id + 'fish') % 100) / 100;
+    if (keen < 0.7 || rand(state) > 0.2) continue;
+    (n as any).fishDay = day;
+    const w = getWorld();
+    const it = w.interactables[spot.id];
+    n.goal = 'leisure';
+    n.plan = [{ kind: 'move', to: it.pos, label: 'the quay' }, { kind: 'act', it: spot.id, type: 'fish' }, { kind: 'call', fn: 'goHomeNow' }];
+    n.nextDecision = state.minute + 90;
+    return;
+  }
 }

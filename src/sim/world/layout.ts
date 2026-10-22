@@ -48,6 +48,7 @@ export interface BuildingDef {
 }
 
 export type ObstacleKind =
+  | 'bait_hut'
   | 'railing'
   | 'planter'
   | 'bin_store'
@@ -176,7 +177,9 @@ export type InteractKind =
   | 'sink'
   | 'washer'
   | 'housedoor'
-  | 'valuables';
+  | 'valuables'
+  | 'fishing'
+  | 'bait_shop';
 
 export interface Interactable {
   id: string;
@@ -343,6 +346,11 @@ const B: BuildingDef[] = [
     ],
   },
 ];
+
+/** the quay edge (north): beyond it, the harbour water */
+export const QUAY_EDGE = 90;
+export const FISH_SPOTS = [{ id: 'fish_1', x: -22 }, { id: 'fish_2', x: -4 }, { id: 'fish_3', x: 14 }, { id: 'fish_4', x: 34 }];
+export const BAIT_HUT = { x: -34, z: 79 };
 
 // NPC homes along Harbour Road (simplified: residents enter and are simulated off-screen)
 const HOUSE_COLORS = ['#d8c3a5', '#a3b18a', '#c9ada7', '#e0c097', '#b7c4cf', '#d4a373'];
@@ -630,6 +638,11 @@ function buildWorldData(homeDesign: HomeDesign): World {
     add({ id: `${id}_door`, kind: 'housedoor', label: `${b.name} (front door)`, pos: P(-0.9, 0), facing: east ? Math.PI / 2 : -Math.PI / 2, obj: P(0, 0), locationId: 'outside', range: 1.6 });
     add({ id: `${id}_valuables`, kind: 'valuables', label: 'Chest of drawers', pos: P(4.4, -3.2), facing: Math.PI, obj: P(4.4, -4.05), locationId: id });
   }
+  // ---- the quay: fishing spots at the edge, a bait and tackle hut, benches looking out to sea
+  for (const f of FISH_SPOTS) add({ id: f.id, kind: 'fishing', label: 'Fishing spot', pos: { x: f.x, z: QUAY_EDGE - 1.2 }, facing: 0, obj: { x: f.x, z: QUAY_EDGE + 0.6 }, locationId: 'outside', range: 1.6 });
+  obstacles.push({ kind: 'bait_hut', rect: { x0: BAIT_HUT.x - 2, z0: BAIT_HUT.z - 1.5, x1: BAIT_HUT.x + 2, z1: BAIT_HUT.z + 1.5 }, height: 2.6, solid: true });
+  add({ id: 'bait_hut', kind: 'bait_shop', label: 'Bait & Tackle', pos: { x: BAIT_HUT.x, z: BAIT_HUT.z - 2.3 }, facing: 0, obj: { x: BAIT_HUT.x, z: BAIT_HUT.z - 1.5 }, locationId: 'outside', range: 1.8 });
+  for (const x of [-42, -8, 22, 44]) obstacles.push({ kind: 'bench', rect: { x0: x - 0.9, z0: 86.2, x1: x + 0.9, z1: 86.8 }, height: 0.9, solid: true });
   // Marlow Court's front garden: railings with a gap for the path, planting, the bin store by the
   // service door and a covered bike stand at the side
   obstacles.push({ kind: 'railing', rect: { x0: 12, z0: 8.3, x1: 15.0, z1: 8.4 }, height: 1.0, solid: true });
@@ -841,7 +854,7 @@ function buildWorldData(homeDesign: HomeDesign): World {
   }
   for (const o of obstacles) if (o.solid) colliders.push(o.rect);
   // world boundary
-  const bounds = { x0: -98, z0: -50, x1: 98, z1: 76 };
+  const bounds = { x0: -98, z0: -50, x1: 98, z1: QUAY_EDGE - 0.4 };
   colliders.push({ x0: bounds.x0 - 1, z0: bounds.z0, x1: bounds.x0, z1: bounds.z1 });
   colliders.push({ x0: bounds.x1, z0: bounds.z0, x1: bounds.x1 + 1, z1: bounds.z1 });
   colliders.push({ x0: bounds.x0, z0: bounds.z0 - 1, x1: bounds.x1, z1: bounds.z0 });
@@ -905,6 +918,11 @@ function buildWorldData(homeDesign: HomeDesign): World {
   }
   N('hs_e_72', 6.5, 72); N('hs_w_72', -6.5, 72);
   L(prevE, 'hs_e_72'); L(prevW, 'hs_w_72'); L('hs_e_72', 'hs_w_72');
+  // along the quay, and out to the fishing spots at the edge
+  N('q_c', 0, 82); N('q_w', -30, 82); N('q_e', 30, 82); N('q_ww', -52, 82); N('q_ee', 52, 82);
+  L('hs_e_72', 'q_c'); L('hs_w_72', 'q_c'); L('q_ww', 'q_w', 'q_c', 'q_e', 'q_ee');
+  for (const f of FISH_SPOTS) { N(`q_${f.id}`, f.x, QUAY_EDGE - 1.6); L(`q_${f.id}`, f.x < -15 ? 'q_w' : f.x > 15 ? 'q_e' : 'q_c'); }
+  N('q_bait', BAIT_HUT.x, BAIT_HUT.z - 2.2); L('q_bait', 'q_w');
 
   // Corner Market: front door + interior
   N('mk_out', 17.5, -8.6); N('mk_in', 17.5, -11.4, 'market');
@@ -1095,6 +1113,8 @@ function buildWorldData(homeDesign: HomeDesign): World {
     { rect: { x0: 40, z0: 8, x1: 72, z1: 42 }, kind: 'grass' },
     { rect: { x0: 8, z0: -10, x1: 40, z1: -8 }, kind: 'plaza' },
     { rect: { x0: 74, z0: 8, x1: 96, z1: 12 }, kind: 'forecourt' },
+    // the quay: a stone promenade along the harbour at the north end of Harbour Road
+    { rect: { x0: -60, z0: 76, x1: 60, z1: QUAY_EDGE }, kind: 'plaza' },
   ];
 
   // ---- vehicle routes (right-hand traffic)

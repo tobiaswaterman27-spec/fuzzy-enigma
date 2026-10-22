@@ -6,6 +6,7 @@ import { buyWeapon, WEAPONS } from './health';
 import { breakIn, houseOf, houseOpen, knock, searchValuables } from './houses';
 import { grabShoplifter } from './incidents';
 import { buyLotto, LOTTO_PRICE, SCRATCH_PRICE, scratchcard } from './leisure';
+import { BAIT_PRICE, buyTackle, cast, fishingBlocker, fishingTick, hasCatch, npcCatch, ROD_PRICE, sellCatch } from './fishing';
 
 const PINT = 520;
 import { canDriveForklift, mountForklift, palletsWaiting } from './forklift';
@@ -313,6 +314,8 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
     case 'stove': {
       const pantry = p.pantryId ? state.containers[p.pantryId] : null;
       const has = (k: string) => count(pantry ?? undefined, k) + count(state.containers[p.bagId], k);
+      const fish = ['fish_bass', 'fish_cod', 'fish_pollock', 'fish_mackerel', 'crab'].find((k) => has(k) > 0);
+      if (fish && p.isPlayer && choresOf(p).dishes < DISHES_BLOCK) out.push(opt('cook', `Cook your ${itemName(fish).toLowerCase()} (+food, +mood)`, !hasHomeAccess(state, actorId, it.locationId) ? 'Not your home' : undefined, fish));
       const base = has('pasta') > 0 ? 'pasta' : has('soup') > 0 ? 'soup' : null;
       if (p.isPlayer && choresOf(p).dishes >= DISHES_BLOCK) { out.push(opt('cook', 'Cook a meal', 'Every pan is dirty - wash up at the sink first')); break; }
       out.push(opt('cook', base === 'pasta' ? `Cook a pasta dinner (+50 food, +mood)${has('soup') || has('apples') ? ' with extras' : ''}` : base === 'soup' ? 'Heat soup (+40 food)' : 'Cook a meal', !hasHomeAccess(state, actorId, it.locationId) ? 'Not your home' : !base ? 'Needs pasta or soup - buy some at the shop' : undefined, base ?? undefined));
@@ -363,6 +366,16 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
       if (houseOpen(state, h)) break;
       out.push(opt('knock', 'Knock on the door', state.doorCall && state.doorCall.house === h && state.doorCall.stage !== 'done' ? 'Someone is coming to the door' : undefined));
       out.push(opt('break_in', 'Force the door (break in)'));
+      break;
+    }
+    case 'fishing': {
+      out.push(opt('fish', state.fishing && state.fishing.by !== actorId ? 'Someone is fishing here' : 'Cast a line', fishingBlocker(state, p) ?? (state.fishing && state.fishing.by !== actorId ? 'Taken' : undefined)));
+      break;
+    }
+    case 'bait_shop': {
+      out.push(opt('buy_tackle', `Buy a fishing rod · ${fmtMoney(ROD_PRICE)}`, count(state.containers[p.bagId], 'fishing_rod') ? 'You have one' : undefined, 'rod'));
+      out.push(opt('buy_tackle', `Buy bait (10) · ${fmtMoney(BAIT_PRICE)}`, undefined, 'bait'));
+      out.push(opt('sell_catch', 'Sell your catch', hasCatch(state, p) ? undefined : 'Nothing to sell'));
       break;
     }
     case 'valuables':
@@ -541,6 +554,23 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
       begin(p, type, itId, { duration: 0.6 }, now); break;
     case 'scratch':
       begin(p, type, itId, { duration: 0.4 }, now); break;
+    case 'fish': {
+      if (p.isPlayer) { cast(state, p); begin(p, type, itId, { duration: 999 }, now); }
+      else begin(p, type, itId, { duration: 30 + Math.floor(now % 20) }, now);
+      break;
+    }
+    case 'buy_tackle': {
+      const r = buyTackle(state, p, arg as 'rod' | 'bait');
+      if (!r.ok) return r;
+      begin(p, type, itId, { duration: 0.4 }, now);
+      return r;
+    }
+    case 'sell_catch': {
+      const r = sellCatch(state, p);
+      if (!r.ok) return r;
+      begin(p, type, itId, { duration: 0.4 }, now);
+      return r;
+    }
     case 'lotto': {
       const r = buyLotto(state, p.id);
       if (!r.ok) return r;
@@ -605,6 +635,7 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
 export function cancelAction(state: GameState, p: Person, why = 'Interrupted') {
   const a = p.action;
   if (!a) return;
+  if (a.type === 'fish' && state.fishing?.by === p.id) state.fishing = null;
   if (a.type === 'serve_customer') {
     const till = state.tills[a.target];
     if (till && till.staffId === p.id) till.staffId = null;
@@ -635,6 +666,7 @@ export function tickAction(state: GameState, p: Person, dt: number): string | nu
   if (!a) return null;
   const it = interactable(state, a.target);
   if (a.type === 'attack') { a.progress += dt; if (a.progress >= a.duration) p.action = null; return null; }
+  if (a.type === 'fish' && p.isPlayer) { a.progress += dt; return fishingTick(state, p); }
   if (!it && a.type !== 'sleep') { cancelAction(state, p); return 'Target is gone.'; }
   if (it && Math.min(dist(p.pos, it.pos), dist(p.pos, it.obj)) > it.range + 1.5) { cancelAction(state, p); return 'Stopped: you moved away.'; }
   a.progress += dt;
@@ -804,6 +836,8 @@ export function tickAction(state: GameState, p: Person, dt: number): string | nu
       break;
     case 'knock': knock(state, p.id, houseOf(a.target)); msg = null; break;
     case 'scratch': msg = scratchcard(state, p.id).msg; break;
+    case 'fish': if (!p.isPlayer) npcCatch(state, p); msg = null; break;
+    case 'buy_tackle': case 'sell_catch': msg = null; break;
     case 'lotto': msg = null; break;
     case 'break_in': msg = breakIn(state, p.id, houseOf(a.target)).msg || null; break;
     case 'search': msg = searchValuables(state, p.id, houseOf(a.target)).msg; break;
@@ -820,7 +854,8 @@ export function tickAction(state: GameState, p: Person, dt: number): string | nu
       const bag = state.containers[p.bagId];
       const take = (k: string) => (pantry && removeItems(pantry, k, 1)) || removeItems(bag, k, 1);
       if (!a.arg || !take(a.arg)) { msg = 'The ingredients are gone.'; break; }
-      let food = a.arg === 'pasta' ? 50 : 40;
+      let food = a.arg === 'pasta' ? 50 : ITEMS[a.arg]?.needsCooking && a.arg !== 'pasta' ? ITEMS[a.arg].satiety + 10 : 40;
+      if (a.arg.startsWith('fish_') || a.arg === 'crab') p.needs.mood = clamp(p.needs.mood + 8, 0, 100);
       let extras = 0;
       if (a.arg === 'pasta') for (const k of ['soup', 'apples']) if (take(k)) { food += 10; extras++; }
       p.needs.satiety = clamp(p.needs.satiety + food, 0, 100);

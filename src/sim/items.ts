@@ -44,6 +44,13 @@ export const ITEMS: Record<string, ItemDef> = {
   uniform_police: { id: 'uniform_police', name: 'Police Uniform', category: 'clothing', caseSize: 1, wholesale: 0, importCost: 0, retail: 0, satiety: 0, energy: 0, color: '#1b2433', demand: 0 },
   cricket_bat: { id: 'cricket_bat', name: 'Cricket Bat', category: 'household', caseSize: 1, wholesale: 0, importCost: 0, retail: 3500, satiety: 0, energy: 0, color: '#d9b77a', demand: 0 },
   kitchen_knife: { id: 'kitchen_knife', name: 'Kitchen Knife', category: 'household', caseSize: 1, wholesale: 0, importCost: 0, retail: 1200, satiety: 0, energy: 0, color: '#b8bcc2', demand: 0 },
+  fishing_rod: { id: 'fishing_rod', name: 'Fishing Rod', category: 'household', caseSize: 1, wholesale: 0, importCost: 0, retail: 2500, satiety: 0, energy: 0, color: '#2b4a3a', demand: 0 },
+  bait: { id: 'bait', name: 'Bait', category: 'household', caseSize: 10, wholesale: 0, importCost: 0, retail: 25, satiety: 0, energy: 0, color: '#8a6a48', demand: 0 },
+  fish_mackerel: { id: 'fish_mackerel', name: 'Fresh Mackerel', category: 'grocery', caseSize: 1, wholesale: 0, importCost: 0, retail: 300, satiety: 35, energy: 3, color: '#4a6a8a', demand: 0, needsCooking: true },
+  fish_pollock: { id: 'fish_pollock', name: 'Fresh Pollock', category: 'grocery', caseSize: 1, wholesale: 0, importCost: 0, retail: 500, satiety: 45, energy: 3, color: '#6a7a5a', demand: 0, needsCooking: true },
+  fish_bass: { id: 'fish_bass', name: 'Sea Bass', category: 'grocery', caseSize: 1, wholesale: 0, importCost: 0, retail: 1400, satiety: 55, energy: 5, color: '#9aa4ad', demand: 0, needsCooking: true },
+  fish_cod: { id: 'fish_cod', name: 'Fresh Cod', category: 'grocery', caseSize: 1, wholesale: 0, importCost: 0, retail: 1100, satiety: 55, energy: 4, color: '#a89a7a', demand: 0, needsCooking: true },
+  crab: { id: 'crab', name: 'Crab', category: 'grocery', caseSize: 1, wholesale: 0, importCost: 0, retail: 400, satiety: 30, energy: 2, color: '#c0392b', demand: 0, needsCooking: true },
   mop: { id: 'mop', name: 'Mop & Bucket', category: 'supplies', caseSize: 1, wholesale: 0, importCost: 0, retail: 0, satiety: 0, energy: 0, color: '#2a7fd4', demand: 0 },
 };
 

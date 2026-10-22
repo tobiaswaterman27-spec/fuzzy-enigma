@@ -106,11 +106,12 @@ export function buildWorld(scene: THREE.Scene): WorldView {
 
   // ---------------- ground
   const grassT = tex.grass();
-  const gg = new THREE.PlaneGeometry(260, 200);
-  planeUV(gg, 260, 200, TILE.grass);
+  // the land ends at the quay wall; the harbour water lies beyond (harbour.ts)
+  const gg = new THREE.PlaneGeometry(260, 177);
+  planeUV(gg, 260, 177, TILE.grass);
   const grass = new THREE.Mesh(gg, texMat(grassT, 1));
   grass.rotation.x = -Math.PI / 2;
-  grass.position.set(0, -0.02, 13);
+  grass.position.set(0, -0.02, 1.5);
   grass.receiveShadow = true;
   g.add(grass);
   const asphalt = texMat(tex.asphalt(), 0.95);
@@ -1419,6 +1420,7 @@ function buildObstacle(o: Obstacle): THREE.Object3D {
       break;
     }
     case 'lamp': case 'car': break;
+    case 'bait_hut': break; // drawn with the harbour
     default: grp.add(box(W, o.height, D, M('#888'), cx, o.height / 2, cz));
   }
   return grp;

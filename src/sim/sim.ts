@@ -9,7 +9,7 @@ import { followTick } from './talk';
 import { taxiTick } from './taxi';
 import { gatheringsTick } from './gatherings';
 import { incidentsTick, shopliftTick } from './incidents';
-import { dogTick, initDogs, joggersTick, lottoTick } from './leisure';
+import { anglersTick, dogTick, initDogs, joggersTick, lottoTick } from './leisure';
 import { wealthDaily } from './wealth';
 import { billsTick } from './bills';
 import { lettingsTick } from './lettings';
@@ -106,6 +106,7 @@ export function minuteTick(state: GameState) {
   incidentsTick(state);
   dogTick(state);
   joggersTick(state);
+  anglersTick(state);
   lottoTick(state);
   shopliftTick(state);
   goodsInTick(state);
