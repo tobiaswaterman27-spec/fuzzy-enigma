@@ -170,6 +170,8 @@ export class UI {
     // interaction prompt
     const f = this.game.focus;
     this.doorWords();
+    this.texting();
+    this.rowWords();
     const pr = $('#prompt');
     if (!$('#dialog').hidden) pr.hidden = true;
     else if (p.action && p.action.type !== 'attack') {
@@ -362,6 +364,8 @@ export class UI {
     const known = Object.entries(p.relations).filter(([id, v]) => v > 0 && s.people[id]).sort((a, b) => b[1] - a[1]);
     const m = plannedMeetup(s);
     let h = `<p class="muted">Chat to people to get to know them. Friends lift your mood; invite them for a coffee to keep in touch, or friendships fade.</p>`;
+    const inbox = (s.inbox ?? []).slice(-6).reverse();
+    if (inbox.length) h += `<h3>Messages</h3>${inbox.map((x) => `<div class="card"><b>${esc(s.people[x.from]?.name ?? '?')}</b> <span class="muted">${fmtClock(x.at)}${dayIndex(x.at) < dayIndex(s.minute) ? `, day ${dayIndex(x.at) + 1}` : ''}</span>${x.read ? '' : ' <span class="pos">new</span>'}<br>${esc(x.text)}<div class="row"><button data-reply="${x.from}" data-at="${x.at}">Reply</button></div></div>`).join('')}`;
     if (m) h += `<div class="card">Coffee with <b>${esc(s.people[m.friendId].name)}</b> at ${fmtClock(m.at)}${dayIndex(m.at) > dayIndex(s.minute) ? ' tomorrow' : ''} - Tidewater Cafe, corner table.</div>`;
     if (!known.length) return h + '<p class="muted">You do not know anyone yet. Say hello to your colleagues and neighbours.</p>';
     for (const [id, v] of known) {
@@ -555,6 +559,11 @@ export class UI {
     if (d.buyhome) { this.toast(buyHomeProperty(s, this.p.id).msg); this.lastBody = ''; this.renderPhone(); return; }
     if (d.sellhome) { if (btn.dataset.confirm) { this.toast(sellHome(s, this.p.id).msg); this.lastBody = ''; this.renderPhone(); } else { btn.dataset.confirm = '1'; btn.textContent = 'Click again to confirm the sale'; } return; }
     if (d.msg) { this.closePhone(); this.openChat(d.msg, true); return; }
+    if (d.reply) {
+      const msg = s.inbox?.find((x) => x.from === d.reply && String(x.at) === d.at);
+      if (msg) { msg.read = true; this.openers.set(d.reply, msg.text); }
+      this.closePhone(); this.openChat(d.reply, true); return;
+    }
     if (d.invite) { this.toast(inviteForCoffee(s, this.p.id, d.invite).msg); this.lastBody = ''; this.renderPhone(); return; }
     if (d.loan) { this.toast(takeLoan(s, this.p.id, Number(d.loan)).msg); this.lastBody = ''; this.renderPhone(); return; }
     if (d.stakebuy) { this.toast(buyStake(s, this.p.id, d.stakebuy).msg); this.lastBody = ''; this.renderPhone(); return; }
@@ -682,6 +691,38 @@ export class UI {
     else void ask(remote ? `[${me.name.split(' ')[0]} has sent you a message to start a conversation. Reply to open it.]` : `[${me.name.split(' ')[0]} has walked up to you and wants to talk. They have not said anything yet. React as you naturally would.]`);
   }
 
+  private nextText = performance.now() + 90000;
+  /** friends with your number text you now and then: about their lives, gossip, to meet up */
+  private texting() {
+    const now = performance.now();
+    if (now < this.nextText || !hasAi()) return;
+    this.nextText = now + 75000;
+    const s = this.s, me = this.p;
+    if (me.away || me.dead || me.sleeping) return;
+    const cands = Object.values(s.people).filter((o) => !o.isPlayer && !o.dead && !o.left && !o.away && !o.sleeping && o.knowsYou?.number && (o.relations[me.id] ?? 0) >= 15);
+    if (!cands.length) return;
+    const o = cands[Math.floor(Math.random() * cands.length)];
+    const last = (s.inbox ?? []).filter((x) => x.from === o.id).pop();
+    const close = (o.relations[me.id] ?? 0) / 100 + (me.partnerId === o.id ? 0.5 : 0);
+    if (Math.random() > 0.25 + close * 0.5 || (last && s.minute - last.at < 180)) return;
+    void aiJson([{ role: 'system', content: characterBrief(s, o.id, true) }, { role: 'user', content: `[You decide to text ${me.name.split(' ')[0]} out of the blue. Write the text message you send, in character: maybe about something going on in your life, some gossip, asking how they are or to meet up, or about something that happened between you. Keep it short, like a real text.]` }], 120).then((r) => {
+      if (!('data' in r)) return;
+      const t = parseTurn(r.data);
+      if (!t.reply) return;
+      (s.inbox ??= []).push({ from: o.id, text: t.reply, at: s.minute, read: false });
+      if (s.inbox.length > 40) s.inbox.splice(0, s.inbox.length - 40);
+      this.toast(`Message from ${o.name.split(' ')[0]}: "${t.reply.slice(0, 80)}${t.reply.length > 80 ? '…' : ''}" (Phone > People)`);
+    });
+  }
+
+  private rowHeard = -1;
+  /** a row in the street: what they shout at each other comes from who they are */
+  private rowWords() {
+    const inc = this.s.incident;
+    if (!inc || inc.stage !== 'argue' || this.rowHeard === inc.at || !hasAi()) return;
+    this.rowHeard = inc.at;
+    void this.ambientChat(inc.a, inc.b, `They are having a heated, angry argument in the street (${inc.why}). Raised voices, short sharp lines, British swearing kept mild.`);
+  }
   private doorSpoken = -1;
   /** whoever answers a door you knocked on says something (in their own words, with a key) */
   private doorWords() {
@@ -712,12 +753,12 @@ export class UI {
   }
 
   /** two townspeople chatting nearby: their exchange is written from who they both are */
-  async ambientChat(aId: string, bId: string) {
+  async ambientChat(aId: string, bId: string, context = '') {
     const s = this.s, a = s.people[aId], b = s.people[bId];
     if (!a || !b || !hasAi()) return;
     const qa = personaOf(s, aId), qb = personaOf(s, bId);
     const brief = (q: typeof qa) => `${q.name}, ${q.age}, ${q.job}; ${q.personality.slice(0, 3).join(', ')}; ${q.mood}; family: ${q.family}; recently: ${q.recent.slice(-2).join('; ') || 'nothing much'}`;
-    const r = await aiJson([{ role: 'system', content: `Write a short, natural exchange (3 or 4 lines, each under 15 words) between two people chatting in Harbourside, a small British harbour town, ${qa.time}, ${qa.weather}. They talk about their own lives, people they know, work or the town, in character. A: ${brief(qa)}. B: ${brief(qb)}. How well they know each other: ${Math.round(a.relations[bId] ?? 0)}/100. Reply as JSON {"lines": [{"who": "A" or "B", "text": "..."}]}.` }], 200);
+    const r = await aiJson([{ role: 'system', content: `Write a short, natural exchange (3 or 4 lines, each under 15 words) between two people chatting in Harbourside, a small British harbour town, ${qa.time}, ${qa.weather}. They talk about their own lives, people they know, work or the town, in character. A: ${brief(qa)}. B: ${brief(qb)}. How well they know each other: ${Math.round(a.relations[bId] ?? 0)}/100.${a.partnerId === bId ? ` They are ${a.relationship === 'married' ? 'married' : 'a couple'}.` : ''}${context ? ` ${context}` : ''} Reply as JSON {"lines": [{"who": "A" or "B", "text": "..."}]}.` }], 200);
     if (!('data' in r)) return;
     const lines = ((r.data as any)?.lines ?? []).slice(0, 4);
     lines.forEach((l: any, i: number) => setTimeout(() => {

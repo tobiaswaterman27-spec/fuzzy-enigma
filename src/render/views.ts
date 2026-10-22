@@ -334,13 +334,26 @@ class PersonView {
     // shopping basket (picked goods) in the left hand, carrier bag (paid goods) in the right
     this.syncHeld(state, p);
     this.syncWeapon(p);
+    this.syncPhone();
     const stepping = a?.type === 'shower' && this.showerStep;
     const realSpeed = stage ? (stage.walking ? Math.max(0.6, this.speed) : 0) : stepping ? 0.9 : a || this.bedIt ? 0 : this.speed;
     // site work looks like the job in hand: digging and shovelling, laying bricks, fixing and painting
     const siteClip = a?.type === 'site_work' ? (p.equipment === 'tool_spade' || p.equipment === 'tool_shovel' ? 'clean' : 'stock_shelf') : null;
     const floored = p.down != null || !!p.dead;
     const gest = p.gesture && state.minute < p.gesture.until && !p.move ? `g:${p.gesture.clip}` : null;
-    const clipAction = floored ? 'down' : gest ? gest : stage ? (stage.walking ? null : stage.clip) : this.bedIt ? this.bedPose : stepping ? null : siteClip ?? a?.type ?? null;
+    let clipAction = floored ? 'down' : gest ? gest : stage ? (stage.walking ? null : stage.clip) : this.bedIt ? this.bedPose : stepping ? null : siteClip ?? a?.type ?? null;
+    // standing about with nothing to do: people check their phones, yawn when tired, stretch
+    if (!clipAction && realSpeed === 0 && !p.isPlayer && !item) {
+      this.idleFor += dt;
+      if (this.idleFidget && performance.now() < this.idleFidget.until) clipAction = `g:${this.idleFidget.clip}`;
+      else if (this.idleFor > 6 && Math.random() < dt * 0.12) {
+        const tired = p.needs.energy < 35;
+        const r = Math.random();
+        const clip = tired && r < 0.5 ? 'yawn' : r < 0.6 ? 'phone' : r < 0.8 ? 'idle' : 'shrug';
+        this.idleFidget = { clip, until: performance.now() + (clip === 'phone' ? 6000 : 2600) };
+        this.idleFor = 0;
+      }
+    } else { this.idleFor = 0; this.idleFidget = null; }
     this.anim.walkStyle = walkStyleFor(p);
     this.anim.update(dt, realSpeed, !!item, clipAction);
     // keep the feet on the floor: whatever the animation does, the lower foot rests on the ground
@@ -356,6 +369,8 @@ class PersonView {
     this.placeProps(a?.type ?? null, p.facing);
   }
   private ground = 0;
+  private idleFor = 0;
+  private idleFidget: { clip: string; until: number } | null = null;
   private stagePos: THREE.Vector3 | null = null;
   private stageIdx = -1;
   private stageRoute: { x: number; z: number }[] = [];
@@ -510,6 +525,16 @@ class PersonView {
     }
   }
 
+  private phone: THREE.Mesh | null = null;
+  /** a phone in the hand while the phone clip plays */
+  private syncPhone() {
+    const on = this.anim.state === 'phone';
+    if (on && !this.phone) {
+      this.phone = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.15, 0.009), new THREE.MeshStandardMaterial({ color: '#111', roughness: 0.25, metalness: 0.4 }));
+      this.phone.position.set(0, -0.08, 0.02);
+      this.rig.bones.handR.add(this.phone);
+    } else if (!on && this.phone) { this.phone.parent?.remove(this.phone); this.phone = null; }
+  }
   private weapon: THREE.Group | null = null;
   private weaponKind: string | null = null;
   private syncWeapon(p: Person) {

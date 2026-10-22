@@ -41,3 +41,4 @@ export * from './health';
 export * from './houses';
 export * from './talk';
 export * from './gatherings';
+export * from './incidents';

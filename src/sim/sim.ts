@@ -7,6 +7,7 @@ import { healthDaily, healthMinute, healthSubstep } from './health';
 import { doorTick, housesTick } from './houses';
 import { followTick } from './talk';
 import { gatheringsTick } from './gatherings';
+import { incidentsTick } from './incidents';
 import { wealthDaily } from './wealth';
 import { billsTick } from './bills';
 import { lettingsTick } from './lettings';
@@ -99,6 +100,7 @@ export function minuteTick(state: GameState) {
   stolenTick(state);
   healthMinute(state);
   gatheringsTick(state);
+  incidentsTick(state);
   goodsInTick(state);
   lettingsTick(state);
   billsTick(state);

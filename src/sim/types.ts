@@ -674,6 +674,10 @@ export interface GameState {
   doorCall?: { house: Id; by: Id; at: number; answerer: Id | null; stage: 'waiting' | 'open' | 'done'; letIn: boolean } | null;
   /** weddings, funerals and parties in the park (gatherings.ts) */
   gatherings?: import('./gatherings').Gathering[];
+  /** a row or fight in the street (incidents.ts) */
+  incident?: import('./incidents').Incident | null;
+  /** text messages people have sent the player */
+  inbox?: { from: Id; text: string; at: number; read: boolean }[];
   /** the player has died */
   gameOver?: { at: number; cause: string } | null;
   datingSince?: number;

@@ -231,7 +231,7 @@ export interface Garment {
   top: { color: string; tex: Parameters<typeof fabricTex>[1]; sleeve: 'short' | 'long'; collar?: string; hem: number; accent?: string };
   bottom: { color: string; tex: Parameters<typeof fabricTex>[1]; length: 'long' | 'shorts' };
   shoes: string;
-  over?: { kind: 'apron' | 'vest' | 'blazer'; color: string; accent?: string };
+  over?: { kind: 'apron' | 'vest' | 'blazer' | 'jacket' | 'jumper' | 'coat'; color: string; accent?: string; tex?: 'knit' | 'denim' | 'twill' | 'suit' };
   tie?: string;
 }
 
@@ -252,7 +252,14 @@ export const CASUAL_TOPS: [string, 'knit' | 'polo' | 'shirt', 'short' | 'long'][
   ['#222428', 'knit', 'short'], ['#c99a2e', 'knit', 'long'], ['#2b3b55', 'polo', 'short'], ['#9cb6cf', 'shirt', 'long'], ['#b5562e', 'knit', 'long'],
   ['#4d7a6e', 'polo', 'short'], ['#d6c7ae', 'knit', 'long'],
 ];
-const CASUAL_BOTTOMS: [string, 'denim' | 'twill'][] = [['#2d4366', 'denim'], ['#1c2533', 'denim'], ['#5b7aa0', 'denim'], ['#25272b', 'denim'], ['#b9a37e', 'twill'], ['#545a60', 'twill'], ['#3d4a37', 'twill']];
+const CASUAL_BOTTOMS: [string, 'denim' | 'twill', 'long' | 'shorts'][] = [['#2d4366', 'denim', 'long'], ['#1c2533', 'denim', 'long'], ['#5b7aa0', 'denim', 'long'], ['#25272b', 'denim', 'long'], ['#b9a37e', 'twill', 'long'], ['#545a60', 'twill', 'long'], ['#3d4a37', 'twill', 'long'], ['#c2b08a', 'twill', 'shorts'], ['#2d4366', 'denim', 'shorts']];
+/** what goes over the top, if anything: zip jackets, jumpers and long coats */
+const CASUAL_OUTER: (NonNullable<Garment['over']> | null)[] = [
+  null, null, null,
+  { kind: 'jacket', color: '#3a5272', tex: 'denim' }, { kind: 'jacket', color: '#1d1d1f', tex: 'twill' }, { kind: 'jacket', color: '#4b5a3a', tex: 'twill' },
+  { kind: 'jumper', color: '#7a2b35', tex: 'knit' }, { kind: 'jumper', color: '#2e4a3f', tex: 'knit' }, { kind: 'jumper', color: '#b8b0a2', tex: 'knit' },
+  { kind: 'coat', color: '#5a4a3a', tex: 'suit' }, { kind: 'coat', color: '#22262e', tex: 'suit' }, { kind: 'coat', color: '#7d6a50', tex: 'suit' },
+];
 const CASUAL_SHOES = ['#ececec', '#222222', '#8a8f94', '#6b4a2e', '#1f3d6b'];
 const SHIRTS = ['#f1efe9', '#cfe0ef', '#f2e3e6', '#e9efe4'];
 const SUITS = ['#2b2f38', '#23314d', '#4a4e54', '#3b3330'];
@@ -264,8 +271,10 @@ export function garmentFor(a: Appearance): Garment {
   const s = Math.abs(a.style | 0);
   if (a.outfit === 'outfit_casual') {
     const [tc, tt, sl] = CASUAL_TOPS[s % CASUAL_TOPS.length];
-    const [bc, bt] = CASUAL_BOTTOMS[Math.floor(s / 13) % CASUAL_BOTTOMS.length];
-    return { ...base, top: { ...base.top, color: tc, tex: tt, sleeve: sl, collar: tt === 'polo' || tt === 'shirt' ? tc : undefined }, bottom: { ...base.bottom, color: bc, tex: bt }, shoes: CASUAL_SHOES[Math.floor(s / 7) % CASUAL_SHOES.length] };
+    const [bc, bt, len] = CASUAL_BOTTOMS[Math.floor(s / 13) % CASUAL_BOTTOMS.length];
+    // no coat or jumper over shorts
+    const outer = len === 'shorts' ? null : CASUAL_OUTER[Math.floor(s / 29) % CASUAL_OUTER.length];
+    return { ...base, top: { ...base.top, color: tc, tex: tt, sleeve: outer ? 'long' : sl, collar: tt === 'polo' || tt === 'shirt' ? tc : undefined }, bottom: { ...base.bottom, color: bc, tex: bt, length: len }, shoes: CASUAL_SHOES[Math.floor(s / 7) % CASUAL_SHOES.length], over: outer ?? undefined };
   }
   if (a.outfit === 'outfit_smart') {
     const shirt = SHIRTS[s % SHIRTS.length], suit = SUITS[Math.floor(s / 5) % SUITS.length], tie = TIES[Math.floor(s / 3) % TIES.length];

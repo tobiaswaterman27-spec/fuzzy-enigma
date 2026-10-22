@@ -971,6 +971,18 @@ function buildRealHumanUncached(a: Appearance): HumanBuild {
         fOver[v] = Math.max((y - (shoulderY - 0.1)) * 10, (kneeY + 0.1 - y) * 10, (Math.abs(x) - 0.165) * 12, (0.005 - front) * 14, arm - 0.4, fNeck);
       } else if (ov.kind === 'vest') {
         fOver[v] = Math.max((waist - 0.1 - y) * 10, fNeck, arm - 0.35, (y - (shoulderY + 0.02)) * 10);
+      } else if (ov.kind === 'jumper') {
+        // a knitted jumper: crew neck, long sleeves, ribbed hem at the hips
+        fOver[v] = Math.max(fNeck, (hipsY - 0.02 - y) * 10, Math.min(arm - 0.5, (wristY + 0.06 - y) * 10), fHand);
+      } else if (ov.kind === 'jacket') {
+        // a zip jacket: to the waistband, long sleeves, worn open down the front
+        const open = front > 0.03 && y < neckBase + 0.01 ? (0.028 - Math.abs(x)) * 14 : -1;
+        fOver[v] = Math.max(fNeck, (waist - 0.07 - y) * 10, Math.min(arm - 0.5, (wristY + 0.05 - y) * 10), fHand, open);
+      } else if (ov.kind === 'coat') {
+        // a long coat: to the knee, long sleeves, lapels open to the chest
+        const vDepth = (neckBase - y) / 0.22;
+        const fV = front > 0.02 && vDepth > 0 && vDepth < 1 ? (0.07 * (1 - vDepth) - Math.abs(x)) * 14 : -1;
+        fOver[v] = Math.max(fNeck, (kneeY + 0.06 - y) * 10, Math.min(arm - 0.5, (wristY + 0.04 - y) * 10), fHand, fV, foot - 0.5);
       } else {
         // blazer: torso to below the hips, long sleeves to the wrist, a V opening at the front
         const vDepth = (neckBase - y) / 0.27;
@@ -1057,8 +1069,8 @@ function buildRealHumanUncached(a: Appearance): HumanBuild {
       for (const strap of apronStraps(pos, panel, joints, waist)) { strap.material = apronM; out.push(strap); }
     } else if (ov) {
       const over = cutBody(pos, nrm, [fOver], A.index);
-      const thick = ov.kind === 'vest' ? 0.018 : 0.017;
-      sk(torsoOnly(poolGeometry(over.pool, over.buckets[0], thick, 6, 10, bridge), bi('neck'), bi('head'), bi('chest')), mat('cloth', ov.color, ov.kind === 'vest' ? 'hivis' : 'suit', ov.kind === 'vest' ? 0.5 : 0.85));
+      const thick = ov.kind === 'vest' ? 0.018 : ov.kind === 'coat' ? 0.022 : ov.kind === 'jumper' ? 0.014 : 0.017;
+      sk(torsoOnly(poolGeometry(over.pool, over.buckets[0], thick, 6, 10, bridge), bi('neck'), bi('head'), bi('chest')), mat('cloth', ov.color, ov.kind === 'vest' ? 'hivis' : ov.tex ?? 'suit', ov.kind === 'vest' ? 0.5 : ov.tex === 'knit' ? 0.95 : 0.85));
     }
     if (g.tie) {
       const tieM = mat('std', `tie${g.tie}`, { color: g.tie!, roughness: 0.45, side: THREE.DoubleSide });
