@@ -40,3 +40,4 @@ export * from './life';
 export * from './health';
 export * from './houses';
 export * from './talk';
+export * from './gatherings';

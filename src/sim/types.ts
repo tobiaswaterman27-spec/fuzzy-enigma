@@ -672,6 +672,8 @@ export interface GameState {
   houseOpen?: Record<Id, number>;
   /** someone is answering a house door the player knocked on */
   doorCall?: { house: Id; by: Id; at: number; answerer: Id | null; stage: 'waiting' | 'open' | 'done'; letIn: boolean } | null;
+  /** weddings, funerals and parties in the park (gatherings.ts) */
+  gatherings?: import('./gatherings').Gathering[];
   /** the player has died */
   gameOver?: { at: number; cause: string } | null;
   datingSince?: number;

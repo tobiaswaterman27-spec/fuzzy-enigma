@@ -21,6 +21,7 @@ import { buildWorld, type WorldView } from '../render/world';
 import { Views } from '../render/views';
 import { Traffic } from '../render/traffic';
 import { PoliceCar } from '../render/police';
+import { GatheringProps } from '../render/gatherings';
 import { Rain } from '../render/rain';
 import { Audio } from '../render/audio';
 import { Sites } from '../render/sites';
@@ -62,6 +63,7 @@ export class Game {
   views: Views;
   traffic: Traffic;
   police: PoliceCar;
+  gatheringProps: GatheringProps;
   rain: Rain;
   audio: Audio;
   sites: Sites;
@@ -156,6 +158,7 @@ export class Game {
     this.views = new Views(this.scene);
     this.traffic = new Traffic(this.scene);
     this.police = new PoliceCar(this.scene);
+    this.gatheringProps = new GatheringProps(this.scene);
     this.rain = new Rain(this.scene);
     this.sites = new Sites(this.scene);
     this.market = new MarketStalls(this.scene);
@@ -397,6 +400,7 @@ export class Game {
       this.police.update(s, this.paused ? 0 : dt, mine ? this.vanSpeed : Math.hypot(this.vel.x, this.vel.z), cols);
     }
     this.sites.update(s);
+    this.gatheringProps.update(s);
     this.market.update(s, this.paused ? 0 : dt, this.player.pos);
     this.audio.update(s, this.paused ? 0 : dt, Math.hypot(this.vel.x, this.vel.z), this.drivingVan() ? this.vanSpeed : null);
     this.watchFrameRate(dt);

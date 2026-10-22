@@ -11,6 +11,7 @@ import { endContract } from './employment';
 import { ageOf } from './persona';
 import { HOUSE_IDS } from './world/layout';
 import { spawnResident } from './newgame';
+import { lifeGatherings } from './gatherings';
 
 export const YEAR_DAYS = 28;
 const BABY_NAMES = ['Ava', 'Leo', 'Isla', 'Noah', 'Mia', 'Oscar', 'Freya', 'Arlo', 'Ruby', 'Theo', 'Esme', 'Finn', 'Zara', 'Jude'];
@@ -118,8 +119,9 @@ export function die(state: GameState, p: Person, cause: string, keepBody = false
     lifeEvent(state, partner, `Lost ${p.name}`);
   }
   for (const o of Object.values(state.people)) if (alive(o) && (o.relations[p.id] ?? 0) >= 30) o.needs.mood = clamp(o.needs.mood - 10, 0, 100);
+  if (!p.isPlayer && !p.police && p.npc && !p.npc.ambient) lifeGatherings(state, 'funeral', [p]);
   const you = state.people[state.playerId];
-  news(state, 'bad', `${p.name} has died`, `${p.name}, ${ageOf(p)}, died (${cause}). The funeral is at St Mary's on ${['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'][(dayIndex(state.minute) + 3) % 7]}.`, (you?.relations[p.id] ?? 0) >= 20 || p.isPlayer);
+  news(state, 'bad', `${p.name} has died`, `${p.name}, ${ageOf(p)}, died (${cause}). The funeral will be held in two days, in the park.`, (you?.relations[p.id] ?? 0) >= 20 || p.isPlayer);
 }
 
 /** the player asks someone out (they must be single and like you a lot) */
@@ -168,7 +170,7 @@ export function lifeDaily(state: GameState) {
     if (!p || birthday(p) !== day % YEAR_DAYS) continue;
     p.age = ageOf(p) + 1;
     if (p.isPlayer) news(state, 'good', 'Happy birthday!', `You are ${p.age} today.`, true);
-    else if (p.age % 10 === 0 && (you.relations[p.id] ?? 0) >= 20) news(state, 'world', `${p.name} turns ${p.age}`, 'A big birthday.');
+    else if (p.age % 10 === 0) { if ((you.relations[p.id] ?? 0) >= 20) news(state, 'world', `${p.name} turns ${p.age}`, 'A big birthday.'); if (p.age >= 20) lifeGatherings(state, 'birthday', [p]); }
     // old age
     if (!p.isPlayer && p.age >= 76 && rand(state) < (p.age - 74) * 0.05) die(state, p, 'old age');
   }
@@ -208,7 +210,8 @@ export function lifeDaily(state: GameState) {
         // move in together: into a house if either has one
         const home = a.homeId?.startsWith('house_') ? a.homeId : b.homeId?.startsWith('house_') ? b.homeId : a.homeId;
         if (home) { if (a.homeId !== home) moveHome(state, a, home); if (b.homeId !== home) moveHome(state, b, home); }
-        news(state, 'good', `Wedding: ${a.name} and ${b.name}`, 'They married at St Mary\'s and have moved in together.', (you.relations[a.id] ?? 0) >= 20 || (you.relations[b.id] ?? 0) >= 20);
+        news(state, 'good', `Wedding: ${a.name} and ${b.name}`, 'They married at the register office and have moved in together. The celebration is in the park.', (you.relations[a.id] ?? 0) >= 20 || (you.relations[b.id] ?? 0) >= 20);
+        lifeGatherings(state, 'wedding', [a, b]);
         continue;
       }
       if (stressed && rand(state) < 0.05) { split(state, a, b, false); news(state, 'world', `${a.name.split(' ')[0]} and ${b.name.split(' ')[0]} have split up`, 'Harbourside gossip.'); continue; }

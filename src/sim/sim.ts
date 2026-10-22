@@ -6,6 +6,7 @@ import { lifeDaily } from './life';
 import { healthDaily, healthMinute, healthSubstep } from './health';
 import { doorTick, housesTick } from './houses';
 import { followTick } from './talk';
+import { gatheringsTick } from './gatherings';
 import { wealthDaily } from './wealth';
 import { billsTick } from './bills';
 import { lettingsTick } from './lettings';
@@ -97,6 +98,7 @@ export function minuteTick(state: GameState) {
   carsTick(state);
   stolenTick(state);
   healthMinute(state);
+  gatheringsTick(state);
   goodsInTick(state);
   lettingsTick(state);
   billsTick(state);

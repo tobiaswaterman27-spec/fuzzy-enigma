@@ -907,6 +907,9 @@ export function npcTick(state: GameState) {
     if (p.isPlayer || !p.npc || p.dead || p.left || p.away || p.down != null || p.police || p.combat || p.following) continue;
     if (p.fleeing && p.move) continue;
     if (state.doorCall?.answerer === p.id && state.doorCall.stage !== 'done') continue;
+    // on the way to, or at, a wedding, funeral or party: the plan is set by the event
+    const gid = (p.npc as any).gathering;
+    if (gid && state.gatherings?.some((g) => g.id === gid && !g.done)) { runPlan(state, p); continue; }
     const n = p.npc;
     if (state.meetups?.length && !n.ambient) goToMeetup(state, p);
     if (state.minute >= n.nextDecision && !p.action) decide(state, p);
