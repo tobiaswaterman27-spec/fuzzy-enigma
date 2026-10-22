@@ -150,6 +150,9 @@ export type ActionType =
   | 'attack'
   | 'buy_weapon'
   | 'buy_pint'
+  | 'knock'
+  | 'break_in'
+  | 'search'
   | 'eat'
   | 'change_outfit'
   | 'buy_meal'
@@ -659,6 +662,8 @@ export interface GameState {
   blood?: { id: Id; pos: Vec2; at: number; size: number }[];
   /** how much the police want the player (0..5 stars) */
   wanted?: { level: number; unseen: number; crime: string } | null;
+  /** house doors left open (let in, or forced) until a time, by house id */
+  houseOpen?: Record<Id, number>;
   /** the player has died */
   gameOver?: { at: number; cause: string } | null;
   datingSince?: number;

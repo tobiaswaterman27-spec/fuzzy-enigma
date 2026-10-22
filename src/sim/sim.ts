@@ -4,6 +4,7 @@
 // clock is accelerated (sleeping, fast-forward).
 import { lifeDaily } from './life';
 import { healthDaily, healthMinute, healthSubstep } from './health';
+import { housesTick } from './houses';
 import { wealthDaily } from './wealth';
 import { billsTick } from './bills';
 import { lettingsTick } from './lettings';
@@ -67,6 +68,7 @@ function substep(state: GameState, dt: number, ev: StepEvents) {
     if (p.visible) enforceLocationRules(state, p);
   }
   healthSubstep(state, dt);
+  housesTick(state);
   logisticsTick(state, dt);
 }
 

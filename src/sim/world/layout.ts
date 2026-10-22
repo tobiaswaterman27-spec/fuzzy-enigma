@@ -174,7 +174,9 @@ export type InteractKind =
   | 'shopbin'
   | 'dumpster'
   | 'sink'
-  | 'washer';
+  | 'washer'
+  | 'housedoor'
+  | 'valuables';
 
 export interface Interactable {
   id: string;
@@ -353,7 +355,11 @@ for (const zc of houseZ) {
     B.push({
       id: `house_${hi}`, name: `${hi * 2 + (side === 'e' ? 0 : 1)} Harbour Road`, category: 'simplified', role: 'Private house (residents simulated)',
       rect, height: 6, floors: 2, color: HOUSE_COLORS[(hi - 1) % HOUSE_COLORS.length], trim: '#f4f1ea', roof: '#5a3e36',
-      doors: [{ side: side === 'e' ? 'xmin' : 'xmax', a: zc - 0.8, b: zc + 0.8, open: false }], interior: false,
+      doors: [{ side: side === 'e' ? 'xmin' : 'xmax', a: zc - 0.6, b: zc + 0.6, open: true }], interior: true, floorColor: '#a8865f',
+      // front room by the street door, kitchen-diner at the back, with a doorway between
+      internalWalls: side === 'e'
+        ? [{ x0: 15, z0: zc - 4.5, x1: 15.25, z1: zc - 0.7 }, { x0: 15, z0: zc + 0.7, x1: 15.25, z1: zc + 4.5 }]
+        : [{ x0: -15.25, z0: zc - 4.5, x1: -15, z1: zc - 0.7 }, { x0: -15.25, z0: zc + 0.7, x1: -15, z1: zc + 4.5 }],
     });
   }
 }
@@ -601,6 +607,28 @@ function buildWorldData(homeDesign: HomeDesign): World {
     for (const it of furnished.items) obstacles.push({ kind: it.kind as ObstacleKind, rect: it.rect, height: it.height, solid: it.solid, rot: it.rot, color: it.color });
     for (const u of furnished.uses) add({ ...u, kind: u.kind as InteractKind, locationId: 'flat' });
     homeNodes = furnished.nodes;
+  }
+  // ---- the houses on Harbour Road: a furnished ground floor, the door locked unless you are let in
+  for (const id of HOUSE_IDS) {
+    const b = B.find((x) => x.id === id)!;
+    const east = b.rect.x0 > 0;
+    const zc = (b.rect.z0 + b.rect.z1) / 2;
+    // u: metres in from the street wall, v: metres along it from the door
+    const R = (u0: number, u1: number, v0: number, v1: number): Rect => east ? { x0: 10 + u0, z0: zc + v0, x1: 10 + u1, z1: zc + v1 } : { x0: -10 - u1, z0: zc + v0, x1: -10 - u0, z1: zc + v1 };
+    const P = (u: number, v: number): Vec2 => ({ x: east ? 10 + u : -10 - u, z: zc + v });
+    const hue = ['#5b6b7a', '#7a4f3a', '#4f6d60', '#6a5a7a', '#8a7a5a', '#3f5a6f'][HOUSE_IDS.indexOf(id) % 6];
+    obstacles.push({ kind: 'rug', rect: R(1.6, 3.8, -1.2, 1.2), height: 0.01, solid: false, color: '#8a3a2e' });
+    obstacles.push({ kind: 'sofa', rect: R(1.4, 3.7, 3.35, 4.25), height: 0.85, solid: true, rot: Math.PI, color: hue });
+    obstacles.push({ kind: 'coffee_table', rect: R(2.1, 3.1, 1.5, 2.2), height: 0.42, solid: true });
+    obstacles.push({ kind: 'tv', rect: R(1.9, 3.2, -4.3, -3.8), height: 0.55, solid: true, rot: 0 });
+    obstacles.push({ kind: 'drawers', rect: R(4.0, 4.8, -4.3, -3.85), height: 0.9, solid: true, rot: 0 });
+    obstacles.push({ kind: 'plant', rect: R(4.3, 4.8, 3.8, 4.3), height: 1.1, solid: true });
+    obstacles.push({ kind: 'kitchen', rect: R(5.9, 9.0, 3.6, 4.25), height: 0.92, solid: true, rot: Math.PI });
+    obstacles.push({ kind: 'stove', rect: R(9.0, 9.6, 3.6, 4.25), height: 0.92, solid: true, rot: Math.PI });
+    obstacles.push({ kind: 'dining_table', rect: R(6.6, 8.2, -1.0, 0.4), height: 0.75, solid: true });
+    obstacles.push({ kind: 'bookcase', rect: R(6.0, 7.0, -4.3, -3.9), height: 1.8, solid: true, rot: 0 });
+    add({ id: `${id}_door`, kind: 'housedoor', label: `${b.name} (front door)`, pos: P(-0.9, 0), facing: east ? Math.PI / 2 : -Math.PI / 2, obj: P(0, 0), locationId: 'outside', range: 1.6 });
+    add({ id: `${id}_valuables`, kind: 'valuables', label: 'Chest of drawers', pos: P(4.4, -3.2), facing: Math.PI, obj: P(4.4, -4.05), locationId: id });
   }
   // Marlow Court's front garden: railings with a gap for the path, planting, the bin store by the
   // service door and a covered bike stand at the side
@@ -870,8 +898,10 @@ function buildWorldData(homeDesign: HomeDesign): World {
     prevE = `hs_e_${zc}`; prevW = `hs_w_${zc}`;
     hi++;
     N(`door_house_${hi}`, 9.3, zc, `house_${hi}`); L(`hs_e_${zc}`, `door_house_${hi}`);
+    N(`in_house_${hi}`, 11.2, zc, `house_${hi}`); L(`door_house_${hi}`, `in_house_${hi}`);
     hi++;
     N(`door_house_${hi}`, -9.3, zc, `house_${hi}`); L(`hs_w_${zc}`, `door_house_${hi}`);
+    N(`in_house_${hi}`, -11.2, zc, `house_${hi}`); L(`door_house_${hi}`, `in_house_${hi}`);
   }
   N('hs_e_72', 6.5, 72); N('hs_w_72', -6.5, 72);
   L(prevE, 'hs_e_72'); L(prevW, 'hs_w_72'); L('hs_e_72', 'hs_w_72');

@@ -61,7 +61,7 @@ export function homeDoor(homeId: Id | null): Vec2 {
   return { x: n.x, z: n.z };
 }
 
-const atHome = (p: Person) => !!p.homeId && p.where === p.homeId && !p.visible;
+const atHome = (p: Person) => !!p.homeId && p.where === p.homeId && (!p.visible || (p.npc as any)?.shownIn === p.homeId);
 
 function hide(p: Person, where: Id) {
   p.visible = false;

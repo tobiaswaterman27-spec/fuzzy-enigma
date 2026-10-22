@@ -3,6 +3,7 @@
 // unit callbacks or on completion - never because an animation finished.
 import { useEnergy } from './bills';
 import { buyWeapon, WEAPONS } from './health';
+import { breakIn, houseOf, houseOpen, knock, searchValuables } from './houses';
 
 const PINT = 520;
 import { canDriveForklift, mountForklift, palletsWaiting } from './forklift';
@@ -350,6 +351,16 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
       for (const k of ['bat', 'knife'] as const) out.push(opt('buy_weapon', `Buy a ${WEAPONS[k].label} · ${fmtMoney(WEAPONS[k].price)}`, !staffed ? 'Counter closed' : count(state.containers[p.bagId], WEAPONS[k].item) ? 'You already have one' : undefined, k));
       break;
     }
+    case 'housedoor': {
+      const h = houseOf(it.id);
+      if (houseOpen(state, h)) { out.push(opt('knock', 'The door is open - walk in', 'Just walk in')); break; }
+      out.push(opt('knock', 'Knock on the door'));
+      out.push(opt('break_in', 'Force the door (break in)'));
+      break;
+    }
+    case 'valuables':
+      out.push(opt('search', 'Search the drawers for cash'));
+      break;
     case 'stall': {
       const k = it.product!;
       out.push(opt('buy_stall', `Buy ${itemName(k)} · ${fmtMoney(stallPrice(k))}`, !marketOn(state) ? 'The market is on Saturdays, 09:00-15:00 (not in the rain)' : undefined));
@@ -519,6 +530,12 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
       begin(p, type, itId, { duration: 0.6 }, now);
       return r;
     }
+    case 'knock':
+      begin(p, type, itId, { duration: 0.4 }, now); break;
+    case 'break_in':
+      begin(p, type, itId, { duration: 1.2 }, now); break;
+    case 'search':
+      begin(p, type, itId, { duration: 1.5 }, now); break;
     case 'buy_pint': {
       const b = state.businesses[it.businessId!];
       const r = transfer(state, { from: p.accountId, to: b.accountId, amount: PINT, reason: 'purchase', memo: `Pint at ${b.name}` });
@@ -768,6 +785,9 @@ export function tickAction(state: GameState, p: Person, dt: number): string | nu
     case 'buy_weapon':
       msg = null;
       break;
+    case 'knock': msg = knock(state, p.id, houseOf(a.target)).msg; break;
+    case 'break_in': msg = breakIn(state, p.id, houseOf(a.target)).msg; break;
+    case 'search': msg = searchValuables(state, p.id, houseOf(a.target)).msg; break;
     case 'sit':
     case 'watch_tv':
       msg = null;

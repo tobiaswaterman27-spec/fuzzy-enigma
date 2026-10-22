@@ -13,7 +13,8 @@ import type { GameState } from '../sim/types';
 import { step } from '../sim/sim';
 import { cancelAction, focusInteractable, optionsFor, startAction, enforceLocationRules, type ActionOption } from '../sim/actions';
 import { resolveCircle } from '../sim/world/nav';
-import { buildingAt, getWorld, setHomeDesign } from '../sim/world/layout';
+import { buildingAt, getWorld, HOUSE_IDS, setHomeDesign } from '../sim/world/layout';
+import { houseOpen } from '../sim/houses';
 import { capability } from '../sim/needs';
 import { daylight, hourOfDay } from '../sim/clock';
 import { buildWorld, type WorldView } from '../render/world';
@@ -449,7 +450,13 @@ export class Game {
     // parked private cars, the delivery van and the forklift when nobody is driving them, and traffic
     const cars = Object.values(this.state.vehicles).filter((v) => v.id !== except && (v.state === 'parked' || v.state === 'loaded' || (v.driverId && v.driverId !== this.player.id)));
     const pc = noPolice ? null : this.police?.rect();
-    return [...base, ...this.traffic.rects(), ...(pc ? [pc] : []), ...cars.map((v) => {
+    // locked front doors on Harbour Road (open once you are let in or force them)
+    const locked = HOUSE_IDS.filter((h) => !houseOpen(this.state, h)).map((h) => {
+      const b = getWorld().buildings.find((x) => x.id === h)!;
+      const zc = (b.rect.z0 + b.rect.z1) / 2, x = b.rect.x0 > 0 ? b.rect.x0 : b.rect.x1;
+      return { x0: x - 0.15, z0: zc - 0.65, x1: x + 0.15, z1: zc + 0.65 };
+    });
+    return [...base, ...locked, ...this.traffic.rects(), ...(pc ? [pc] : []), ...cars.map((v) => {
       const ew = Math.abs(Math.sin(v.heading)) > 0.7;
       const hx = ew ? 2.1 : 0.95, hz = ew ? 0.95 : 2.1;
       return { x0: v.pos.x - hx, z0: v.pos.z - hz, x1: v.pos.x + hx, z1: v.pos.z + hz };

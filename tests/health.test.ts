@@ -99,3 +99,33 @@ describe('Health, violence and the law', () => {
     expect(hist).toMatch(/Came down with|hurt their back|scaffold|fight|punched/);
   });
 });
+
+describe('Houses', () => {
+  it('knocking: strangers keep the door shut, friends let you in; breaking in and taking cash is burglary', async () => {
+    const { knock, breakIn, searchValuables, houseOpen, HOUSE_IDS, residents: res, initLife: init } = await import('../src/sim/index');
+    const s = createNewGame(7, setup);
+    init(s);
+    const me = s.people.player;
+    s.minute = Math.floor(s.minute / 1440) * 1440 + 14 * 60;
+    const h = HOUSE_IDS.find((id) => res(s).some((p) => p.homeId === id))!;
+    const r = res(s).find((p) => p.homeId === h)!;
+    r.where = h; r.visible = false; r.sleeping = false;
+    r.relations[me.id] = 0;
+    knock(s, me.id, h);
+    expect(houseOpen(s, h)).toBe(false);
+    r.relations[me.id] = 60;
+    expect(knock(s, me.id, h).msg).toMatch(/Come in/);
+    expect(houseOpen(s, h)).toBe(true);
+    // another house, nobody home, quiet street: force the door and take the cash
+    const h2 = HOUSE_IDS.find((id) => id !== h && res(s).some((p) => p.homeId === id))!;
+    for (const p of res(s)) if (p.homeId === h2) { p.where = 'outside'; p.visible = true; p.pos = { x: 80, z: -30 }; }
+    me.pos = { x: 0, z: 70 };
+    breakIn(s, me.id, h2);
+    expect(houseOpen(s, h2)).toBe(true);
+    const before = s.ledger.accounts[me.accountId].balance;
+    searchValuables(s, me.id, h2);
+    expect(s.ledger.accounts[me.accountId].balance).toBeGreaterThan(before);
+    expect(searchValuables(s, me.id, h2).msg).toMatch(/Nothing left/);
+    expect(auditLedger(s)).toEqual([]);
+  });
+});

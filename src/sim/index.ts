@@ -38,3 +38,4 @@ export * from './wealth';
 export * from './persona';
 export * from './life';
 export * from './health';
+export * from './houses';

@@ -47,6 +47,7 @@ Status vocabulary: **planned → implemented → integrated → tested → playa
 5. Sales Assistant at Harbour Home as a playable job; audio.
 
 ## Change log
+- **v22–v23** — freedom and danger: fights (F to punch; cricket bat and kitchen knife from Harbour Home, Q to hold), dodges, injuries and bleeding, blood on the ground, people knocked down (fall and lie), death with the body left until taken away; victims fight back or run, witnesses flee and call the police; wanted stars, officers in hi-vis on foot and a liveried patrol car that chases you, arrest with fines, a night in the cells or prison and a criminal record; ambulance to St Mary's, A&E visits; hitting people with a car; pints at the cafe that make you weave; townspeople fall ill, have accidents at work and get into late-night scuffles; take cars from the traffic (G); the six Harbour Road houses have furnished ground floors (knock to be let in, or force the door and search the drawers: burglary); walk styles per person and by condition (limp, drunk, sad, old, proud) and a chosen walk for you; eye colour; OpenAI key box on the start screen; saloon, SUV and sports coupe body styles (traffic, parked, shop); people react to weapons, drink, injuries, your record and past attacks; health bar, red hurt flash, death screen.
 - **Checkpoint 1** — simulation core + tests.
 - **Checkpoint 2** — playable 3D client (v1, v2).
 - **v3** — player-owned business, GTA camera, hiring.
