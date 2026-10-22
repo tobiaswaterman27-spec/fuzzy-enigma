@@ -244,6 +244,35 @@ export const GARMENTS: Record<string, Garment> = {
   uniform_cafe: { top: { color: '#f3f0ea', tex: 'shirt', sleeve: 'short', collar: '#f3f0ea', hem: 0.96 }, bottom: { color: '#222', tex: 'twill', length: 'long' }, shoes: '#181818', over: { kind: 'apron', color: '#7b2d26' } },
 };
 
+/** Everyday clothes vary from person to person: a few tops, trousers and shoes for casual wear, and
+ * shirt, suit and tie colours for smart wear. Uniforms are the same for everyone. */
+const CASUAL_TOPS: [string, 'knit' | 'polo' | 'shirt', 'short' | 'long'][] = [
+  ['#3f6ea8', 'knit', 'short'], ['#7d8287', 'knit', 'long'], ['#7b2d3a', 'knit', 'short'], ['#5d6b3c', 'knit', 'long'], ['#efeee9', 'knit', 'short'],
+  ['#222428', 'knit', 'short'], ['#c99a2e', 'knit', 'long'], ['#2b3b55', 'polo', 'short'], ['#9cb6cf', 'shirt', 'long'], ['#b5562e', 'knit', 'long'],
+  ['#4d7a6e', 'polo', 'short'], ['#d6c7ae', 'knit', 'long'],
+];
+const CASUAL_BOTTOMS: [string, 'denim' | 'twill'][] = [['#2d4366', 'denim'], ['#1c2533', 'denim'], ['#5b7aa0', 'denim'], ['#25272b', 'denim'], ['#b9a37e', 'twill'], ['#545a60', 'twill'], ['#3d4a37', 'twill']];
+const CASUAL_SHOES = ['#ececec', '#222222', '#8a8f94', '#6b4a2e', '#1f3d6b'];
+const SHIRTS = ['#f1efe9', '#cfe0ef', '#f2e3e6', '#e9efe4'];
+const SUITS = ['#2b2f38', '#23314d', '#4a4e54', '#3b3330'];
+const TIES = ['#7a2b2b', '#2b3f7a', '#3d5a3a', '#5a4a6a', ''];
+
+export function garmentFor(a: Appearance): Garment {
+  const base = GARMENTS[a.outfit] ?? GARMENTS.outfit_casual;
+  if (a.style === undefined) return base;
+  const s = Math.abs(a.style | 0);
+  if (a.outfit === 'outfit_casual') {
+    const [tc, tt, sl] = CASUAL_TOPS[s % CASUAL_TOPS.length];
+    const [bc, bt] = CASUAL_BOTTOMS[Math.floor(s / 13) % CASUAL_BOTTOMS.length];
+    return { ...base, top: { ...base.top, color: tc, tex: tt, sleeve: sl, collar: tt === 'polo' || tt === 'shirt' ? tc : undefined }, bottom: { ...base.bottom, color: bc, tex: bt }, shoes: CASUAL_SHOES[Math.floor(s / 7) % CASUAL_SHOES.length] };
+  }
+  if (a.outfit === 'outfit_smart') {
+    const shirt = SHIRTS[s % SHIRTS.length], suit = SUITS[Math.floor(s / 5) % SUITS.length], tie = TIES[Math.floor(s / 3) % TIES.length];
+    return { ...base, top: { ...base.top, color: shirt, collar: shirt }, bottom: { ...base.bottom, color: suit }, over: { kind: 'blazer', color: suit }, tie: tie || undefined };
+  }
+  return base;
+}
+
 export interface HumanParams extends Appearance {
   frame?: 'm' | 'f';
 }
@@ -254,7 +283,7 @@ export function buildHumanMeshes(a: HumanParams, skeleton: THREE.Skeleton): THRE
   const fem = frame === 'f';
   const bw = { slim: 0.88, average: 1, broad: 1.15 }[a.build];
   const J = jointLayout(frame, bw);
-  const g = GARMENTS[a.outfit] ?? GARMENTS.outfit_casual;
+  const g = garmentFor(a);
   const parts = new Map<string, { parts: Part[]; mat: () => THREE.Material }>();
   const add = (key: string, mat: () => THREE.Material, p: Part) => {
     if (!parts.has(key)) parts.set(key, { parts: [], mat });

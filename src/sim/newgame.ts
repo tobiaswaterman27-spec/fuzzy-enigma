@@ -76,6 +76,8 @@ function makePerson(state: GameState, id: Id, name: string, opts: { homeId: Id |
   if (!opts.accountId) fund(state, acc, opts.cash, `Savings of ${name}`);
   const homeOutfit = pick(state, ['outfit_casual', 'outfit_smart', 'outfit_casual']);
   const appearance = opts.appearance ?? randomAppearance(state, homeOutfit);
+  // everyday clothes differ from person to person (fixed per person, without using the random stream)
+  if (!opts.appearance && appearance.style === undefined) { let h = 2166136261; for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 16777619) >>> 0; appearance.style = h % 1000; }
   const hands = createContainer(state, 'hands', id, id, 16, undefined, `hands_${id}`);
   const bag = createContainer(state, 'bag', id, id, 40, undefined, `bag_${id}`);
   const basket = createContainer(state, 'basket', id, id, 30, undefined, `basket_${id}`);

@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { buildFaceMask, type FaceMask } from './faceMask';
 import type { Appearance } from '../sim/types';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { GARMENTS } from './human';
+import { garmentFor } from './human';
 import { fetchBinary } from './binary';
 import { hasModel, modelInstance } from './models';
 
@@ -905,7 +905,7 @@ function buildRealHumanUncached(a: Appearance): HumanBuild {
   const A = asset!;
   const { pos, nrm, joints, eyes } = blend(a);
   const fem = (a.frame ?? 'm') === 'f';
-  const g = GARMENTS[a.outfit] ?? GARMENTS.outfit_casual;
+  const g = garmentFor(a);
   const hipsY = joints.hips.y;
   const waist = joints.spine.y - 0.02;
   const shoulderY = joints.armL.y;

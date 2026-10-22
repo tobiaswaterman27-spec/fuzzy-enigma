@@ -106,6 +106,8 @@ export interface Appearance {
   height: number; // scale factor ~0.92 - 1.08
   outfit: string; // item id of equipped outfit
   frame?: 'm' | 'f'; // body frame
+  /** which of the outfit's variations this person wears (colours, sleeves, tie); unset = the standard one */
+  style?: number;
 }
 
 export interface Needs {
