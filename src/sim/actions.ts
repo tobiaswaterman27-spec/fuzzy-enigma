@@ -33,7 +33,7 @@ export interface ActionOption {
   enabled: boolean;
   reason?: string;
   arg?: string;
-  ui?: 'jobs' | 'advisor' | 'interview' | 'laptop' | 'homestore' | 'invite';
+  ui?: 'jobs' | 'advisor' | 'interview' | 'laptop' | 'homestore' | 'invite' | 'chat';
 }
 
 export function interactable(state: GameState, id: Id): Interactable | null {
@@ -313,7 +313,8 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
       const iv = Object.values(state.applications).find((a) => a.personId === actorId && a.status === 'interview' && a.interviewerId === other.id);
       if (iv) out.push({ type: 'ui', label: `Interview with ${other.name}`, enabled: false, reason: 'Held at the window table in Tidewater Cafe - sit down there', ui: 'interview', arg: iv.id });
       const fam = Math.round(p.relations?.[other.id] ?? 0);
-      out.push(opt('talk', `Chat with ${other.name}${fam ? ` (${relationLabel(fam).toLowerCase()} · ${fam})` : ''}`, other.action?.type === 'serve_customer' ? 'Busy serving' : undefined));
+      if (p.isPlayer) out.push({ type: 'ui', label: `Talk to ${other.name}${fam ? ` (${relationLabel(fam).toLowerCase()} · ${fam})` : ''}`, enabled: other.action?.type !== 'serve_customer', reason: 'Busy serving', ui: 'chat', arg: other.id });
+      out.push(opt('talk', p.isPlayer ? `Say hello in passing` : `Chat with ${other.name}`, other.action?.type === 'serve_customer' ? 'Busy serving' : undefined));
       if (p.isPlayer && !other.npc?.ambient) out.push({ type: 'ui', label: `Invite ${other.name.split(' ')[0]} for a coffee`, enabled: fam >= FRIEND_AT && !plannedMeetup(state), reason: fam < FRIEND_AT ? 'Get to know them better first (chat more)' : 'You already have a meet-up arranged', ui: 'invite', arg: other.id });
       break;
     }

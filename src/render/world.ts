@@ -1005,7 +1005,7 @@ function buildObstacle(o: Obstacle): THREE.Object3D {
           if (Math.abs(face - e) > 0.2) continue;
           const a0 = Math.max(horiz ? r.x0 : r.z0, horiz ? wr.x0 : wr.z0), a1 = Math.min(horiz ? r.x1 : r.z1, horiz ? wr.x1 : wr.z1);
           if (a1 - a0 < 0.05) continue;
-          const off = (side === 'x0' || side === 'z0' ? 1 : -1) * 0.006;
+          const off = (side === 'x0' || side === 'z0' ? 1 : -1) * 0.014;
           const bside = horiz ? (Math.abs(face - b.rect.z0) < 0.4 ? 'zmin' : Math.abs(face - b.rect.z1) < 0.4 ? 'zmax' : '') : (Math.abs(face - b.rect.x0) < 0.4 ? 'xmin' : Math.abs(face - b.rect.x1) < 0.4 ? 'xmax' : '');
           const holes = (buildingWindows.get(b.id) ?? []).filter((w) => w.side === bside && w.along - w.ww / 2 >= a0 - 0.01 && w.along + w.ww / 2 <= a1 + 0.01).sort((p, q) => p.along - q.along);
           const panel = (f: number, t: number, y0: number, y1: number) => {

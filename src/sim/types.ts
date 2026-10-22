@@ -272,6 +272,21 @@ export interface Person {
   relations: Record<Id, number>;
   /** when you last spent time with each person (game minute) */
   lastSeen?: Record<Id, number>;
+  /** age in years (life.ts ages people on their birthday); unset = fixed per person (persona.ts) */
+  age?: number;
+  /** partner and family (life.ts) */
+  partnerId?: Id | null;
+  relationship?: 'single' | 'dating' | 'married' | 'divorced' | 'widowed';
+  childrenIds?: Id[];
+  parentIds?: Id[];
+  /** 0..100: injuries and illness bring it down (health.ts) */
+  health?: number;
+  /** hurt badly enough to need treatment */
+  injured?: { severity: number; cause: string; since: number } | null;
+  /** died: kept for the record, no longer simulated */
+  dead?: { at: number; cause: string } | null;
+  /** times someone has crossed this person badly (they remember it) */
+  grudge?: number;
   /** qualifications earned on courses (training.ts) */
   quals?: string[];
   /** the course currently enrolled on */

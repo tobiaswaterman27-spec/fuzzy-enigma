@@ -14,6 +14,8 @@ import { FRIEND_AT, inviteForCoffee, plannedMeetup, relationLabel } from '../sim
 import { buyProperty as buyHomeProperty, canBuyHome, mortgageTerms, ownedHome, ownershipLines, redemption, sellHome, SELL_SHARE, SERVICE_CHARGE } from '../sim/property';
 import { blockPrice, BLOCK, buyOut, buyOutPrice, holdings, TAKEOVER_AT, buyStake, canInvestIn, dividendsReceived, MAX_STAKE, sellStake, stakeOf, valuation, weeklyProfit } from '../sim/invest';
 import { hygieneOf, RATING_LABEL } from '../sim/inspections';
+import { applyAttitude, personaOf, personaPrompt, scriptedReply, type Topic } from '../sim/persona';
+import { aiReply, getApiKey, getModel, hasAi, setApiKey, type ChatTurn } from '../ai/openai';
 import { billAccount, billEstimate } from '../sim/bills';
 import { MILESTONES, netWorth, wealthTitle } from '../sim/wealth';
 import { AGENT_FEE, buyNewBuild, forSale, NEW_BUILD_PRICE, NEW_BUILD_RENT, ownedBuilds, RESALE_SHARE, sellNewBuild } from '../sim/lettings';
@@ -50,7 +52,8 @@ export class UI {
 
   constructor(private game: Game) {
     game.onToast = (m) => this.toast(m);
-    game.onUi = (w, arg) => (w === 'jobs' || w === 'laptop' ? this.openPhone(w === 'laptop' ? this.tab : 'jobs') : w === 'homestore' ? this.openPhone('home') : w === 'invite' ? this.toast(inviteForCoffee(this.s, this.p.id, arg!).msg) : w === 'interview' ? this.interviewInPerson(arg!) : this.advisor());
+    game.onApproach = (id, line) => this.toast(`${this.s.people[id].name}: "${line}" (E to talk)`);
+    game.onUi = (w, arg) => (w === 'chat' ? this.openChat(arg!) : w === 'jobs' || w === 'laptop' ? this.openPhone(w === 'laptop' ? this.tab : 'jobs') : w === 'homestore' ? this.openPhone('home') : w === 'invite' ? this.toast(inviteForCoffee(this.s, this.p.id, arg!).msg) : w === 'interview' ? this.interviewInPerson(arg!) : this.advisor());
     game.onQualityAuto = () => this.toast(`Graphics lowered to ${game.quality === 'medium' ? 'Medium' : 'Low'} for smoother play (Menu > Graphics to change).`);
     game.onFrame = () => this.frame();
     window.addEventListener('keydown', (e) => {
@@ -545,6 +548,63 @@ export class UI {
     this.renderPhone();
   }
 
+  // ------------------------------------------------------------ conversations
+  /** talk to someone: topic buttons always; with an AI key, type anything and they answer in character */
+  openChat(npcId: string, opener?: string) {
+    const s = this.s, me = this.p, o = s.people[npcId];
+    if (!o) return;
+    // they stop and turn to you
+    o.move = null;
+    o.facing = Math.atan2(me.pos.x - o.pos.x, me.pos.z - o.pos.z);
+    me.facing = Math.atan2(o.pos.x - me.pos.x, o.pos.z - me.pos.z);
+    const ai = hasAi();
+    const log: { who: 'you' | 'them'; text: string }[] = [];
+    const history: ChatTurn[] = [{ role: 'system', content: personaPrompt(s, npcId) }];
+    let busy = false;
+    const say = (who: 'you' | 'them', text: string) => { log.push({ who, text }); if (who === 'them') this.game.say(npcId, text, 6); };
+    const TOPICS: [Topic, string][] = [['work', 'Ask about work'], ['life', 'How are you really?'], ['gossip', 'Any gossip?'], ['advice', 'Any advice?'], ['compliment', 'Pay a compliment'], ['joke', 'Crack a joke'], ['flirt', 'Flirt'], ['insult', 'Be rude']];
+    const LINES: Record<string, string> = { work: 'So, how is work going?', life: 'How are you, really?', gossip: 'Heard any gossip lately?', advice: 'Got any advice for someone new round here?', compliment: 'You know, you always look sharp.', joke: "Why don't seagulls fly over the bay? Because then they'd be bagels.", flirt: "I have to say, you're looking good today.", insult: "You're a bit of a waste of space, aren't you?" };
+    const render = () => {
+      const q = personaOf(s, npcId);
+      this.dialog(`<h2>${esc(o.name)}</h2><p class="muted">${q.age} · ${esc(q.job)} · ${esc(q.relationToYou)} (${q.relationScore})${ai ? ' · AI conversation' : ''}</p>
+        <div class="card" style="max-height:38vh;overflow:auto">${log.map((l) => `<p><b>${l.who === 'you' ? 'You' : esc(q.first)}:</b> ${esc(l.text)}</p>`).join('') || '<p class="muted">...</p>'}${busy ? `<p class="muted">${esc(q.first)} is thinking…</p>` : ''}</div>
+        ${ai ? `<div class="row"><input id="chat-in" type="text" maxlength="240" placeholder="Say something to ${esc(q.first)}…" style="flex:1"><button class="primary" data-send="1" ${busy ? 'disabled' : ''}>Say</button></div>` : '<p class="muted">Add an OpenAI API key in the Menu to talk freely; for now pick what to say.</p>'}
+        <div class="row">${TOPICS.map(([t, l]) => `<button data-topic="${t}" ${busy ? 'disabled' : ''}>${l}</button>`).join('')}</div>
+        <div class="row"><button data-bye="1">Say goodbye</button></div>`, async (btn) => {
+        if (busy) return;
+        if (btn.dataset.bye) { const r = scriptedReply(s, npcId, 'bye'); say('them', r.reply); this.closeDialog(); return; }
+        const text = btn.dataset.send ? ($('#chat-in') as HTMLInputElement)?.value.trim() : LINES[btn.dataset.topic ?? ''];
+        if (!text) return;
+        say('you', text);
+        if (ai) {
+          history.push({ role: 'user', content: text });
+          busy = true; render();
+          const r = await aiReply(history);
+          busy = false;
+          if ('error' in r) {
+            const fb = btn.dataset.topic ? scriptedReply(s, npcId, btn.dataset.topic as Topic) : { reply: '(They look at you blankly.)', attitude: 0 };
+            this.toast(r.error);
+            say('them', fb.reply); applyAttitude(s, npcId, fb.attitude);
+          } else {
+            history.push({ role: 'assistant', content: JSON.stringify(r) });
+            say('them', r.reply); applyAttitude(s, npcId, r.attitude);
+          }
+        } else {
+          const r = scriptedReply(s, npcId, btn.dataset.topic as Topic);
+          say('them', r.reply); applyAttitude(s, npcId, r.attitude);
+        }
+        render();
+        setTimeout(() => ($('#chat-in') as HTMLInputElement | null)?.focus(), 0);
+      });
+      const inp = $('#chat-in') as HTMLInputElement | null;
+      if (inp) inp.onkeydown = (e) => { e.stopPropagation(); if (e.key === 'Enter') ($('#dialog [data-send]') as HTMLButtonElement | null)?.click(); };
+    };
+    const hello = opener ?? scriptedReply(s, npcId, 'hello').reply;
+    say('them', hello);
+    applyAttitude(s, npcId, 1);
+    render();
+  }
+
   // ------------------------------------------------------------ dialogs
   dialog(html: string, onClick: (btn: HTMLButtonElement) => void) {
     const dlg = $('#dialog');
@@ -656,6 +716,8 @@ export class UI {
       <button data-m="new">New game</button>
       <button data-m="sound">Sound: ${this.game.audio.muted ? 'Off' : 'On'} - click to switch</button>
       <button data-m="gfx">Graphics: ${this.game.quality === 'high' ? 'High (ambient occlusion, bloom, anti-aliasing)' : this.game.quality === 'medium' ? 'Medium (anti-aliasing, no ambient occlusion)' : 'Low (fastest)'} · resolution ${Math.round(this.game.resScale * 100)}% - click to switch</button>
+      <h3>AI conversations (optional)</h3><p class="muted">With your own OpenAI API key, people answer anything you say, in character, from their job, family, money, mood and history. The key is kept only in this browser and sent only to OpenAI. Without a key, conversations use built-in replies.</p>
+      ${hasAi() ? `<p>Key saved (…${esc((getApiKey() ?? '').slice(-4))}) · model ${esc(getModel())}</p><div class="row"><button data-m="aiclear">Remove key</button></div>` : `<input id="ai-key" type="password" placeholder="sk-…" autocomplete="off" style="font:inherit;padding:8px;border-radius:6px;border:1px solid var(--line);background:#1c2420;color:var(--ink)"><div class="row"><button data-m="aisave">Save key</button></div>`}
       <h3>Controls</h3><p class="muted">WASD or arrows: walk in that direction (relative to the camera) · Shift: run · E: use · 1-6: other options · Tab or P: phone · Esc: pause. The camera follows you automatically; drag to look around, scroll to zoom.</p>
       <p class="muted">Day ${dayIndex(this.s.minute) + 1}. Time passes at ${this.game.speedMult}× (1× = 20 game minutes per real minute). Sleeping fast-forwards.</p>`;
   }
@@ -667,6 +729,8 @@ export class UI {
     if (m === 'save') { const r = this.game.save(); this.renderMenu(r.ok ? 'Saved.' : r.error ?? 'Save failed'); }
     if (m === 'load' || m === 'loadauto') { const r = this.game.load(m === 'load' ? 'bigshot.slot1' : 'bigshot.auto'); this.renderMenu(r.ok ? 'Loaded.' : (r as any).error); }
     if (m === 'sound') { const a = this.game.audio; a.muted = !a.muted; try { localStorage.setItem('bigshot.sound', a.muted ? 'off' : 'on'); } catch { /* */ } a.start(); this.renderMenu(); return; }
+    if (m === 'aisave') { const k = ($('#ai-key') as HTMLInputElement)?.value.trim(); if (k) setApiKey(k); this.renderMenu(k ? 'AI key saved. Talk to anyone to try it.' : 'Paste a key first.'); return; }
+    if (m === 'aiclear') { setApiKey(null); this.renderMenu('AI key removed.'); return; }
     if (m === 'gfx') { this.game.setQuality(this.game.quality === 'high' ? 'medium' : this.game.quality === 'medium' ? 'low' : 'high'); this.renderMenu(); return; }
     if (m === 'new') { if (b.dataset.confirm) location.reload(); else { b.dataset.confirm = '1'; b.textContent = 'Click again: unsaved progress will be lost'; } }
   }

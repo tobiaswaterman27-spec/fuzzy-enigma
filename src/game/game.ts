@@ -28,6 +28,7 @@ import { safeWrite, loadSlot, type KV } from '../sim/save';
 import { news } from '../sim/events';
 import { CAR_MODELS, exitCar } from '../sim/cars';
 import { forkliftAction } from '../sim/forklift';
+import { openingLine } from '../sim/persona';
 import { inOutage } from '../sim/inspections';
 
 const CHATTER = ['How have you been?', 'Did you hear Corner Market is hiring again?', 'The rent on Harbour Road is daylight robbery.', 'Rosa\'s soup is the best thing in town.', 'They say rain again tomorrow.', 'My cousin started at the warehouse.', 'Those new houses are coming along.', 'Ha! No, really?', 'We should do this more often.', 'Long week. Glad it\'s nearly over.', 'Have you seen the prices at Harbour Home?', 'I passed my driving test!', 'The inspector came round the shop yesterday.', 'Exactly what I said!']; 
@@ -74,6 +75,7 @@ export class Game {
   say(personId: string, text: string, seconds = 5) { this.speech.set(personId, { text, until: performance.now() + seconds * 1000 }); }
   private vel = { x: 0, z: 0 };
   private stillFor = 0;
+  private sunAnchor = new THREE.Vector3();
   /** mouse look: the automatic camera waits until this time (ms) */
   private manualUntil = 0;
   /** wheel zoom multiplier on the camera distance */
@@ -104,7 +106,8 @@ export class Game {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.camera = new THREE.PerspectiveCamera(55, 1, 0.1, 500);
+    // a near plane of 0.2 m doubles depth precision over 0.1 (less flicker between close surfaces)
+    this.camera = new THREE.PerspectiveCamera(55, 1, 0.2, 500);
     this.hemi = new THREE.HemisphereLight('#cfe6ff', '#5d6b4a', 0.9);
     this.scene.add(this.hemi);
     this.scene.add(new THREE.AmbientLight('#fff6ea', 0.35));
@@ -303,7 +306,7 @@ export class Game {
     return r;
   }
 
-  onUi: (which: 'jobs' | 'advisor' | 'interview' | 'laptop' | 'homestore' | 'invite', arg?: string) => void = () => {};
+  onUi: (which: 'jobs' | 'advisor' | 'interview' | 'laptop' | 'homestore' | 'invite' | 'chat', arg?: string) => void = () => {};
 
   /** game minutes per real second right now */
   get rate() {
@@ -337,7 +340,7 @@ export class Game {
     }
     // the flat is refitted when an order arrives (or a save is loaded): rebuild it
     if (++this.homeCheck % 30 === 0) { const k = JSON.stringify(s.homeDesigns.flat ?? null); if (k !== this.homeKey) { if (this.homeKey) this.applyHomeDesign(); this.homeKey = k; } }
-    if (!this.paused) this.chatter();
+    if (!this.paused) { this.chatter(); this.approaches(); }
     this.views.update(s, this.paused ? 0 : dt, this.player.pos, this.insideId, this.speech);
     this.traffic.update(s, this.paused ? 0 : dt);
     this.sites.update(s);
@@ -364,13 +367,47 @@ export class Game {
     if (!busy) this.say(q.id, CHATTER[Math.floor(Math.random() * CHATTER.length)], 4);
   }
   private nextChatter = 0;
+  private nextApproach = 0;
+  /** someone who has stopped you in the street to talk (press E on them) */
+  approachBy: string | null = null;
+  onApproach: (id: string, line: string) => void = () => {};
+
+  /** now and then someone you pass stops, turns to you and starts a conversation */
+  private approaches() {
+    const now = performance.now();
+    if (now < this.nextApproach || this.uiOpen || this.drivingVan()) return;
+    this.nextApproach = now + 4000;
+    const s = this.state, me = this.player;
+    if (me.action || me.sleeping) return;
+    const day = Math.floor(s.minute / 1440);
+    for (const o of Object.values(s.people)) {
+      if (o.isPlayer || !o.visible || o.sleeping || o.action || o.dead || !o.npc) continue;
+      const g = o.npc.goal;
+      if (g === 'work' || g === 'go_work' || g === 'shop') continue;
+      const d = Math.hypot(o.pos.x - me.pos.x, o.pos.z - me.pos.z);
+      if (d > 4.5 || d < 0.6) continue;
+      if ((o.npc as any).approachedDay === day) continue;
+      const rel = o.relations[me.id] ?? 0;
+      const chance = 0.06 + o.traits.sociability * 0.12 + (rel >= 30 ? 0.15 : 0) - (o.grudge ? 0.2 : 0);
+      if (Math.random() > chance) continue;
+      (o.npc as any).approachedDay = day;
+      o.move = null;
+      o.npc.plan.unshift({ kind: 'wait', until: s.minute + 4 });
+      o.facing = Math.atan2(me.pos.x - o.pos.x, me.pos.z - o.pos.z);
+      const line = openingLine(s, o.id);
+      this.say(o.id, line, 5);
+      this.approachBy = o.id;
+      this.onApproach(o.id, line);
+      return;
+    }
+  }
 
   /** the static colliders plus any privately owned parked cars (they move, so they are not in the layout) */
-  private collidersWithCars() {
+  private collidersWithCars(except?: string) {
     const base = getWorld().colliders;
-    const cars = Object.values(this.state.vehicles).filter((v) => v.kind === 'car' && v.state === 'parked');
-    if (!cars.length) return base;
-    return [...base, ...cars.map((v) => {
+    // parked private cars, the delivery van and the forklift when nobody is driving them, and traffic
+    const cars = Object.values(this.state.vehicles).filter((v) => v.id !== except && (v.state === 'parked' || v.state === 'loaded' || (v.driverId && v.driverId !== this.player.id)));
+    return [...base, ...this.traffic.rects(), ...cars.map((v) => {
       const ew = Math.abs(Math.sin(v.heading)) > 0.7;
       const hx = ew ? 2.1 : 0.95, hz = ew ? 0.95 : 2.1;
       return { x0: v.pos.x - hx, z0: v.pos.z - hz, x1: v.pos.x + hx, z1: v.pos.z + hz };
@@ -405,7 +442,7 @@ export class Game {
     // steering: tighter at low speed, the turn rate scales with how fast the wheels roll
     v.heading += steer * Math.sign(this.vanSpeed) * Math.min(Math.abs(this.vanSpeed), 3.5) * dt * 0.22;
     const nx = v.pos.x + Math.sin(v.heading) * this.vanSpeed * dt, nz = v.pos.z + Math.cos(v.heading) * this.vanSpeed * dt;
-    const res = resolveCircle({ x: nx, z: nz }, fork ? 0.8 : 1.15);
+    const res = resolveCircle({ x: nx, z: nz }, fork ? 0.8 : 1.15, this.collidersWithCars(v.id));
     if (Math.hypot(res.x - nx, res.z - nz) > 0.01) this.vanSpeed *= 0.4; // bumped into something
     v.odometer += Math.hypot(res.x - v.pos.x, res.z - v.pos.z);
     v.pos = res;
@@ -449,6 +486,12 @@ export class Game {
       p.facing += d * Math.min(1, dt * 9);
     }
     p.pos = resolveCircle({ x: p.pos.x + this.vel.x * dt, z: p.pos.z + this.vel.z * dt }, 0.3, this.collidersWithCars());
+    // people are solid too: step round them rather than through them
+    for (const o of Object.values(this.state.people)) {
+      if (o.isPlayer || !o.visible || o.sleeping) continue;
+      const dx = p.pos.x - o.pos.x, dz = p.pos.z - o.pos.z, d = Math.hypot(dx, dz);
+      if (d < 0.55 && d > 1e-4) { const k = (0.55 - d) / d; p.pos = resolveCircle({ x: p.pos.x + dx * k, z: p.pos.z + dz * k }, 0.3, this.collidersWithCars()); }
+    }
     enforceLocationRules(this.state, p);
   }
 
@@ -531,16 +574,20 @@ export class Game {
     // too close to see past: hide the player's own body
     this.views.hidePlayer = this.distCur < 0.6 && !van;
     this.camera.lookAt(origin.x - dir.x * 2, origin.y - dir.y * 2 + (this.overview ? 0 : 0.05), origin.z - dir.z * 2);
-    this.sun.target.position.set(p.pos.x, 0, p.pos.z);
+    // the shadow box follows the player in whole shadow-map texels, so shadow edges do not shimmer
+    const texel = (this.sun.shadow.camera.right - this.sun.shadow.camera.left) / this.sun.shadow.mapSize.x;
+    this.sunAnchor.set(Math.round(p.pos.x / texel) * texel, 0, Math.round(p.pos.z / texel) * texel);
+    this.sun.target.position.copy(this.sunAnchor);
   }
 
   private updateLighting() {
     const s = this.state;
     const d = daylight(s.minute);
-    const h = hourOfDay(s.minute);
+    // the sun moves in 5-minute steps: a sun that turns a little every frame makes shadows crawl
+    const h = Math.floor(hourOfDay(s.minute) * 12) / 12;
     const ang = ((h - 6) / 12) * Math.PI;
     const p = this.player;
-    this.sun.position.set(p.pos.x + Math.cos(ang) * 50, Math.max(8, Math.sin(ang) * 70), p.pos.z + 30);
+    this.sun.position.set(this.sunAnchor.x + Math.cos(ang) * 50, Math.max(8, Math.sin(ang) * 70), this.sunAnchor.z + 30);
     // rain: overcast and dimmer, the fog closes in, streaks of rain around you
     const r = raining(s);
     this.rain.update(this.lastDt, buildingAt(this.player.pos) ? 0 : r, this.camera.position);

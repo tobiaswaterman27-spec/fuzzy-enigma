@@ -18,6 +18,16 @@ const COLORS = ['#b8232a', '#2b4f8c', '#e8e8e8', '#1c1c1c', '#5f7f3f', '#c4a14a'
 
 export class Traffic {
   cars: Car[] = [];
+
+  /** the cars as axis-aligned boxes (they drive along the roads), for collisions */
+  rects(): { x0: number; z0: number; x1: number; z1: number }[] {
+    return this.cars.map((c) => {
+      const p = c.obj.position;
+      const alongX = c.lane < 2;
+      const hx = alongX ? 2.15 : 0.95, hz = alongX ? 0.95 : 2.15;
+      return { x0: p.x - hx, z0: p.z - hz, x1: p.x + hx, z1: p.z + hz };
+    });
+  }
   constructor(scene: THREE.Scene, count = 14) {
     for (let i = 0; i < count; i++) {
       const lane = i % LANES.length;
