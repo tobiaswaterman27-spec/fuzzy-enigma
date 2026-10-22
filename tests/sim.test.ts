@@ -216,7 +216,8 @@ describe('Journey H/J - persistence and extended simulation', () => {
     const s = newGame(11);
     const ids = Object.keys(s.people).sort();
     for (let d = 0; d < 14; d++) advance(s, 1440);
-    expect(Object.keys(s.people).sort()).toEqual(ids);
+    // nobody disappears (people can be added: newcomers, officers on duty, the pub landlady)
+    expect(ids.filter((id) => !s.people[id])).toEqual([]);
     expect(moneySupply(s)).toBe(0);
     expect(auditLedger(s)).toEqual([]);
     for (const c of Object.values(s.containers)) for (const n of Object.values(c.items)) expect(n).toBeGreaterThanOrEqual(0);

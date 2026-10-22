@@ -154,6 +154,7 @@ export type ActionType =
   | 'buy_pint'
   | 'knock'
   | 'grab'
+  | 'buy_round'
   | 'hire_boat'
   | 'favour_ask'
   | 'favour_done'
@@ -332,11 +333,14 @@ export interface Person {
   /** the way this person walks normally (a walk clip), when chosen */
   gait?: string;
   favoursDone?: number;
+  dartsWon?: number;
   /** goals scored in the park */
   goals?: number;
   /** fish landed, and the heaviest of each kind */
   fishCaught?: number;
   fishingBest?: Record<string, number>;
+  /** a fixed place of work outside the job market (the pub landlady) */
+  fixedJob?: string;
   /** a dog of their own */
   dog?: import('./leisure').Dog;
   /** 0..100, from running: speed, stamina, punches */

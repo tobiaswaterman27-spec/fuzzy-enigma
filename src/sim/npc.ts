@@ -3,6 +3,7 @@
 // Execution layer: a plan of move/act/wait steps using the same validated
 // actions as the player. Arrival is verified by distance, never by a timer.
 import { GOODS_IN_SPOT } from './forklift';
+import { pubDrink } from './pub';
 import { marketOn, STALLS } from './streetmarket';
 import type { GameState, Id, NpcGoal, Person, PlanStep, Task, Vec2 } from './types';
 import { dayIndex, minuteOfDay } from './clock';
@@ -447,6 +448,9 @@ function startWork(state: GameState, p: Person) {
 function runCall(state: GameState, p: Person, fn: string) {
   const n = p.npc!;
   switch (fn) {
+    case 'pubDrink':
+      pubDrink(state, p);
+      break;
     case 'goHomeNow':
       p.jogging = 0;
       n.plan = [{ kind: 'move', to: homeDoor(p.homeId), label: 'home' }, { kind: 'call', fn: 'arriveHome' }];
@@ -909,7 +913,7 @@ function shouldPreemptForTill(state: GameState, p: Person): boolean {
 export function npcTick(state: GameState) {
   sitePlot = state.build?.plot ?? 0;
   for (const p of Object.values(state.people)) {
-    if (p.isPlayer || !p.npc || p.dead || p.left || p.away || p.down != null || p.police || p.combat || p.following) continue;
+    if (p.isPlayer || !p.npc || p.dead || p.left || p.away || p.down != null || p.police || p.fixedJob || p.combat || p.following) continue;
     if (p.fleeing && p.move) continue;
     if (state.doorCall?.answerer === p.id && state.doorCall.stage !== 'done') continue;
     // on the way to, or at, a wedding, funeral or party: the plan is set by the event

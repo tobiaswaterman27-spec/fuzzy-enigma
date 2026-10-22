@@ -96,3 +96,29 @@ describe('Achievements', () => {
     expect(s.news.filter((x) => x.title.includes('Gone fishing')).length).toBe(n);
   });
 });
+
+describe('The Anchor', () => {
+  it('Maureen is behind the bar in opening hours; regulars come in of an evening; a round makes friends', async () => {
+    const { pubTick, buyRound, LANDLADY } = await import('../src/sim/index');
+    const s = createNewGame(7, setup);
+    initLife(s);
+    s.minute = Math.floor(s.minute / 1440) * 1440 + 19 * 60;
+    pubTick(s);
+    expect(s.people[LANDLADY].visible).toBe(true);
+    for (const p of residents(s)) { p.npc!.goal = 'idle_home'; p.action = null; p.move = null; p.sleeping = false; p.visible = false; }
+    let regular = null;
+    for (let i = 0; i < 120 && !regular; i++) { s.minute = Math.ceil((s.minute + 0.1) / 4) * 4; pubTick(s); regular = residents(s).find((p) => p.npc!.plan.some((x) => x.kind === 'call' && x.fn === 'pubDrink')); }
+    expect(regular).toBeTruthy();
+    const me = s.people.player;
+    transfer(s, { from: s.externalId, to: me.accountId, amount: 10000, reason: 'transfer', memo: 't' });
+    regular!.visible = true; regular!.where = 'pub'; regular!.pos = { x: 70, z: 78 };
+    me.pos = { x: 74, z: 79 };
+    const before = regular!.relations[me.id] ?? 0;
+    expect(buyRound(s, me.id).ok).toBe(true);
+    expect(regular!.relations[me.id]).toBeGreaterThan(before);
+    s.minute = Math.floor(s.minute / 1440) * 1440 + 1440 + 2 * 60;
+    pubTick(s);
+    expect(s.people[LANDLADY].visible).toBe(false);
+    expect(auditLedger(s)).toEqual([]);
+  });
+});

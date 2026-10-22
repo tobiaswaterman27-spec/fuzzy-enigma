@@ -24,6 +24,7 @@ import { ADOPTION_FEE, adoptDog, call999, DOG_FOOD_WEEK } from '../sim/leisure';
 import { startTaxi, stopTaxi, taxiTarget } from '../sim/taxi';
 import { biting } from '../sim/fishing';
 import { ACHIEVEMENTS } from '../sim/achievements';
+import { openDarts } from './darts';
 import { AGENT_FEE, buyNewBuild, forSale, NEW_BUILD_PRICE, NEW_BUILD_RENT, ownedBuilds, RESALE_SHARE, sellNewBuild } from '../sim/lettings';
 import { PLOTS } from '../sim/world/plots';
 import { bookRetest, COURSES, enrol } from '../sim/training';
@@ -60,7 +61,7 @@ export class UI {
     game.onToast = (m) => this.toast(m);
     game.onApproach = (id) => void this.approached(id);
     game.onAmbientChat = (a, b) => void this.ambientChat(a, b);
-    game.onUi = (w, arg) => (w === 'chat' ? this.openChat(arg!, false) : w === 'jobs' || w === 'laptop' ? this.openPhone(w === 'laptop' ? this.tab : 'jobs') : w === 'homestore' ? this.openPhone('home') : w === 'invite' ? this.toast(inviteForCoffee(this.s, this.p.id, arg!).msg) : w === 'interview' ? this.interviewInPerson(arg!) : this.advisor());
+    game.onUi = (w, arg) => (w === 'darts' ? this.darts() : w === 'chat' ? this.openChat(arg!, false) : w === 'jobs' || w === 'laptop' ? this.openPhone(w === 'laptop' ? this.tab : 'jobs') : w === 'homestore' ? this.openPhone('home') : w === 'invite' ? this.toast(inviteForCoffee(this.s, this.p.id, arg!).msg) : w === 'interview' ? this.interviewInPerson(arg!) : this.advisor());
     game.onQualityAuto = () => this.toast(`Graphics lowered to ${game.quality === 'medium' ? 'Medium' : 'Low'} for smoother play (Menu > Graphics to change).`);
     game.onFrame = () => this.frame();
     game.onHurt = (n) => { const f = $('#hurt-flash'); f.classList.add('on'); f.style.setProperty('--a', String(Math.min(1, n / 30))); requestAnimationFrame(() => requestAnimationFrame(() => f.classList.remove('on'))); };
@@ -771,6 +772,15 @@ export class UI {
       setTimeout(() => el.classList.add('out'), 4200);
       setTimeout(() => el.remove(), 5000);
     }
+  }
+  /** a game of darts, against whoever is about in the pub */
+  darts() {
+    const s = this.s, me = this.p;
+    const rival = Object.values(s.people).filter((o) => !o.isPlayer && o.visible && o.where === 'pub' && !o.fixedJob && o.down == null && Math.hypot(o.pos.x - me.pos.x, o.pos.z - me.pos.z) < 12)[0] ?? null;
+    const host = $('#dialog');
+    this.liveDialog = true;
+    openDarts(host, s, me, rival, (msg) => { if (msg) this.toast(msg); this.closeDialog(); });
+    this.syncModal();
   }
   private rowHeard = -1;
   /** a row in the street: what they shout at each other comes from who they are */

@@ -21,6 +21,7 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'bass', title: 'The one that did not get away', how: 'Land a sea bass over 4 kg', check: (s) => (me(s).fishingBest?.fish_bass ?? 0) > 4 },
   { id: 'goal', title: 'Back of the net', how: 'Score a goal in the park', check: (s) => (me(s).goals ?? 0) >= 1 },
   { id: 'hattrick', title: 'Hat-trick', how: 'Score three goals', check: (s) => (me(s).goals ?? 0) >= 3 },
+  { id: 'darts', title: 'One hundred and eighty!', how: 'Win a game of darts at The Anchor', check: (s) => (me(s).dartsWon ?? 0) >= 1 },
   { id: 'dog', title: "Man's best friend", how: 'Adopt a dog', check: (s) => !!me(s).dog },
   { id: 'car', title: 'Wheels', how: 'Buy a car', check: (s) => !!playerCar(s, s.playerId) },
   { id: 'home', title: 'Homeowner', how: 'Buy your own home', check: (s) => !!ownedHome(s, s.playerId) },

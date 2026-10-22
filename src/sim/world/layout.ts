@@ -49,6 +49,7 @@ export interface BuildingDef {
 
 export type ObstacleKind =
   | 'bait_hut'
+  | 'dartboard'
   | 'railing'
   | 'planter'
   | 'bin_store'
@@ -180,7 +181,9 @@ export type InteractKind =
   | 'valuables'
   | 'fishing'
   | 'bait_shop'
-  | 'boat_hire';
+  | 'boat_hire'
+  | 'pub_bar'
+  | 'darts';
 
 export interface Interactable {
   id: string;
@@ -352,6 +355,14 @@ const B: BuildingDef[] = [
 export const QUAY_EDGE = 90;
 export const FISH_SPOTS = [{ id: 'fish_1', x: -22 }, { id: 'fish_2', x: -4 }, { id: 'fish_3', x: 14 }, { id: 'fish_4', x: 34 }];
 export const BAIT_HUT = { x: -34, z: 79 };
+
+// The Anchor: the pub at the east end of the quay
+B.push({
+  id: 'pub', name: 'The Anchor', category: 'functional', role: 'Pub: pints, darts, and half the town of an evening',
+  rect: { x0: 64, z0: 72, x1: 82, z1: 86 }, height: 5, floors: 1, color: '#2f3e46', trim: '#e9e3d0', roof: '#3b2f2a',
+  sign: { text: 'THE ANCHOR', side: 'xmin', color: '#e9d8a6', bg: '#2f3e46' },
+  doors: [{ side: 'xmin', a: 77, b: 79.2, open: true }], interior: true, floorColor: '#6b4a32',
+});
 
 // NPC homes along Harbour Road (simplified: residents enter and are simulated off-screen)
 const HOUSE_COLORS = ['#d8c3a5', '#a3b18a', '#c9ada7', '#e0c097', '#b7c4cf', '#d4a373'];
@@ -639,6 +650,15 @@ function buildWorldData(homeDesign: HomeDesign): World {
     add({ id: `${id}_door`, kind: 'housedoor', label: `${b.name} (front door)`, pos: P(-0.9, 0), facing: east ? Math.PI / 2 : -Math.PI / 2, obj: P(0, 0), locationId: 'outside', range: 1.6 });
     add({ id: `${id}_valuables`, kind: 'valuables', label: 'Chest of drawers', pos: P(4.4, -3.2), facing: Math.PI, obj: P(4.4, -4.05), locationId: id });
   }
+  // ---- The Anchor: the bar along the back wall, tables, and the dartboard on the north wall
+  obstacles.push({ kind: 'counter', rect: { x0: 76.6, z0: 74, x1: 77.6, z1: 84 }, height: 1.05, solid: true, color: '#4a2f1e' });
+  obstacles.push({ kind: 'kitchen', rect: { x0: 81.2, z0: 74.5, x1: 81.85, z1: 83.5 }, height: 0.95, solid: true, rot: -Math.PI / 2 });
+  for (const [tx, tz] of [[67.5, 74.6], [71.5, 74.6], [67.5, 82.5]]) obstacles.push({ kind: 'table', rect: box(tx, tz, 1.3, 1.3), height: 0.75, solid: true });
+  obstacles.push({ kind: 'bistro_set', rect: box(70.4, 81.6, 0.8, 1.6), height: 0.9, solid: true });
+  obstacles.push({ kind: 'dartboard', rect: { x0: 73.6, z0: 85.75, x1: 74.4, z1: 85.85 }, height: 1.73, solid: false });
+  for (const [px, pz] of [[64.6, 72.6], [64.6, 85.4]]) obstacles.push({ kind: 'plant', rect: box(px, pz, 0.5, 0.5), height: 1.2, solid: true });
+  add({ id: 'pub_bar', kind: 'pub_bar', label: 'The bar', pos: { x: 75.6, z: 79 }, facing: Math.PI / 2, obj: { x: 77.1, z: 79 }, locationId: 'pub', range: 1.8 });
+  add({ id: 'darts', kind: 'darts', label: 'Dartboard', pos: { x: 74, z: 83.3 }, facing: 0, obj: { x: 74, z: 85.8 }, locationId: 'pub', range: 1.6 });
   // ---- the quay: fishing spots at the edge, a bait and tackle hut, benches looking out to sea
   for (const f of FISH_SPOTS) add({ id: f.id, kind: 'fishing', label: 'Fishing spot', pos: { x: f.x, z: QUAY_EDGE - 1.2 }, facing: 0, obj: { x: f.x, z: QUAY_EDGE + 0.6 }, locationId: 'outside', range: 1.6 });
   obstacles.push({ kind: 'bait_hut', rect: { x0: BAIT_HUT.x - 2, z0: BAIT_HUT.z - 1.5, x1: BAIT_HUT.x + 2, z1: BAIT_HUT.z + 1.5 }, height: 2.6, solid: true });
@@ -925,6 +945,9 @@ function buildWorldData(homeDesign: HomeDesign): World {
   L('hs_e_72', 'q_c'); L('hs_w_72', 'q_c'); L('q_ww', 'q_w', 'q_c', 'q_e', 'q_ee');
   for (const f of FISH_SPOTS) { N(`q_${f.id}`, f.x, QUAY_EDGE - 1.6); L(`q_${f.id}`, f.x < -15 ? 'q_w' : f.x > 15 ? 'q_e' : 'q_c'); }
   N('q_boat', 24, QUAY_EDGE - 1.6); L('q_boat', 'q_e');
+  // to The Anchor, and about inside it
+  N('pub_out', 62.4, 78.1); N('pub_in', 66, 78.1, 'pub'); N('pub_bar', 75.4, 79, 'pub'); N('pub_mid', 70, 78.1, 'pub'); N('pub_darts', 74, 83.2, 'pub'); N('pub_t', 69.5, 76.8, 'pub');
+  L('q_ee', 'pub_out', 'pub_in', 'pub_mid', 'pub_bar'); L('pub_mid', 'pub_darts'); L('pub_mid', 'pub_t');
   N('q_bait', BAIT_HUT.x, BAIT_HUT.z - 2.2); N('q_bait_c', BAIT_HUT.x + 4, BAIT_HUT.z - 2.2); L('q_bait', 'q_bait_c', 'q_w');
 
   // Corner Market: front door + interior

@@ -5,6 +5,7 @@ import { useEnergy } from './bills';
 import { buyWeapon, robTill, WEAPONS } from './health';
 import { breakIn, houseOf, houseOpen, knock, searchValuables } from './houses';
 import { grabShoplifter } from './incidents';
+import { buyRound, PUB_PINT, pubOpen } from './pub';
 import { BOAT_ID, BOAT_PRICE, hireBoat } from './boats';
 import { askFavour, canComplete, completeFavour, openFavour } from './favours';
 import { buyLotto, LOTTO_PRICE, SCRATCH_PRICE, scratchcard } from './leisure';
@@ -42,7 +43,7 @@ export interface ActionOption {
   enabled: boolean;
   reason?: string;
   arg?: string;
-  ui?: 'jobs' | 'advisor' | 'interview' | 'laptop' | 'homestore' | 'invite' | 'chat';
+  ui?: 'jobs' | 'advisor' | 'interview' | 'laptop' | 'homestore' | 'invite' | 'chat' | 'darts';
 }
 
 export function interactable(state: GameState, id: Id): Interactable | null {
@@ -383,6 +384,15 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
       out.push(opt('sell_catch', 'Sell your catch', hasCatch(state, p) ? undefined : 'Nothing to sell'));
       break;
     }
+    case 'pub_bar': {
+      const open = pubOpen(state.minute);
+      out.push(opt('buy_pint', `A pint of bitter · ${fmtMoney(PUB_PINT)}`, !open ? 'Closed (open 11:00-23:00)' : (p.drunk ?? 0) > 75 ? "Maureen says you've had enough" : undefined));
+      out.push(opt('buy_round', 'Buy a round for the pub', !open ? 'Closed' : undefined));
+      break;
+    }
+    case 'darts':
+      out.push({ type: 'ui', label: 'Play darts (301)', enabled: true, ui: 'darts' });
+      break;
     case 'boat_hire':
       out.push(opt('hire_boat', `Hire a boat for half an hour · ${fmtMoney(BOAT_PRICE)}`, state.vehicles[BOAT_ID] ? 'The hire boat is out' : undefined));
       break;
@@ -610,7 +620,19 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
       begin(p, type, itId, { duration: 1.2 }, now); break;
     case 'search':
       begin(p, type, itId, { duration: 1.5 }, now); break;
+    case 'buy_round': {
+      const r = buyRound(state, p.id);
+      if (!r.ok) return r;
+      begin(p, 'talk', itId, { duration: 0.6 }, now);
+      return r;
+    }
     case 'buy_pint': {
+      if (it.kind === 'pub_bar') {
+        const r = transfer(state, { from: p.accountId, to: state.externalId, amount: PUB_PINT, reason: 'purchase', memo: 'A pint at The Anchor', key: `pint:${p.id}:${Math.floor(now)}` });
+        if (!r.ok) return { ok: false, msg: 'Not enough money.' };
+        begin(p, type, itId, { duration: 10 }, now);
+        break;
+      }
       const b = state.businesses[it.businessId!];
       const r = transfer(state, { from: p.accountId, to: b.accountId, amount: PINT, reason: 'purchase', memo: `Pint at ${b.name}` });
       if (!r.ok) return { ok: false, msg: r.error };

@@ -114,3 +114,7 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .achievement small { opacity: .8; }
 .achievement.out { opacity: 0; transform: translate(-50%, -20px); }
 @keyframes achin { from { opacity: 0; transform: translate(-50%, -30px) scale(.9); } }
+
+.darts { background: rgba(12,18,15,.94); padding: 14px 18px; border-radius: 12px; text-align: center; width: min(420px, 94vw) !important; }
+.darts canvas { width: min(360px, 84vw); height: auto; border-radius: 8px; cursor: crosshair; display: block; margin: 8px auto; }
+.dscore { font-size: 16px; margin: 4px 0; }

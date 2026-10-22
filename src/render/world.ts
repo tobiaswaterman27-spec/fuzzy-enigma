@@ -2,6 +2,7 @@
 // ground and roads, facades with framed windows, working doors, roofs,
 // street furniture and detailed interiors.
 import * as THREE from 'three';
+import { dartboardMesh } from './dartboard';
 import { getWorld, wallsFor, WALL_T, type BuildingDef, type Obstacle, type Rect } from '../sim/world/layout';
 import { fitModel, hasModel, modelInstance } from './models';
 import { FLOORS, WALLPAPERS } from '../sim/world/homes';
@@ -90,6 +91,7 @@ const FLOOR: Record<string, () => { t: THREE.CanvasTexture; tile: number }> = {
   unit4: () => ({ t: tex.tiles('#d9dadb', '#c9cacb'), tile: TILE['tiles#d9dadb#c9cacb'] }),
   cafe: () => ({ t: tex.tiles('#c79a6b', '#e9dcc4', 6), tile: TILE['tiles#c79a6b#e9dcc4'] }),
   flat: () => ({ t: tex.wood('#a0784e'), tile: TILE['wood#a0784e'] }),
+  pub: () => ({ t: tex.wood('#5a3a24'), tile: TILE['wood#5a3a24'] ?? 1.2 }),
   jobcentre: () => ({ t: tex.carpet('#5c6f86'), tile: TILE['carpet#5c6f86'] }),
 };
 
@@ -1421,6 +1423,15 @@ function buildObstacle(o: Obstacle): THREE.Object3D {
     }
     case 'lamp': case 'car': break;
     case 'bait_hut': break; // drawn with the harbour
+    case 'dartboard': {
+      // on the north wall, facing into the room, with a cabinet surround and the oche on the floor
+      const m = dartboardMesh();
+      m.position.set(cx, o.height, cz - 0.03); m.rotation.y = Math.PI;
+      grp.add(m);
+      grp.add(box(0.8, 0.8, 0.04, M('#4a2f1e', 0.6), cx, o.height, cz + 0.01, false));
+      grp.add(box(0.6, 0.012, 0.05, M('#d9c27a', 0.5), cx, 0.09, cz - 2.37, false));
+      return grp;
+    }
     default: grp.add(box(W, o.height, D, M('#888'), cx, o.height / 2, cz));
   }
   return grp;

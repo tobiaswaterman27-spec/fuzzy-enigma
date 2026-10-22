@@ -12,6 +12,7 @@ import { incidentsTick, shopliftTick } from './incidents';
 import { favoursTick } from './favours';
 import { achievementsTick } from './achievements';
 import { newYearTick } from './newyear';
+import { pubTick } from './pub';
 import { anglersTick, dogTick, initDogs, joggersTick, lottoTick, seasonalWardrobe } from './leisure';
 import { wealthDaily } from './wealth';
 import { billsTick } from './bills';
@@ -112,6 +113,7 @@ export function minuteTick(state: GameState) {
   favoursTick(state);
   achievementsTick(state);
   newYearTick(state);
+  pubTick(state);
   dogTick(state);
   joggersTick(state);
   anglersTick(state);
