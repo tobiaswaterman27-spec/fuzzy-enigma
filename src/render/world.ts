@@ -581,7 +581,7 @@ function buildBuilding(g: THREE.Group, b: BuildingDef, cutaway: WorldView['cutaw
         g.add(horiz ? box(r.x1 - r.x0, 0.12, 0.03, skirtM, (r.x0 + r.x1) / 2, 0.1, (r.z0 + r.z1) / 2 + inwardOff, false) : box(0.03, 0.12, r.z1 - r.z0, skirtM, (r.x0 + r.x1) / 2 + inwardOff, 0.1, (r.z0 + r.z1) / 2, false));
       }
     }
-    const fl = FLOOR[b.id]?.() ?? { t: tex.tiles('#cccccc', '#bbbbbb'), tile: 1.2 };
+    const fl = FLOOR[b.id]?.() ?? (b.id.startsWith('house_') ? { t: tex.wood(b.floorColor ?? '#a8865f'), tile: TILE['wood#a0784e'] ?? 1.2 } : { t: tex.tiles('#cccccc', '#bbbbbb'), tile: 1.2 });
     g.add(box(W, 0.08, D, texMat(fl.t, 0.75), cx, 0.04, cz, false, fl.tile));
     // frames on both faces and one clear pane in each opening
     for (const w of wins) {

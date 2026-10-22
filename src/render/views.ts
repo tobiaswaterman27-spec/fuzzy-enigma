@@ -869,6 +869,64 @@ export class Views {
     }
   }
 
+  /** children out with a parent: drawn walking alongside them (they are part of the family record, not simulated on their own) */
+  private kids = new Map<string, { p: Person; view: PersonView | null; parent: string; seen: boolean }>();
+  private updateKids(state: GameState, dt: number, viewer?: { x: number; z: number }) {
+    for (const k of this.kids.values()) k.seen = false;
+    for (const parent of Object.values(state.people)) {
+      const n = parent.npc;
+      if (!n || parent.isPlayer || !parent.visible || !parent.children?.length || parent.dead || parent.away || parent.down != null || parent.where === 'vehicle') continue;
+      if (!(n.goal === 'leisure' || n.goal === 'shop' || (n as any).gathering)) continue;
+      // when both parents are out together, the children stay with one of them
+      const partner = parent.partnerId ? state.people[parent.partnerId] : null;
+      if (partner?.visible && partner.id < parent.id && Math.hypot(partner.pos.x - parent.pos.x, partner.pos.z - parent.pos.z) < 6) continue;
+      if (viewer && Math.hypot(parent.pos.x - viewer.x, parent.pos.z - viewer.z) > 45) continue;
+      parent.children.forEach((c, i) => {
+        const age = Math.floor((state.minute - c.born) / (28 * 1440));
+        if (age < 3 || age > 15) return;
+        const id = `${parent.id}_kid${i}`;
+        let k = this.kids.get(id);
+        if (!k) {
+          let h = 0;
+          for (let j = 0; j < c.name.length; j++) h = (h * 31 + c.name.charCodeAt(j)) >>> 0;
+          h = (h + i * 7919 + parent.id.length * 104729) >>> 0;
+          const girl = ['Ava', 'Isla', 'Mia', 'Freya', 'Ruby', 'Esme', 'Zara'].includes(c.name);
+          const kid: Person = {
+            ...parent, id, name: c.name, isPlayer: false, npc: null, action: null, move: null, equipment: null, weapon: null, gesture: null, combat: null, following: null,
+            basketId: '-', handsId: '-', bagId: '-', sleeping: false, injured: null, drunk: 0, health: 100,
+            appearance: { ...parent.appearance, frame: girl ? 'f' : 'm', hair: girl ? (h % 2 ? 'long' : 'bun') : (h % 3 ? 'short' : 'curly'), build: 'slim', height: 0.6 + Math.min(age, 15) * 0.024, outfit: 'outfit_casual', style: h % 1000 },
+            pos: { x: parent.pos.x - 0.8, z: parent.pos.z - 0.4 }, facing: parent.facing,
+          } as Person;
+          k = { p: kid, view: null, parent: parent.id, seen: true };
+          this.kids.set(id, k);
+        }
+        k.seen = true;
+        const kid = k.p;
+        kid.appearance.height = 0.6 + Math.min(age, 15) * 0.024;
+        // walk just behind and to the side of the parent, catching up when left behind
+        const side = i % 2 ? -0.75 : 0.75, back = 0.35 + i * 0.3;
+        const tx = parent.pos.x + Math.cos(parent.facing) * side - Math.sin(parent.facing) * back;
+        const tz = parent.pos.z - Math.sin(parent.facing) * side - Math.cos(parent.facing) * back;
+        const dx = tx - kid.pos.x, dz = tz - kid.pos.z, d = Math.hypot(dx, dz);
+        if (d > 8) kid.pos = { x: tx, z: tz };
+        else if (d > 0.05) {
+          const step = Math.min(d, (d > 1.5 ? 4.5 : 2.2) * dt);
+          kid.pos = { x: kid.pos.x + (dx / d) * step, z: kid.pos.z + (dz / d) * step };
+          if (d > 0.3) kid.facing = Math.atan2(dx, dz);
+        } else kid.facing = parent.facing;
+        kid.visible = true;
+        kid.where = parent.where;
+        kid.gesture = parent.gesture && (parent.gesture.clip === 'laugh' || parent.gesture.clip === 'happy' || parent.gesture.clip === 'sad') ? parent.gesture : null;
+        if (!k.view) {
+          if (!requestHuman(kid.appearance, true)) return;
+          k.view = new PersonView(kid, this.scene);
+        }
+        k.view.update(state, kid, dt);
+      });
+    }
+    for (const [id, k] of this.kids) if (!k.seen) { if (k.view) k.view.dispose(this.scene); this.kids.delete(id); }
+  }
+
   private blood = new Map<string, THREE.Mesh>();
   /** pools and drips of blood: they darken and fade over a day */
   private syncBlood(state: GameState) {
@@ -950,6 +1008,7 @@ export class Views {
       const sp = speech?.get(p.id);
       v.setSpeech(sp && sp.until > performance.now() ? sp.text : null);
     }
+    this.updateKids(state, dt, viewer);
     for (const [id, v] of this.shelfMeshes) {
       const b = state.businesses[v.bid];
       const k = b?.sections[id];
