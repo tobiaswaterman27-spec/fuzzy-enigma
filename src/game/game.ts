@@ -26,7 +26,7 @@ import { Rain } from '../render/rain';
 import { Audio } from '../render/audio';
 import { Sites } from '../render/sites';
 import { MarketStalls } from '../render/marketStalls';
-import { raining } from '../sim/weather';
+import { raining, seasonOf, snowCover, snowing } from '../sim/weather';
 import { safeWrite, loadSlot, type KV } from '../sim/save';
 import { news } from '../sim/events';
 import { CAR_MODELS, exitCar, stealCar } from '../sim/cars';
@@ -67,6 +67,39 @@ export class Game {
   police: PoliceCar;
   gatheringProps: GatheringProps;
   private cabMarker: THREE.Mesh | null = null;
+  private seasonKey = '';
+  private seasonTick = 0;
+  private snowLayer: THREE.Mesh | null = null;
+  private leafMats: THREE.MeshStandardMaterial[] | null = null;
+  /** the season on the world: leaves turn in autumn and fall in winter; snow lies on the ground */
+  private seasonLook() {
+    const nowMs = performance.now();
+    if (nowMs < this.seasonTick) return;
+    this.seasonTick = nowMs + 1000;
+    const s = this.state;
+    const sea = seasonOf(s.minute);
+    const cover = Math.round(snowCover(s) * 20) / 20;
+    const key = `${sea}:${cover}`;
+    if (key === this.seasonKey) return;
+    this.seasonKey = key;
+    if (!this.leafMats) {
+      const found = new Set<THREE.MeshStandardMaterial>();
+      this.scene.traverse((o) => { const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined; if (m && !Array.isArray(m) && m.name === 'leaves') found.add(m); });
+      this.leafMats = [...found];
+    }
+    const tint = { spring: '#f2fff0', summer: '#ffffff', autumn: '#f0a040', winter: '#ffffff' }[sea];
+    for (const m of this.leafMats) { m.color.set(tint); m.visible = sea !== 'winter'; }
+    if (!this.snowLayer) {
+      // a white sheet just above the grass: roads and pavements sit on top of it, so only open ground shows white
+      this.snowLayer = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshStandardMaterial({ color: '#f4f6f8', roughness: 0.95, transparent: true, opacity: 0 }));
+      this.snowLayer.rotation.x = -Math.PI / 2;
+      this.snowLayer.position.y = 0.008;
+      this.snowLayer.receiveShadow = true;
+      this.scene.add(this.snowLayer);
+    }
+    (this.snowLayer.material as THREE.MeshStandardMaterial).opacity = Math.min(0.92, cover);
+    this.snowLayer.visible = cover > 0.02;
+  }
   rain: Rain;
   audio: Audio;
   sites: Sites;
@@ -696,7 +729,8 @@ export class Game {
     this.sun.position.set(this.sunAnchor.x + Math.cos(ang) * 50, Math.max(8, Math.sin(ang) * 70), this.sunAnchor.z + 30);
     // rain: overcast and dimmer, the fog closes in, streaks of rain around you
     const r = raining(s);
-    this.rain.update(this.lastDt, buildingAt(this.player.pos) ? 0 : r, this.camera.position);
+    this.rain.update(this.lastDt, buildingAt(this.player.pos) ? 0 : r, this.camera.position, snowing(this.state));
+    this.seasonLook();
     this.sun.intensity = (0.15 + 2.1 * d) * (1 - 0.72 * r);
     this.sun.color.set(d < 0.6 ? '#ffc58a' : '#fff3dd');
     // sun direction drives the sky shader; the horizon colour feeds the fog so distance blends naturally

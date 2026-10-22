@@ -9,7 +9,7 @@ import { questionsFor } from '../sim/employment';
 import { acceptOffer, acceptPromotion, applyForJob, attendInterview, canApply, currentShift, declineOffer, hoursPerWeek, INTERVIEW, nextShift, openAttendance, positionOf, promotionEligible, resign, shiftLabel, scoreShift } from '../sim/employment';
 import { conditionLabel, skillLevel } from '../sim/needs';
 import { choreStatus } from '../sim/home';
-import { weatherLabel } from '../sim/weather';
+import { seasonOf, weatherLabel } from '../sim/weather';
 import { FRIEND_AT, inviteForCoffee, plannedMeetup, relationLabel } from '../sim/social';
 import { buyProperty as buyHomeProperty, canBuyHome, mortgageTerms, ownedHome, ownershipLines, redemption, sellHome, SELL_SHARE, SERVICE_CHARGE } from '../sim/property';
 import { blockPrice, BLOCK, buyOut, buyOutPrice, holdings, TAKEOVER_AT, buyStake, canInvestIn, dividendsReceived, MAX_STAKE, sellStake, stakeOf, valuation, weeklyProfit } from '../sim/invest';
@@ -127,7 +127,7 @@ export class UI {
   frame() {
     const s = this.s, p = this.p;
     $('#clock').textContent = fmtClock(s.minute);
-    $('#date').textContent = `${fmtDate(s.minute)} · ${weatherLabel(s)}`;
+    $('#date').textContent = `${fmtDate(s.minute)} · ${seasonOf(s.minute)} · ${weatherLabel(s)}`;
     $('#money').textContent = fmtMoney(s.ledger.accounts[p.accountId].balance);
     document.querySelectorAll<HTMLButtonElement>('[data-speed]').forEach((b) => b.classList.toggle('on', Number(b.dataset.speed) === this.game.speedMult));
     $('#sleep-ind').hidden = !p.sleeping;
