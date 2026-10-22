@@ -672,7 +672,7 @@ export class Game {
     if (!it) { this.focus = null; return; }
     const options = optionsFor(this.state, p.id, it.id);
     // talking needs the player's own OpenAI key: there are no canned conversations
-    if (!hasAi()) for (const o of options) if (o.ui === 'chat') { o.enabled = false; o.reason = 'Add your OpenAI API key (Menu) to talk to people'; }
+    if (!hasAi()) for (const o of options) if (o.ui === 'chat') { o.enabled = false; o.reason = 'No AI to voice people: allow Claude for this page, or add an OpenAI key (Menu)'; }
     this.focus = { id: it.id, label: it.label, options };
   }
 

@@ -17,14 +17,40 @@ export function getModel(): string {
 export function setModel(m: string) {
   try { localStorage.setItem(MODEL_KEY, m.trim() || DEFAULT_MODEL); } catch { /* storage blocked */ }
 }
-export const hasAi = () => !!getApiKey();
+/** Inside claude.ai the page's network is closed (so OpenAI cannot be reached from it), but the
+ * page may ask Claude through the viewer's own account. When that is available it voices the people. */
+type SampleFn = ((input: unknown, opts?: unknown) => Promise<{ text: string }>) & { json: (input: unknown, opts?: unknown) => Promise<unknown> };
+let sampleFn: SampleFn | null = null;
+export async function initClaudeAi() {
+  try { const c = (window as any).claude; if (c?.use) sampleFn = (await c.use('sample')) as SampleFn | null; } catch { sampleFn = null; }
+}
+export const claudeAi = () => !!sampleFn;
+export const hasAi = () => !!getApiKey() || !!sampleFn;
+
+/** the same conversation, as Claude's page sampling takes it: instructions as a leading user turn */
+async function viaClaude(messages: ChatTurn[], maxTokens: number): Promise<{ data: unknown } | { error: string }> {
+  const sys = messages.filter((m) => m.role === 'system').map((m) => m.content).join('\n\n');
+  const turns: { role: 'user' | 'assistant'; content: string }[] = [{ role: 'user', content: `${sys}\n\nKeep replies short (about ${Math.round(maxTokens * 0.6)} words at most). Reply with only the JSON object described, no other text.` }];
+  for (const m of messages) if (m.role !== 'system' && m.content.trim()) turns.push({ role: m.role, content: m.content });
+  if (turns[turns.length - 1].role !== 'user') turns.push({ role: 'user', content: '(go on)' });
+  try {
+    return { data: await sampleFn!.json(turns, { modelTier: 'quick', cache: false }) };
+  } catch (e) {
+    const code = (e as { code?: string })?.code ?? 'upstream_error';
+    if (code === 'not_granted' || code === 'sampling_disabled' || code === 'capability_disabled' || code === 'not_declared') { sampleFn = null; return { error: 'Claude is not allowed for this page, so people cannot talk. Allow it in the page\'s permissions, or add an OpenAI key (Menu).' }; }
+    if (code === 'rate_limited') return { error: 'Too many conversations at once: give it a moment.' };
+    if (code === 'invalid_json') return { data: { reply: String((e as { text?: string }).text ?? '').slice(0, 400) } };
+    return { error: `Claude could not answer (${code}).` };
+  }
+}
 
 export interface ChatTurn { role: 'system' | 'user' | 'assistant'; content: string }
 
 /** a JSON answer from the model (parsed), or an error to show */
 export async function aiJson(messages: ChatTurn[], maxTokens = 220, signal?: AbortSignal): Promise<{ data: unknown } | { error: string }> {
+  if (sampleFn) return viaClaude(messages, maxTokens);
   const key = getApiKey();
-  if (!key) return { error: 'No API key set.' };
+  if (!key) return { error: 'No AI available: add an OpenAI key (Menu).' };
   try {
     const r = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -40,7 +66,7 @@ export async function aiJson(messages: ChatTurn[], maxTokens = 220, signal?: Abo
     const content = j.choices?.[0]?.message?.content ?? '';
     try { return { data: JSON.parse(content) }; } catch { return { data: { reply: String(content) } }; }
   } catch (e) {
-    return { error: `Could not reach OpenAI (${(e as Error).message}).` };
+    return { error: `Could not reach OpenAI (${(e as Error).message}). If you are playing inside claude.ai, allow Claude for this page instead.` };
   }
 }
 

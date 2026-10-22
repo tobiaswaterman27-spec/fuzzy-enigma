@@ -16,7 +16,7 @@ import { blockPrice, BLOCK, buyOut, buyOutPrice, holdings, TAKEOVER_AT, buyStake
 import { hygieneOf, RATING_LABEL } from '../sim/inspections';
 import { personaOf } from '../sim/persona';
 import { applyTurn, beginTalk, characterBrief, gesture, parseTurn, remember, speechNotes } from '../sim/talk';
-import { aiJson, getApiKey, getModel, hasAi, setApiKey, type ChatTurn } from '../ai/openai';
+import { aiJson, claudeAi, getApiKey, getModel, hasAi, setApiKey, type ChatTurn } from '../ai/openai';
 import { billAccount, billEstimate } from '../sim/bills';
 import { MILESTONES, netWorth, wealthTitle } from '../sim/wealth';
 import { HOSPITAL, WEAPONS, goToAandE } from '../sim/health';
@@ -948,7 +948,7 @@ export class UI {
       <button data-m="new">New game</button>
       <button data-m="sound">Sound: ${this.game.audio.muted ? 'Off' : 'On'} - click to switch</button>
       <button data-m="gfx">Graphics: ${this.game.quality === 'high' ? 'High (ambient occlusion, bloom, anti-aliasing)' : this.game.quality === 'medium' ? 'Medium (anti-aliasing, no ambient occlusion)' : 'Low (fastest)'} · resolution ${Math.round(this.game.resScale * 100)}% - click to switch</button>
-      <h3>AI conversations (optional)</h3><p class="muted">With your own OpenAI API key, people answer anything you say, in character, from their job, family, money, mood and history. The key is kept only in this browser and sent only to OpenAI. Without a key, conversations use built-in replies.</p>
+      <h3>AI conversations</h3><p class="muted">${claudeAi() ? 'People are voiced by Claude on your own claude.ai account (allowed per page). ' : ''}With your own OpenAI API key, people answer anything you say, in character, from their job, family, money, mood and history (outside claude.ai, where the page can reach OpenAI). The key is kept only in this browser and sent only to OpenAI. Without either, people cannot talk.</p>
       ${hasAi() ? `<p>Key saved (…${esc((getApiKey() ?? '').slice(-4))}) · model ${esc(getModel())}</p><div class="row"><button data-m="aiclear">Remove key</button></div>` : `<input id="ai-key" type="password" placeholder="sk-…" autocomplete="off" style="font:inherit;padding:8px;border-radius:6px;border:1px solid var(--line);background:#1c2420;color:var(--ink)"><div class="row"><button data-m="aisave">Save key</button></div>`}
       <h3>Controls</h3><p class="muted">WASD or arrows: walk in that direction (relative to the camera) · Shift: run · E: use · F: punch / attack · Q: hold a weapon (bat or knife, sold at Harbour Home) · G: take a car from the traffic · 1-6: other options · Tab or P: phone · Esc: pause. The camera follows you automatically; drag to look around, scroll to zoom.</p>
       <p class="muted">Day ${dayIndex(this.s.minute) + 1}. Time passes at ${this.game.speedMult}× (1× = 20 game minutes per real minute). Sleeping fast-forwards.</p>`;
