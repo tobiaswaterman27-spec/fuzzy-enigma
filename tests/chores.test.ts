@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createNewGame, step, startAction, optionsFor, getWorld, choresOf, isDirty, retailTick, openTasks, addItems, auditLedger, hire, at, homeQueueSlot, creditLimit, takeLoan, transfer, loansTick, canBuyHome, mortgageTerms, HOME_PRICES, buyProperty, activeLease, hasHomeAccess, ownedHome, propertyTick, sellHome, inviteForCoffee, plannedMeetup, blockPrice, buyStake, sellStake, stakeOf, dividendsReceived, BLOCK, dailyEconomy, buyOut, holdings, inspect, hygieneOf, isOpen, inspectionsTick, buyCar, playerCar, enterCar, exitCar, carsTick, sellCar, FUEL_PER_KM, CAR_WEEKLY, allInteractables, enrol, type GameState } from '../src/sim/index';
+import { createNewGame, step, startAction, optionsFor, getWorld, choresOf, isDirty, retailTick, openTasks, addItems, auditLedger, hire, at, homeQueueSlot, creditLimit, takeLoan, transfer, loansTick, canBuyHome, mortgageTerms, HOME_PRICES, buyProperty, activeLease, hasHomeAccess, ownedHome, propertyTick, sellHome, inviteForCoffee, plannedMeetup, blockPrice, buyStake, sellStake, stakeOf, dividendsReceived, BLOCK, dailyEconomy, buyOut, holdings, inspect, hygieneOf, isOpen, inspectionsTick, buyCar, playerCar, enterCar, exitCar, carsTick, sellCar, FUEL_PER_KM, CAR_WEEKLY, allInteractables, enrol, marketOn, stallPrice, raining, type GameState } from '../src/sim/index';
 import { buyHome, ONLINE_DELIVERY, quoteHome } from '../src/sim/homestore';
 
 const setup = { name: 'Tester', appearance: { skin: '#e3b48f', hair: 'short' as const, hairColor: '#3b2416', build: 'average' as const } };
@@ -306,6 +306,29 @@ describe('Training', () => {
     expect(act(s, 'training', 'study').ok).toBe(true);
     expect(p.quals).toContain('food_hygiene');
     expect(p.course).toBeNull();
+    expect(auditLedger(s)).toEqual([]);
+  });
+});
+
+describe('Saturday market', () => {
+  it('stalls open on Saturday mornings; the player buys fresh produce and townspeople come to browse', () => {
+    const s = createNewGame(7, setup);
+    const p = s.people.player;
+    expect(marketOn(s, at(4, 10, 0))).toBe(false);
+    s.minute = at(5, 8, 0);
+    let buyers = 0;
+    while (s.minute < at(5, 13, 0)) {
+      step(s, 2);
+      for (const q of Object.values(s.people)) if (q.action?.type === 'buy_stall') buyers++;
+    }
+    expect(marketOn(s)).toBe(s.minute < at(5, 15, 0) && (raining(s) < 0.3));
+    if (marketOn(s)) {
+      expect(buyers).toBeGreaterThan(0);
+      const before = s.ledger.accounts[p.accountId].balance;
+      expect(act(s, 'stall_veg', 'buy_stall').ok).toBe(true);
+      expect(s.ledger.accounts[p.accountId].balance).toBe(before - stallPrice('apples'));
+      expect(s.containers[p.bagId].items.apples).toBe(1);
+    }
     expect(auditLedger(s)).toEqual([]);
   });
 });

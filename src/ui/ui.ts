@@ -674,7 +674,7 @@ const ACTION_LABELS: Record<string, string> = {
   change_outfit: 'Changing clothes…', buy_meal: 'Eating a cafe meal…', sit: 'Sitting (resting slowly)',
   shower: 'Showering…', cook: 'Cooking…', watch_tv: 'Watching TV', talk: 'Chatting…',
   face_shelf: 'Facing up: pulling packs forward, labels out…', bale_cardboard: 'Flattening boxes into the baler…', empty_bin: 'Tying off the bin bag…', dump_rubbish: 'Throwing the bag in…',
-  take_order: 'Talking the order through…', take_tool: 'Getting the tool…', return_tool: 'Putting the tool away…', take_bricks: 'Loading up with bricks…', site_work: 'Working on the house…', cook_meal: 'Cooking on the grill…', serve_meal: 'Handing over the meal…', drive_van: 'Getting in…', drive_car: 'Getting in…', study: 'In class…', pick_case: 'Picking from the racking…', stage_case: 'Staging cases for dispatch…', wash_up: 'Washing up…', laundry: 'Doing the laundry…', tidy: 'Tidying up…',
+  take_order: 'Talking the order through…', take_tool: 'Getting the tool…', return_tool: 'Putting the tool away…', take_bricks: 'Loading up with bricks…', site_work: 'Working on the house…', cook_meal: 'Cooking on the grill…', serve_meal: 'Handing over the meal…', drive_van: 'Getting in…', drive_car: 'Getting in…', study: 'In class…', buy_stall: 'Buying…', pick_case: 'Picking from the racking…', stage_case: 'Staging cases for dispatch…', wash_up: 'Washing up…', laundry: 'Doing the laundry…', tidy: 'Tidying up…',
 };
 const TASK_LABELS: Record<string, [string, string]> = {
   restock: ['restock', 'restocks'], serve: ['customer to serve', 'customers to serve'], clean: ['spill', 'spills'], receive: ['delivery', 'deliveries'],

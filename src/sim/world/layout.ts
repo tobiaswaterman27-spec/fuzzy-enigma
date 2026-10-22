@@ -1,4 +1,5 @@
 // Static world definition for the Harbourside starting district.
+import { STALLS } from '../streetmarket';
 import { defaultDesign, furnish, type HomeDesign, type PlacedItem } from './homes';
 import { PLOTS } from './plots';
 // Geometry, colliders, interaction anchors and the pedestrian/vehicle graphs
@@ -168,6 +169,7 @@ export type InteractKind =
   | 'cafe_grill'
   | 'vehicle'
   | 'study_desk'
+  | 'stall'
   | 'baler'
   | 'shopbin'
   | 'dumpster'
@@ -767,6 +769,8 @@ function buildWorldData(homeDesign: HomeDesign): World {
   for (const t of trees) obstacles.push({ kind: 'tree', rect: box(t.x, t.z, 0.6, 0.6), height: 5, solid: true });
   obstacles.push({ kind: 'bench', rect: box(50, 22, 2.0, 0.6), height: 0.5, solid: true });
   obstacles.push({ kind: 'bench', rect: box(62, 22, 2.0, 0.6), height: 0.5, solid: true });
+  // Saturday market stalls (only open on market days; see streetmarket.ts)
+  for (const st of STALLS) add({ id: st.id, kind: 'stall', label: st.label, pos: st.pos, facing: 0, obj: st.obj, locationId: 'park', product: st.product, range: 1.8 });
   add({ id: 'bench_1', kind: 'bench', label: 'Park bench', pos: { x: 50, z: 22.9 }, facing: Math.PI, obj: { x: 50, z: 22 }, locationId: 'park' });
   add({ id: 'bench_2', kind: 'bench', label: 'Park bench', pos: { x: 62, z: 22.9 }, facing: Math.PI, obj: { x: 62, z: 22 }, locationId: 'park' });
   obstacles.push({ kind: 'busstop', rect: box(-86, -8.6, 3, 0.8), height: 2.5, solid: true });
@@ -1038,6 +1042,8 @@ function buildWorldData(homeDesign: HomeDesign): World {
   // Park
   N('pk_gate', 56, 10.5, 'park'); N('pk_a', 52, 25, 'park'); N('pk_b', 62, 26, 'park'); N('pk_c', 56, 32, 'park');
   N('pk_bench_1', 50, 22.9, 'park'); N('pk_bench_2', 62, 22.9, 'park');
+  for (const st of STALLS) N(`mk_${st.id}`, st.pos.x, st.pos.z, 'park');
+  L('pk_gate', 'mk_stall_veg', 'pk_a'); L('pk_gate', 'mk_stall_bread', 'pk_b'); L('mk_stall_bread', 'mk_stall_coffee', 'pk_b');
   L('se_56', 'pk_gate', 'pk_a', 'pk_c', 'pk_b', 'pk_gate'); L('pk_a', 'pk_bench_1'); L('pk_b', 'pk_bench_2');
   // bus stops (commute / ambient spawn)
   N('bus_w', -88, -6.5 + 0.01); L('nw_-88', 'bus_w');

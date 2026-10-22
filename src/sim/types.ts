@@ -154,6 +154,7 @@ export type ActionType =
   | 'drive_van'
   | 'drive_car'
   | 'study'
+  | 'buy_stall'
   | 'take_order'
   | 'cook_meal'
   | 'take_tool'

@@ -2,6 +2,7 @@
 // Decision layer: a priority/utility choice of goal every few minutes.
 // Execution layer: a plan of move/act/wait steps using the same validated
 // actions as the player. Arrival is verified by distance, never by a timer.
+import { marketOn, STALLS } from './streetmarket';
 import type { GameState, Id, NpcGoal, Person, PlanStep, Task, Vec2 } from './types';
 import { dayIndex, minuteOfDay } from './clock';
 import { clamp, dist, pick, rand, randInt } from './core';
@@ -228,7 +229,19 @@ function decide(state: GameState, p: Person) {
     return;
   }
   // 4. leisure
-  if (freeFor > 120 && p.needs.energy > 35 && mod > 9 * 60 && mod < 20 * 60 && rand(state) < 0.08 + p.traits.sociability * 0.15) {
+  const market = marketOn(state);
+  if (freeFor > 120 && p.needs.energy > 35 && mod > 9 * 60 && mod < 20 * 60 && rand(state) < 0.08 + p.traits.sociability * 0.15 + (market ? 0.12 : 0)) {
+    // Saturday market: most outings go there to browse and buy something fresh
+    if (market && money > 1500 && rand(state) < 0.7) {
+      const st = pick(state, STALLS);
+      setGoal(state, p, 'leisure', [
+        { kind: 'move', to: { x: st.pos.x + (rand(state) - 0.5) * 1.2, z: st.pos.z - rand(state) * 0.4 }, label: 'the market' },
+        { kind: 'act', it: st.id, type: 'buy_stall' },
+        { kind: 'wait', until: now + randInt(state, 10, 35) },
+        { kind: 'move', to: homeDoor(p.homeId), label: 'home' }, { kind: 'call', fn: 'arriveHome' },
+      ]);
+      return;
+    }
     const cafe = state.businesses.cafe;
     const cafeOk = isOpen(cafe, now) && staffOnDuty(state, 'cafe').length > 0 && money > 2500 && p.needs.satiety < 60;
     if (cafeOk) {

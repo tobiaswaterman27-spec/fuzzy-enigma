@@ -22,10 +22,12 @@ import { Traffic } from '../render/traffic';
 import { Rain } from '../render/rain';
 import { Audio } from '../render/audio';
 import { Sites } from '../render/sites';
+import { MarketStalls } from '../render/marketStalls';
 import { raining } from '../sim/weather';
 import { safeWrite, loadSlot, type KV } from '../sim/save';
 import { news } from '../sim/events';
 import { CAR_MODELS, exitCar } from '../sim/cars';
+import { inOutage } from '../sim/inspections';
 
 const CHATTER = ['How have you been?', 'Did you hear Corner Market is hiring again?', 'The rent on Harbour Road is daylight robbery.', 'Rosa\'s soup is the best thing in town.', 'They say rain again tomorrow.', 'My cousin started at the warehouse.', 'Those new houses are coming along.', 'Ha! No, really?', 'We should do this more often.', 'Long week. Glad it\'s nearly over.', 'Have you seen the prices at Harbour Home?', 'I passed my driving test!', 'The inspector came round the shop yesterday.', 'Exactly what I said!']; 
 import { fmtDate, fmtClock } from '../sim/clock';
@@ -58,6 +60,7 @@ export class Game {
   rain: Rain;
   audio: Audio;
   sites: Sites;
+  market: MarketStalls;
   keys = new Set<string>();
   camYaw = Math.PI; // camera sits behind (south of) the player looking north
   camPitch = 0.22;
@@ -129,6 +132,7 @@ export class Game {
     this.traffic = new Traffic(this.scene);
     this.rain = new Rain(this.scene);
     this.sites = new Sites(this.scene);
+    this.market = new MarketStalls(this.scene);
     this.audio = new Audio();
     try { this.audio.muted = localStorage.getItem('bigshot.sound') === 'off'; } catch { /* */ }
     const unlock = () => { this.audio.start(); window.removeEventListener('keydown', unlock); window.removeEventListener('pointerdown', unlock); };
@@ -322,6 +326,7 @@ export class Game {
     this.views.update(s, this.paused ? 0 : dt, this.player.pos, this.insideId, this.speech);
     this.traffic.update(s, this.paused ? 0 : dt);
     this.sites.update(s);
+    this.market.update(s, this.paused ? 0 : dt, this.player.pos);
     this.audio.update(s, this.paused ? 0 : dt, Math.hypot(this.vel.x, this.vel.z), this.drivingVan() ? this.vanSpeed : null);
     this.watchFrameRate(dt);
     this.world.update(s, dt);
@@ -544,11 +549,13 @@ export class Game {
     this.hemi.intensity = (0.25 + 0.75 * d) * (this.insideId ? 0.45 : 1) * (1 - 0.25 * r);
     const lit = d < 0.45;
     this.world.lampBulbs.emissiveIntensity = lit ? 1.6 : 0;
+    // buildings in a power cut stay dark
+    const dark = new Set(Object.values(s.businesses).filter((b) => inOutage(b, s.minute)).map((b) => b.locationId));
     // the light pool goes to the room you are in first, then whatever lights are nearest (street lamps only at night)
     const inside = buildingAt(p.pos)?.id ?? null;
     const near = (x: number, z: number) => Math.hypot(x - p.pos.x, z - p.pos.z);
     const cands = [
-      ...this.world.lightSpots.map((l) => ({ x: l.x, y: l.y, z: l.z, i: l.intensity, d: l.distance, c: '#fff1dc', score: near(l.x, l.z) - (l.bid === inside ? 1000 : 0) })),
+      ...this.world.lightSpots.filter((l) => !dark.has(l.bid)).map((l) => ({ x: l.x, y: l.y, z: l.z, i: l.intensity, d: l.distance, c: '#fff1dc', score: near(l.x, l.z) - (l.bid === inside ? 1000 : 0) })),
       ...(lit ? getWorld().lamps.map((l) => ({ x: l.x, y: 4.6, z: l.z, i: 18, d: 18, c: '#ffcf80', score: near(l.x, l.z) + (inside ? 30 : 0) })) : []),
     ].sort((a, b) => a.score - b.score);
     this.world.lampLights.forEach((l, i) => {

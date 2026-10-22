@@ -1,6 +1,7 @@
 // InteractionSystem + TaskAndJobSystem execution.
 // Actions are timed, interruptible and validated. State changes happen in
 // unit callbacks or on completion - never because an animation finished.
+import { buyAtStall, marketOn, stallPrice } from './streetmarket';
 import { COURSES, completeSession, sessionBlocker, sessionMinutes } from './training';
 import { canDriveCar, enterCar } from './cars';
 import type { ActionState, ActionType, GameState, Id, Person } from './types';
@@ -330,6 +331,11 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
       out.push({ type: 'ui', label: 'Browse furniture, wallpaper, flooring and rugs for your home', enabled: true, ui: 'homestore', reason: staffed ? undefined : 'Counter closed - you can still order online' });
       break;
     }
+    case 'stall': {
+      const k = it.product!;
+      out.push(opt('buy_stall', `Buy ${itemName(k)} · ${fmtMoney(stallPrice(k))}`, !marketOn(state) ? 'The market is on Saturdays, 09:00-15:00 (not in the rain)' : undefined));
+      break;
+    }
     case 'study_desk': {
       const e = p.course;
       const c = e ? COURSES[e.courseId] : null;
@@ -440,6 +446,8 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
       begin(p, type, itId, { duration: 0.3 }, now); break;
     case 'study':
       begin(p, type, itId, { duration: sessionMinutes(p) }, now); break;
+    case 'buy_stall':
+      begin(p, type, itId, { duration: 1.5 }, now); break;
     case 'take_order':
       begin(p, type, itId, { duration: 3 / sp }, now); break;
     case 'cook_meal':
@@ -617,6 +625,10 @@ export function tickAction(state: GameState, p: Person, dt: number): string | nu
     }
     case 'study': {
       msg = completeSession(state, p);
+      break;
+    }
+    case 'buy_stall': {
+      msg = buyAtStall(state, p.id, a.target).msg;
       break;
     }
     case 'drive_car': {
