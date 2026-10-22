@@ -43,7 +43,7 @@ Status vocabulary: **planned → implemented → integrated → tested → playa
 1. ~~Goods-in put-away at the warehouse; forklift driving; traffic on the roads.~~ Done (v19: Forklift Driver).
 2. Faces, hair and shoes; props gripped properly (cases between the hands, picked items held then placed).
 3. More step-by-step action sequences (cooking at the stove, getting changed at the wardrobe).
-4. NPC–NPC avoidance and queue spacing; long-run economy verification (8+ weeks), events.
+4. ~~NPC–NPC avoidance and queue spacing; long-run economy verification (8+ weeks), events.~~ Done: 8-week run with audit 0, no money drift, all businesses solvent.
 5. Sales Assistant at Harbour Home as a playable job; audio.
 
 ## Change log
