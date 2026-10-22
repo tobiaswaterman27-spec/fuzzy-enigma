@@ -54,6 +54,12 @@ export class Audio {
     o.connect(g).connect(this.master); o.start(t); o.stop(t + dur + 0.02);
   }
 
+  /** a firework going off, quieter and more muffled the further away it is */
+  bang(dist: number) {
+    if (!this.ctx || this.muted) return;
+    const v = Math.min(0.9, 30 / Math.max(10, dist));
+    setTimeout(() => { this.thud(180, 0.9, v); this.thud(900, 0.25, v * 0.4); }, Math.min(400, dist * 3));
+  }
   private thud(freq: number, dur: number, vol: number) {
     const c = this.ctx!;
     const t = c.currentTime;

@@ -8,6 +8,7 @@ import { transfer } from './ledger';
 import { FISH_SPOTS, getWorld } from './world/layout';
 import { openAttendance } from './employment';
 import { crime } from './health';
+import { temperature } from './weather';
 
 // ------------------------------------------------------------ dogs
 export interface Dog { name: string; color: string; size: number; since: number; walkedDay?: number; happy: number; nextFood?: number }
@@ -198,5 +199,14 @@ export function anglersTick(state: GameState) {
     n.plan = [{ kind: 'move', to: it.pos, label: 'the quay' }, { kind: 'act', it: spot.id, type: 'fish' }, { kind: 'call', fn: 'goHomeNow' }];
     n.nextDecision = state.minute + 90;
     return;
+  }
+}
+
+/** dress for the weather: coats on in winter (and on cold autumn days), off again in spring */
+export function seasonalWardrobe(state: GameState) {
+  const cold = temperature(state, Math.floor(state.minute / 1440) * 1440 + 13 * 60) < 9;
+  for (const p of Object.values(state.people)) {
+    if (p.dead || p.left || p.police) continue;
+    if (!!p.appearance.coat !== cold) p.appearance.coat = cold || undefined;
   }
 }

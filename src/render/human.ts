@@ -273,8 +273,10 @@ export function garmentFor(a: Appearance): Garment {
     const [tc, tt, sl] = CASUAL_TOPS[s % CASUAL_TOPS.length];
     const [bc, bt, len] = CASUAL_BOTTOMS[Math.floor(s / 13) % CASUAL_BOTTOMS.length];
     // no coat or jumper over shorts
-    const outer = len === 'shorts' ? null : CASUAL_OUTER[Math.floor(s / 29) % CASUAL_OUTER.length];
-    return { ...base, top: { ...base.top, color: tc, tex: tt, sleeve: outer ? 'long' : sl, collar: tt === 'polo' || tt === 'shirt' ? tc : undefined }, bottom: { ...base.bottom, color: bc, tex: bt, length: len }, shoes: CASUAL_SHOES[Math.floor(s / 7) % CASUAL_SHOES.length], over: outer ?? undefined };
+    let outer = len === 'shorts' && !a.coat ? null : CASUAL_OUTER[Math.floor(s / 29) % CASUAL_OUTER.length];
+    // in the cold everyone has something warm on: a coat if they would not otherwise
+    if (a.coat && (!outer || outer.kind === 'jacket')) outer = CASUAL_OUTER[9 + (s % 3)];
+    return { ...base, top: { ...base.top, color: tc, tex: tt, sleeve: outer ? 'long' : sl, collar: tt === 'polo' || tt === 'shirt' ? tc : undefined }, bottom: { ...base.bottom, color: bc, tex: bt, length: a.coat ? 'long' : len }, shoes: CASUAL_SHOES[Math.floor(s / 7) % CASUAL_SHOES.length], over: outer ?? undefined };
   }
   if (a.outfit === 'outfit_smart') {
     const shirt = SHIRTS[s % SHIRTS.length], suit = SUITS[Math.floor(s / 5) % SUITS.length], tie = TIES[Math.floor(s / 3) % TIES.length];

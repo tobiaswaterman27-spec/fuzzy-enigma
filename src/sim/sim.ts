@@ -11,7 +11,8 @@ import { gatheringsTick } from './gatherings';
 import { incidentsTick, shopliftTick } from './incidents';
 import { favoursTick } from './favours';
 import { achievementsTick } from './achievements';
-import { anglersTick, dogTick, initDogs, joggersTick, lottoTick } from './leisure';
+import { newYearTick } from './newyear';
+import { anglersTick, dogTick, initDogs, joggersTick, lottoTick, seasonalWardrobe } from './leisure';
 import { wealthDaily } from './wealth';
 import { billsTick } from './bills';
 import { lettingsTick } from './lettings';
@@ -108,6 +109,7 @@ export function minuteTick(state: GameState) {
   incidentsTick(state);
   favoursTick(state);
   achievementsTick(state);
+  newYearTick(state);
   dogTick(state);
   joggersTick(state);
   anglersTick(state);
@@ -145,6 +147,7 @@ export function minuteTick(state: GameState) {
     wealthDaily(state);
     lifeDaily(state);
     initDogs(state);
+    seasonalWardrobe(state);
     healthDaily(state);
     for (const b of Object.values(state.businesses)) dailyClose(state, b);
     dailyEconomy(state);

@@ -24,6 +24,7 @@ import { PoliceCar } from '../render/police';
 import { GatheringProps } from '../render/gatherings';
 import { Harbour } from '../render/harbour';
 import { Football } from '../render/football';
+import { Fireworks } from '../render/fireworks';
 import { Rain } from '../render/rain';
 import { Audio } from '../render/audio';
 import { Sites } from '../render/sites';
@@ -71,6 +72,7 @@ export class Game {
   gatheringProps: GatheringProps;
   harbour: Harbour;
   football: Football;
+  fireworks: Fireworks;
   private cabMarker: THREE.Mesh | null = null;
   private seasonKey = '';
   private seasonTick = 0;
@@ -202,6 +204,8 @@ export class Game {
     this.gatheringProps = new GatheringProps(this.scene);
     this.harbour = new Harbour(this.scene);
     this.football = new Football(this.scene);
+    this.fireworks = new Fireworks(this.scene);
+    this.fireworks.onBang = (d) => this.audio.bang(d);
     this.football.onGoal = (m, yours) => { this.onToast(yours ? m : `${m} Not yours, that one.`); if (yours) this.player.goals = (this.player.goals ?? 0) + 1; };
     this.rain = new Rain(this.scene);
     this.sites = new Sites(this.scene);
@@ -449,6 +453,7 @@ export class Game {
     this.sites.update(s);
     this.gatheringProps.update(s);
     this.harbour.update(dt);
+    this.fireworks.update(s, this.paused ? 0 : dt, this.camera.position);
     { const p = this.player; this.football.update(s, this.paused ? 0 : dt, { x: p.pos.x, z: p.pos.z, vx: this.vel.x, vz: this.vel.z, facing: p.facing }); }
     // where HarbourCabs wants you to go: a glowing ring on the kerb
     const cab = taxiTarget(s);

@@ -109,6 +109,8 @@ export interface Appearance {
   frame?: 'm' | 'f'; // body frame
   /** which of the outfit's variations this person wears (colours, sleeves, tie); unset = the standard one */
   style?: number;
+  /** wrapped up for the cold: a coat over everyday clothes */
+  coat?: boolean;
   /** eye colour; unset = one that suits the skin and hair */
   eyes?: string;
 }
