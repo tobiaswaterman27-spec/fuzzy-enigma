@@ -495,6 +495,8 @@ class PersonView {
       this.ground += (target - this.ground) * Math.min(1, dt * 14);
       this.rig.body.position.y = this.ground;
     }
+    // a two-handed swing with a bat, a club or a bar: wind up over the right shoulder, sweep across
+    if (!floored && a?.type === 'attack' && !kick && !flurry && (p.weapon === 'bat' || p.weapon === 'golf' || p.weapon === 'crowbar')) this.swing(Math.min(1, prog), root.rotation.y);
     // knocked down or dead: the body goes limp and falls the way the blow sent it
     if (floored && this.rig.joints) {
       if (!this.ragdoll) {
@@ -584,6 +586,33 @@ class PersonView {
       aimBone(fore, hand, grip);
     }
     this.lastPos.copy(root.position);
+  }
+  /** the swing, f from 0 to 1: the hands follow a path (right, up, forward of the chest), the chest twists into it */
+  private swing(f: number, yaw: number) {
+    const B = this.rig.bones;
+    const fwd = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw)), right = new THREE.Vector3(-Math.cos(yaw), 0, Math.sin(yaw)), up = new THREE.Vector3(0, 1, 0);
+    const keys: [number, [number, number, number], number][] = [[0, [0.22, -0.12, 0.32], 0], [0.38, [0.32, 0.42, -0.22], 0.55], [0.55, [0.0, 0.08, 0.62], -0.25], [0.72, [-0.42, -0.05, 0.3], -0.6], [1, [0.22, -0.12, 0.32], 0]];
+    let i = 0; while (i < keys.length - 2 && f > keys[i + 1][0]) i++;
+    const [f0, a, t0] = keys[i], [f1, b, t1] = keys[i + 1];
+    const k = Math.max(0, Math.min(1, (f - f0) / (f1 - f0))), e = k * k * (3 - 2 * k);
+    const off = a.map((v, j) => v + (b[j] - v) * e), twist = t0 + (t1 - t0) * e;
+    // the chest turns with the swing (about the world's up, whatever the bone's own axes)
+    this.rig.root.updateMatrixWorld(true);
+    const pq = B.chest.parent!.getWorldQuaternion(new THREE.Quaternion());
+    const wq = B.chest.getWorldQuaternion(new THREE.Quaternion());
+    B.chest.quaternion.copy(pq.clone().invert().multiply(new THREE.Quaternion().setFromAxisAngle(up, -twist).multiply(wq)));
+    B.chest.updateMatrixWorld(true);
+    const chest = B.chest.getWorldPosition(new THREE.Vector3());
+    const hand = chest.clone().addScaledVector(right, off[0]).addScaledVector(up, off[1]).addScaledVector(fwd, off[2]);
+    for (const [arm, fore, h, lead] of [[B.armR, B.foreR, B.handR, true], [B.armL, B.foreL, B.handL, false]] as const) {
+      // both hands on the handle, the left a fist's width below the right
+      const grip = lead ? hand.clone() : hand.clone().addScaledVector(up, -0.07).addScaledVector(right, -0.04);
+      const sh = arm.getWorldPosition(new THREE.Vector3());
+      const out = sh.clone().sub(chest); out.y = 0;
+      const elbow = sh.clone().lerp(grip, 0.5).addScaledVector(out.normalize(), 0.08).addScaledVector(up, -0.08);
+      aimBone(arm, fore, elbow);
+      aimBone(fore, h, grip);
+    }
   }
   private pedal = 0;
   private ragdoll: Ragdoll | null = null;

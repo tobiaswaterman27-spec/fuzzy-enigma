@@ -67,7 +67,7 @@ export function attack(state: GameState, attackerId: Id, targetId: Id | null): s
   const n = w === 'fists' && a.combo && state.minute - a.combo.at < 0.6 ? (a.combo.n + 1) % 3 : 0;
   a.combo = { n, at: state.minute };
   const swing = w !== 'fists' ? w : n === 2 ? 'kick' : n === 1 ? 'flurry' : 'fists';
-  a.action = { type: 'attack', target: targetId ? `person:${targetId}` : 'air', arg: swing, started: state.minute, progress: 0, unitTime: 0, duration: w === 'bat' || swing === 'kick' ? 0.32 : 0.25, units: 0 };
+  a.action = { type: 'attack', target: targetId ? `person:${targetId}` : 'air', arg: swing, started: state.minute, progress: 0, unitTime: 0, duration: w === 'bat' || w === 'golf' || w === 'crowbar' || swing === 'kick' ? 0.32 : 0.25, units: 0 };
   a.move = null;
   const t = targetId ? state.people[targetId] : null;
   if (!t || t.dead || t.away) return null;
