@@ -9,6 +9,7 @@ import { dealBlackjack, finishBlackjack, type Hand, handValue, hitBlackjack, rou
 import { AVENUE_NAMES, CITY, DISTRICT_NAMES, districtAt, STREET_NAMES, streetAt } from '../sim/world/city';
 import { planX } from '../sim/world/levels';
 import { Radar } from './radar';
+import { typedCheat } from '../sim/cheats';
 import type { Game } from '../game/game';
 import type { Business, GameState, Person } from '../sim/types';
 import { fmtClock, fmtDate, fmtDuration, dayIndex } from '../sim/clock';
@@ -70,6 +71,20 @@ export class UI {
   private radar: Radar;
   constructor(private game: Game) {
     this.radar = new Radar(document.getElementById('hud')!);
+    // the cheat console: ` opens it, type a code, Enter
+    const form = $('#cheat') as HTMLFormElement, input = $('#cheat-in') as HTMLInputElement;
+    const closeCheat = () => { form.hidden = true; input.value = ''; this.syncModal(); };
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Backquote' && form.hidden && (e.target as HTMLElement)?.tagName !== 'INPUT' && !document.body.classList.contains('creating')) { e.preventDefault(); form.hidden = false; this.game.uiOpen = true; this.game.keys.clear(); input.focus(); }
+      else if (e.code === 'Escape' && !form.hidden) closeCheat();
+    });
+    form.onsubmit = (e) => {
+      e.preventDefault();
+      const said = typedCheat(this.s, this.p.id, input.value.toUpperCase().replace(/[^A-Z]/g, ''));
+      closeCheat();
+      this.toast(said ?? 'Nothing happens.');
+      if (said) this.game.audio.theme.passed();
+    };
     game.onToast = (m) => this.toast(m);
     game.onApproach = (id) => void this.approached(id);
     game.onAmbientChat = (a, b) => void this.ambientChat(a, b);

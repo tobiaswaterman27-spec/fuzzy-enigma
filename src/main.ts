@@ -25,6 +25,8 @@ const TIPS = [
   'A Harbour Bikes hire is the quickest way round the old town. Leave it at any dock.',
   'Drive with the radio on: R changes station.',
   'Money in the bank is safe. Money in your pocket can be nicked.',
+  'They say if you press ` and ask for a CUPPA, everything feels better.',
+  'Space is the handbrake when you are driving. Slide it round the corner.',
 ];
 const bootFill = document.getElementById('boot-fill'), bootStep = document.getElementById('boot-step'), bootTip = document.getElementById('boot-tip');
 let tipN = Math.floor(Math.random() * TIPS.length);

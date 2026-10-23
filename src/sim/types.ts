@@ -786,6 +786,8 @@ export interface GameState {
   turf?: Record<string, { day: number; warned?: number; hostile?: number }>;
   /** a pickpocket working on you: who, since when, and whether they have your money yet */
   thief?: { id: Id; at: number; stage: 'closing' | 'running' } | null;
+  /** how many cheats have been used */
+  cheats?: number;
   /** cash machines broken open, by id: the day (each is refilled the next morning) */
   atmsHit?: Record<string, number>;
   /** stunt ramps whose bonus has been paid */

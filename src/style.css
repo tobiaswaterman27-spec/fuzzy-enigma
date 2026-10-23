@@ -162,3 +162,6 @@ body.fx-busted #view { filter: grayscale(.85) sepia(.25) hue-rotate(180deg) brig
 #radio-banner span { font: 600 13px 'IBM Plex Sans', sans-serif; color: #fff; text-shadow: 0 1px 4px #000; letter-spacing: .12em; text-transform: uppercase; }
 #radio-banner.show { animation: radioIn 2.6s ease forwards; }
 @keyframes radioIn { 0% { opacity: 0; transform: translate(-50%, -8px); } 10% { opacity: 1; transform: translate(-50%, 0); } 80% { opacity: 1; } 100% { opacity: 0; } }
+#cheat { position: fixed; top: 40%; left: 50%; transform: translateX(-50%); z-index: 70; }
+#cheat[hidden] { display: none; }
+#cheat input { font: 400 26px 'Archivo Black', Impact, sans-serif; letter-spacing: .12em; text-transform: uppercase; text-align: center; width: min(420px, 86vw); padding: 10px 14px; background: rgba(0,0,0,.82); color: #f4c430; border: 2px solid #f4c430; border-radius: 8px; outline: none; }
