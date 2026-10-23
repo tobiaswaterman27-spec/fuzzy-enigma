@@ -30,7 +30,7 @@ import { buyAtStall, marketOn, stallPrice } from './streetmarket';
 import { COURSES, completeSession, sessionBlocker, sessionMinutes } from './training';
 import { canDriveCar, enterCar, garageJob, REPAIR_PER_POINT } from './cars';
 import type { ActionState, ActionType, GameState, Id, Person } from './types';
-import { dist, fmtMoney, clamp } from './core';
+import { dist, fmtMoney, clamp, randInt } from './core';
 import { count, firstItem, isEmpty, moveAll, moveItems, removeItems, spaceFor, total } from './inventory';
 import { CLOTHING, ITEMS, isFood, itemName } from './items';
 import { clockIn, clockOut, hostingInterview, interviewOpen, isOnShift, openAttendance } from './employment';
@@ -41,7 +41,7 @@ import { addXp, capability, skillLevel } from './needs';
 import { getWorld, locationOf, SHOPS, type Interactable } from './world/layout';
 import { clearLine } from './world/nav';
 import { transfer } from './ledger';
-import { news } from './events';
+import { lifeEvent, news } from './events';
 import { dayIndex, fmtClock, minuteOfDay } from './clock';
 import { completeHomeOrder, storeStaffed } from './homestore';
 import { FRIEND_AT, plannedMeetup, relationLabel } from './social';
@@ -475,6 +475,10 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
       out.push(opt('chop', car ? `Sell the stolen ${car.name} for parts · ${fmtMoney(chopPrice(state, car.id))}` : 'Sell a stolen car for parts', car ? undefined : 'Bring a stolen car round to the yard gate'));
       break;
     }
+    case 'atm':
+      out.push(opt('atm_balance', 'Check your balance'));
+      if (p.isPlayer) out.push(opt('smash_atm', 'Smash it open for the cash inside', !p.weapon ? 'You need something heavy (hold a bat or knife: Q)' : (state.atmsHit?.[it.id] ?? -1) === Math.floor(state.minute / 1440) ? 'Already emptied today' : undefined));
+      break;
     case 'ice_cream':
       out.push(opt('ice_cream', `A 99 with a flake · ${fmtMoney(250)}`, (state.ledger.accounts[p.accountId]?.balance ?? 0) < 250 ? 'Not enough money' : undefined, '99'));
       out.push(opt('ice_cream', `An ice lolly · ${fmtMoney(150)}`, (state.ledger.accounts[p.accountId]?.balance ?? 0) < 150 ? 'Not enough money' : undefined, 'lolly'));
@@ -816,6 +820,11 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
       begin(p, type, itId, { duration: 0.8 }, now); break;
     // a call from the box: lift the receiver, talk, hang up (the job is given at the end)
     case 'vince': begin(p, type, itId, { duration: 0.8, arg }, now); break;
+    case 'atm_balance': return { ok: true, msg: `Balance: ${fmtMoney(state.ledger.accounts[p.accountId]?.balance ?? 0)}.` };
+    case 'smash_atm':
+      // the alarm goes the moment the first blow lands
+      crime(state, 'breaking into a cash machine', 3);
+      begin(p, type, itId, { duration: 1.6 }, now); break;
     case 'ice_cream': {
       const price = arg === '99' ? 250 : 150;
       const r = transfer(state, { from: p.accountId, to: state.externalId, amount: price, reason: 'purchase', memo: arg === '99' ? 'A 99 with a flake' : 'An ice lolly', key: `ice:${p.id}:${Math.floor(state.minute * 10)}` });
@@ -1169,6 +1178,16 @@ export function tickAction(state: GameState, p: Person, dt: number): string | nu
     case 'vince': msg = a.arg === 'drop' ? dropMission(state) : callVince(state, p.id); break;
     case 'prison_meal': msg = prisonMeal(state, p.id); if (!/shut/.test(msg)) p.gesture = { clip: 'eat', until: state.minute + 2.5 }; break;
     case 'escape': msg = tryEscape(state, p.id); break;
+    case 'smash_atm': {
+      const day = Math.floor(state.minute / 1440);
+      if ((state.atmsHit ??= {})[a.target] === day) { msg = 'Empty.'; break; }
+      state.atmsHit[a.target] = day;
+      const cash = 6000 + randInt(state, 0, 24000);
+      transfer(state, { from: state.externalId, to: p.accountId, amount: cash, reason: 'transfer', memo: 'Cash from a broken cash machine', key: `atm:${a.target}:${day}` });
+      lifeEvent(state, p, 'Broke into a cash machine');
+      msg = `The front gives and the cassette spills out: ${fmtMoney(cash)}. The alarm is going. Go.`;
+      break;
+    }
     case 'pray':
       p.needs.mood = clamp(p.needs.mood + 10, 0, 100); p.needs.energy = clamp(p.needs.energy + 4, 0, 100);
       msg = (p.record?.length ?? 0) ? 'You sit in the quiet for a while. It helps, a bit.' : 'Ten minutes of peace and quiet. You feel calmer.';

@@ -87,6 +87,7 @@ export type ObstacleKind =
   | 'halt_sign'
   | 'phonebox'
   | 'bike_rack'
+  | 'atm_box'
   | 'ice_cream_van'
   | 'ramp'
   | 'cellbars'
@@ -218,6 +219,7 @@ export type InteractKind =
   | 'prison_bunk'
   | 'payphone'
   | 'bike_dock'
+  | 'atm'
   | 'ice_cream'
   | 'chop_shop'
   | 'bus_stop'
@@ -864,6 +866,14 @@ function buildWorldData(homeDesign: HomeDesign): World {
   { const t = turnstilesOf(buildCity(B.filter((b) => !b.unit && !b.level).map((b) => b.rect))); add({ id: 'turnstile', kind: 'turnstile', label: 'Harbour City Stadium turnstiles', pos: t, facing: Math.PI, obj: { x: t.x, z: t.z - 1.2 }, locationId: 'outside', range: 2.5 }); for (const dx of [-2.2, 1.4]) obstacles.push({ kind: 'kiosk', rect: { x0: t.x + dx, z0: t.z - 1.4, x1: t.x + dx + 0.8, z1: t.z - 0.7 }, height: 1.2, solid: true }); }
   // ---- Eastgate Motors' yard gate: stolen cars sold for parts
   add({ id: 'chop_shop', kind: 'chop_shop', label: 'Eastgate Motors (yard gate)', pos: { x: 84, z: -10.4 }, facing: Math.PI, obj: { x: 84, z: -12 }, locationId: 'outside', range: 1.6 });
+  // ---- cash machines in the wall beside the door of the banks, shops and pawnbrokers
+  for (const v of venues) {
+    if (v.kind !== 'bank' && v.kind !== 'shop' && v.kind !== 'pawn') continue;
+    const wz = v.front === 'n' ? v.rect.z0 : v.rect.z1, out = v.front === 'n' ? -1 : 1;
+    const x = Math.min(v.rect.x1 - 0.8, v.door.b + 1.4);
+    obstacles.push({ kind: 'atm_box', rect: { x0: x - 0.35, x1: x + 0.35, z0: Math.min(wz, wz + out * 0.28), z1: Math.max(wz, wz + out * 0.28) }, height: 1.7, solid: true, rot: v.front === 'n' ? Math.PI : 0 });
+    add({ id: `atm_${v.id}`, kind: 'atm', label: 'Cash machine', pos: { x, z: wz + out * 1.1 }, facing: v.front === 'n' ? 0 : Math.PI, obj: { x, z: wz + out * 0.2 }, locationId: 'outside', range: 1.5 });
+  }
   // ---- the city's venues, fitted out
   for (const v of venues) {
     for (const o of v.obstacles) obstacles.push({ ...o, kind: o.kind as ObstacleKind });

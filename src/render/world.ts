@@ -1412,6 +1412,17 @@ function buildObstacle(o: Obstacle): THREE.Object3D {
       for (const s of [-1, 1]) grp.add(box(L, 0.1, 0.1, frameM, cx, 0.05, cz + s * (D / 2 - 0.1)));
       break;
     }
+    case 'atm_box': {
+      // a cash machine set in the wall: steel surround, a lit screen, keypad and card slot
+      const out = (o.rot ?? 0) === 0 ? 1 : -1;
+      const face = out > 0 ? r.z1 : r.z0;
+      grp.add(box(W, 1.7, D, metal('#5f666d', 0.4), cx, 0.85, cz));
+      grp.add(box(0.5, 0.36, 0.02, M('#1a3a5c', 0.2, { emissive: new THREE.Color('#2f7fd1'), emissiveIntensity: 0.9 }), cx, 1.35, face + out * 0.011, false));
+      grp.add(box(0.3, 0.2, 0.06, M('#2b2f33', 0.5), cx, 1.0, face + out * 0.03, false));
+      grp.add(box(0.12, 0.02, 0.04, M('#111', 0.5), cx + 0.2, 1.12, face + out * 0.02, false));
+      grp.add(box(W, 0.12, 0.02, M('#0d6b3a', 0.5, { emissive: new THREE.Color('#0d6b3a'), emissiveIntensity: 0.5 }), cx, 1.62, face + out * 0.011, false));
+      break;
+    }
     case 'ice_cream_van': {
       // a white van with a pink skirt, a serving hatch on the side and a giant cone on the roof
       const van = buildCar('#f7f3ec', cx, cz, o.rot ?? 0, true);
