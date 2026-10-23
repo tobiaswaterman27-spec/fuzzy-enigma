@@ -80,6 +80,12 @@ export class Audio {
     const v = Math.min(0.9, 0.2 + speed / 18);
     this.thud(160, 0.35, v); this.thud(1200, 0.25, v * 0.6); this.thud(3200, 0.15, v * 0.35);
   }
+  /** a car horn, a short double beep (two notes a third apart, like most cars) */
+  horn(dist: number) {
+    if (!this.ctx || this.muted) return;
+    const v = Math.min(0.12, 4 / Math.max(6, dist));
+    for (const [w, d] of [[0, 0.22], [0.3, 0.4]]) { this.blip(392, d, 'sawtooth', v, w); this.blip(494, d, 'sawtooth', v * 0.8, w); }
+  }
   private sirenOsc: { o: OscillatorNode; g: GainNode } | null = null;
   /** the two-tone siren of an emergency vehicle on its way, louder the closer it is (Infinity: none) */
   siren(dist: number) {

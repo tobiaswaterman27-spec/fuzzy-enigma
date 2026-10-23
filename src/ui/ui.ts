@@ -146,6 +146,13 @@ export class UI {
     setBar('#bar-hygiene', p.needs.hygiene);
     setBar('#bar-mood', p.needs.mood);
     setBar('#bar-health', p.health ?? 100);
+    // the moment it all goes wrong: WASTED when you go down for good (or die), BUSTED when they take you in
+    const fate = p.dead ? 'dead' : p.away?.place === 'hospital' ? 'hospital' : p.away?.place === 'custody' || p.away?.place === 'prison' ? 'nicked' : '';
+    if (fate !== this.lastFate) {
+      if (fate === 'dead' || fate === 'hospital') this.bigTitle('WASTED', 'wasted');
+      else if (fate === 'nicked') this.bigTitle('BUSTED', 'busted');
+      this.lastFate = fate;
+    }
     const w = s.wanted;
     $('#wanted').hidden = !w;
     // the stars flash while they are searching for you (out of sight), and stay solid when you are seen
@@ -226,6 +233,14 @@ export class UI {
     this.renderPhone();
     this.syncModal();
   }
+  private lastFate = '';
+  private bigTitle(text: string, cls: string) {
+    const el = $('#bigtitle');
+    el.textContent = text; el.className = cls; el.hidden = false;
+    clearTimeout(this.titleTimer);
+    this.titleTimer = window.setTimeout(() => { el.hidden = true; }, 3200);
+  }
+  private titleTimer = 0;
   closePhone() { this.phoneOpen = false; $('#phone').hidden = true; if (this.p.gesture?.clip === 'phone') this.p.gesture = null; this.syncModal(); }
 
   renderPhone() {
@@ -1048,7 +1063,7 @@ export class UI {
       <button data-m="gfx">Graphics: ${this.game.quality === 'high' ? 'High (ambient occlusion, bloom, anti-aliasing)' : this.game.quality === 'medium' ? 'Medium (anti-aliasing, no ambient occlusion)' : 'Low (fastest)'} · resolution ${Math.round(this.game.resScale * 100)}% - click to switch</button>
       <h3>AI conversations</h3><p class="muted">${claudeAi() ? 'People are voiced by Claude on your own claude.ai account (allowed per page). ' : ''}With your own OpenAI API key, people answer anything you say, in character, from their job, family, money, mood and history (outside claude.ai, where the page can reach OpenAI). The key is kept only in this browser and sent only to OpenAI. Without either, people cannot talk.</p>
       ${hasAi() ? `<p>Key saved (…${esc((getApiKey() ?? '').slice(-4))}) · model ${esc(getModel())}</p><div class="row"><button data-m="aiclear">Remove key</button></div>` : `<input id="ai-key" type="password" placeholder="sk-…" autocomplete="off" style="font:inherit;padding:8px;border-radius:6px;border:1px solid var(--line);background:#1c2420;color:var(--ink)"><div class="row"><button data-m="aisave">Save key</button></div>`}
-      <h3>Controls</h3><p class="muted">W/A/S/D or arrows: walk (relative to the camera, like GTA: you turn to face the way you go) · Mouse: click to take the mouse, then move it to look round (Esc lets go) · Shift: run · E: use · F: punch / attack · Q: hold a weapon (bat or knife, sold at Harbour Home) · G: take a car from the traffic · 1-6: other options · Tab or P: phone · Esc: pause. On touch, drag to look round. Scroll to zoom. Stairs: just walk up (or down) them.</p>
+      <h3>Controls</h3><p class="muted">W/A/S/D or arrows: walk (relative to the camera, like GTA: you turn to face the way you go) · Mouse: click to take the mouse, then move it to look round (Esc lets go) · Shift: run · E: use · F: punch / attack · Q: hold a weapon (bat or knife, sold at Harbour Home) · G: take a car from the traffic (or a parked one) · Space: jump · H: hands up (surrender) · R: change radio station while driving · 1-6: other options · Tab or P: phone · Esc: pause. On touch, drag to look round. Scroll to zoom. Stairs: just walk up (or down) them.</p>
       <p class="muted">Day ${dayIndex(this.s.minute) + 1}. Time passes at ${this.game.speedMult}× (1× = 20 game minutes per real minute). Sleeping fast-forwards.</p>`;
   }
   onMenuClick(e: Event) {

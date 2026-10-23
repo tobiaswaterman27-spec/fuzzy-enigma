@@ -8,7 +8,7 @@ import { getWorld } from '../sim/world/layout';
 import type { Lane } from '../sim/world/city';
 import { buildCar, driverFigure } from './world';
 
-interface Car { obj: THREE.Object3D; lane: number; t: number; speed: number; cruise: number; color: string; body: string }
+interface Car { obj: THREE.Object3D; lane: number; t: number; speed: number; cruise: number; color: string; body: string; waited?: number; hornAt?: number }
 const BODIES = ['car', 'saloon', 'suv', 'car', 'sports', 'saloon', 'suv'];
 const COLORS = ['#b8232a', '#2b4f8c', '#e8e8e8', '#1c1c1c', '#5f7f3f', '#c4a14a', '#7a7f86', '#3d6f8f', '#8e44ad', '#f0f0f0'];
 const KEEP = 230;
@@ -47,6 +47,8 @@ export class Traffic {
     return { x: best.obj.position.x, z: best.obj.position.z, heading: best.obj.rotation.y, color: best.color, body: best.body, obj: best.obj };
   }
   private respawnAt = 0;
+  /** a driver sounding the horn (for the sound) */
+  onHorn: (x: number, z: number) => void = () => {};
 
   constructor(private scene: THREE.Scene, count = 34) {
     const w = getWorld();
@@ -110,6 +112,12 @@ export class Traffic {
         if (along > 0 && along < 30 && side < wide) gap = Math.min(gap, along);
       };
       for (const q of people) ahead(q.pos.x, q.pos.z, 2.0);
+      // stood in the road in front of a car: it waits, then leans on the horn
+      const before = gap;
+      ahead(me.pos.x, me.pos.z, 2.0);
+      const youBlock = me.visible && gap < 9 && gap <= before;
+      c.waited = youBlock && c.speed < 0.5 ? (c.waited ?? 0) + dt : 0;
+      if ((c.waited ?? 0) > 1.6 && (c.hornAt ?? 0) < performance.now()) { c.hornAt = performance.now() + 3500 + Math.random() * 3000; this.onHorn(pos.x, pos.y); }
       for (const v of vans) ahead(v.pos.x, v.pos.z, 2.4);
       for (const o of this.cars) if (o !== c && o.lane === c.lane) ahead(o.obj.position.x, o.obj.position.z, 1.5);
       // the next junction: wait outside it while a car on the cross street is in it

@@ -324,6 +324,7 @@ export class Game {
     this.views.onBoom = (x, z) => this.audio.boom(Math.hypot(x - this.player.pos.x, z - this.player.pos.z));
     this.traffic = new Traffic(this.scene);
     this.carSeq = new CarSeq(this.scene);
+    this.traffic.onHorn = (x, z) => this.audio.horn(Math.hypot(x - this.player.pos.x, z - this.player.pos.z));
     this.emergency = new Emergency(this.scene, this.views.fx);
     this.busSeq = new BusSeq(this.scene);
     this.police = new PoliceCar(this.scene);
@@ -526,6 +527,7 @@ export class Game {
         this.onToast('Hands up. You wait for the police to reach you (move to change your mind).');
         return;
       }
+      if (e.code === 'Space' && !this.drivingVan() && this.jumpY === 0 && !this.player.action && this.player.down == null && !this.player.away) { this.jumpV = 4.2; this.jumpY = 0.001; e.preventDefault(); return; }
       if (e.code === 'KeyQ' && !this.drivingVan()) { this.onToast(nextWeapon(this.state, this.player.id)); return; }
       if (e.code === 'KeyE' && this.player.action?.type === 'fish') { const m = strike(this.state, this.player); if (m) this.onToast(m); return; }
       if (e.code === 'KeyE') this.interact(0);
@@ -589,6 +591,8 @@ export class Game {
 
   private radioOn = false;
   private boltAt = 0;
+  private jumpY = 0;
+  private jumpV = 0;
   private boltDist = 800;
   onUi: (which: 'jobs' | 'advisor' | 'interview' | 'laptop' | 'homestore' | 'invite' | 'chat' | 'darts' | 'bus' | 'train' | 'roulette' | 'blackjack', arg?: string) => void = () => {};
 
@@ -635,6 +639,19 @@ export class Game {
     if (++this.homeCheck % 30 === 0) { const k = JSON.stringify(s.homeDesigns.flat ?? null); if (k !== this.homeKey) { if (this.homeKey) this.applyHomeDesign(); this.homeKey = k; } }
     if (!this.paused) { this.chatter(); this.approaches(); }
     this.views.update(s, this.paused ? 0 : dt, this.player.pos, this.insideId, this.speech);
+    // a jump: up and down, knees tucked in the air
+    if (this.jumpY > 0 || this.jumpV > 0) {
+      const ddt = this.paused ? 0 : dt;
+      this.jumpY += this.jumpV * ddt; this.jumpV -= 9.8 * ddt;
+      if (this.jumpY <= 0) { this.jumpY = 0; this.jumpV = 0; }
+      const v = this.views.playerView(s);
+      if (v && this.jumpY > 0) {
+        v.rig.body.position.y += this.jumpY;
+        const k = Math.min(1, this.jumpY / 0.25);
+        for (const sd of ['L', 'R'] as const) { v.rig.bones[`thigh${sd}`].rotateX(-0.7 * k); v.rig.bones[`shin${sd}`].rotateX(1.1 * k); }
+        v.rig.bones.armL.rotateZ(0.5 * k); v.rig.bones.armR.rotateZ(-0.5 * k);
+      }
+    }
     this.traffic.update(s, this.paused ? 0 : dt);
     if (s.wanted || this.police.active) {
       // the patrol car steers round everything, the car you are driving included
