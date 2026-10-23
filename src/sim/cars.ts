@@ -3,13 +3,13 @@
 // are taken weekly; fuel is paid at the end of each drive.
 import type { GameState, Id, Vehicle } from './types';
 import { at, dayIndex } from './clock';
-import { fmtMoney } from './core';
+import { fmtMoney, rand } from './core';
 import { transfer } from './ledger';
 import { news, lifeEvent } from './events';
 import { createContainer } from './inventory';
 import { getWorld, locationOf } from './world/layout';
 import { resolveCircle } from './world/nav';
-import { crime } from './health';
+import { crime, floor, hurt } from './health';
 
 export interface CarModel { id: string; name: string; price: number; topSpeed: number; colors: string[]; blurb: string; body: string }
 
@@ -179,4 +179,57 @@ export function carsTick(state: GameState) {
       v.nextCharge += 1440;
     }
   }
+}
+
+// ---------------------------------------------------------------- damage
+/** a knock: the side that hit takes the dents, and the engine suffers with it */
+export function damageCar(state: GameState, v: Vehicle, impact: number, side: 0 | 1 | 2 | 3) {
+  if (impact < 2.2 || v.wrecked) return;
+  const d = (v.dmg ??= [0, 0, 0, 0]);
+  d[side] = Math.min(1, d[side] + impact * impact * 0.004);
+  v.condition = Math.max(0, v.condition - impact * impact * 0.12);
+  // smashed beyond saving: it catches fire
+  if (v.condition <= 0 && v.burning == null) v.burning = state.minute;
+}
+
+/** burning cars go up after a few seconds: anyone close by is caught in the blast */
+export function carFireTick(state: GameState): Vehicle | null {
+  for (const v of Object.values(state.vehicles)) {
+    if (v.burning == null || v.wrecked || state.minute - v.burning < 1.6) continue;
+    v.wrecked = true;
+    v.state = 'parked';
+    for (const o of Object.values(state.people)) {
+      if (o.dead || o.away || (!o.visible && o.id !== v.driverId)) continue;
+      const d = Math.hypot(o.pos.x - v.pos.x, o.pos.z - v.pos.z);
+      if (d > 6) continue;
+      if (o.id === v.driverId) { o.where = 'outside'; o.visible = true; }
+      o.hit = { at: state.minute, dir: Math.atan2(o.pos.x - v.pos.x, o.pos.z - v.pos.z), heavy: true, by: v.driverId ?? o.id, force: 9 };
+      hurt(state, o, (6 - d) * 14, 'caught in a car explosion', v.driverId ?? null, 0.05);
+      if (!o.dead && o.down == null) floor(state, o, 1.6);
+    }
+    v.driverId = null;
+    return v;
+  }
+  return null;
+}
+
+export const REPAIR_PER_POINT = 1500;
+/** Eastgate Motors' yard: dents knocked out and, for a car the police are after, a quick respray */
+export function garageJob(state: GameState, personId: Id, v: Vehicle): string {
+  const p = state.people[personId];
+  if (v.wrecked) return 'That is a burnt-out shell: nothing to fix.';
+  const repair = Math.round((100 - v.condition) * REPAIR_PER_POINT / 100) * 100;
+  const hot = !!state.wanted && state.wanted.level > 0;
+  const cost = repair + (hot ? 50000 : 0);
+  if (cost <= 0) return 'Nothing needs doing to it.';
+  const r = transfer(state, { from: p.accountId, to: state.externalId, amount: cost, reason: 'purchase', memo: hot ? 'Respray and repairs (no questions)' : 'Car repairs', key: `garage:${v.id}:${Math.floor(state.minute)}` });
+  if (!r.ok) return `That will be ${fmtMoney(cost)}. You can't cover it.`;
+  v.condition = 100; v.dmg = [0, 0, 0, 0]; v.burning = null;
+  if (hot) {
+    const cols = ['#1b2631', '#c0392b', '#f0f3f4', '#2e86c1', '#1e8449', '#d4ac0d', '#6e2c00'];
+    v.color = cols[(cols.indexOf(v.color ?? '') + 1 + Math.floor(rand(state) * (cols.length - 1))) % cols.length];
+    state.wanted = null;
+    return `A fresh coat of paint and new plates: ${fmtMoney(cost)}. The police are looking for a different car now.`;
+  }
+  return `Good as new: ${fmtMoney(cost)}.`;
 }

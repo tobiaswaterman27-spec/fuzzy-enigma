@@ -74,6 +74,18 @@ export class Audio {
     g.gain.setValueAtTime(0.05, t); g.gain.setValueAtTime(0.05, t + 5.8); g.gain.linearRampToValueAtTime(0, t + 6);
     o.connect(g).connect(this.master); o.start(t); o.stop(t + 6.05);
   }
+  /** metal on metal: a crunch, louder the faster you were going */
+  crash(speed: number) {
+    if (!this.ctx || this.muted) return;
+    const v = Math.min(0.9, 0.2 + speed / 18);
+    this.thud(160, 0.35, v); this.thud(1200, 0.25, v * 0.6); this.thud(3200, 0.15, v * 0.35);
+  }
+  /** a car going up */
+  boom(dist: number) {
+    if (!this.ctx || this.muted) return;
+    const v = Math.min(1, 40 / Math.max(8, dist));
+    this.thud(90, 1.4, v); this.thud(300, 0.9, v * 0.7); this.thud(2400, 0.4, v * 0.3);
+  }
   private thud(freq: number, dur: number, vol: number) {
     const c = this.ctx!;
     const t = c.currentTime;

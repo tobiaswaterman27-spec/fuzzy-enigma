@@ -183,6 +183,7 @@ export type ActionType =
   | 'pray'
   | 'match'
   | 'vince'
+  | 'garage'
   | 'film'
   | 'smash_case'
   | 'workout'
@@ -338,7 +339,7 @@ export interface Person {
   /** knocked off their feet for a moment (not collapsed): they get back up at this minute */
   downUntil?: number | null;
   /** the last blow taken: when, from which way, how hard, and who threw it (for the body's reaction) */
-  hit?: { at: number; dir: number; heavy: boolean; by: Id } | null;
+  hit?: { at: number; dir: number; heavy: boolean; by: Id; force?: number } | null;
   /** punches thrown in a row: a combination ends in a kick */
   combo?: { n: number; at: number } | null;
   /** health lost per game minute from open wounds */
@@ -649,6 +650,12 @@ export interface Vehicle {
   waitUntil: number;
   condition: number;
   odometer: number;
+  /** body damage by side, 0 (fine) to 1 (crushed): front, back, left, right */
+  dmg?: [number, number, number, number];
+  /** on fire since this minute: it goes up a little later */
+  burning?: number | null;
+  /** burnt out: a shell that will never move again */
+  wrecked?: boolean;
 }
 
 // -------------------------------------------------------------- housing

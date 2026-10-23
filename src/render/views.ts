@@ -5,6 +5,8 @@ import { AnimationController, buildRig, dress, type Rig } from './character';
 import { buildCar } from './world';
 import { DogView } from './dog';
 import { Ragdoll } from './ragdoll';
+import { Fx } from './fx';
+import { applyCarDamage } from './cardamage';
 import { stairY } from '../sim/world/layout';
 import { LEVEL_DX, LEVEL_H, levelOf, STAIR_RUN } from '../sim/world/levels';
 import { boat as harbourBoat } from './harbour';
@@ -436,7 +438,7 @@ class PersonView {
         const h = p.hit && state.minute - p.hit.at < 1 ? p.hit : null;
         const dir = h ? new THREE.Vector3(Math.sin(h.dir), 0, Math.cos(h.dir)) : new THREE.Vector3(-Math.sin(p.facing), 0, -Math.cos(p.facing));
         this.rig.root.updateMatrixWorld(true);
-        this.ragdoll = new Ragdoll(this.rig, this.rig.root.getWorldPosition(new THREE.Vector3()).y, dir, h?.heavy ? 4.2 : h ? 2.6 : 1.2);
+        this.ragdoll = new Ragdoll(this.rig, this.rig.root.getWorldPosition(new THREE.Vector3()).y, dir, h?.force ?? (h?.heavy ? 4.2 : h ? 2.6 : 1.2));
       }
       this.ragdoll.step(dt);
       this.ragdoll.apply();
@@ -824,6 +826,10 @@ export class Views {
   hidePlayer = false;
   /** privately owned cars */
   cars = new Map<string, THREE.Object3D>();
+  /** smoke, fire and explosions */
+  fx!: Fx;
+  /** something blew up here (for the sound) */
+  onBoom: (x: number, z: number) => void = () => {};
   /** the warehouse forklift (with a pallet on the forks when carrying) and pallets waiting at goods-in */
   private fork: { truck: THREE.Object3D; load: THREE.Object3D } | null = null;
   private goodsIn: THREE.Object3D[] = [];
@@ -845,6 +851,7 @@ export class Views {
   destMarker: THREE.Mesh | null = null;
 
   constructor(private scene: THREE.Scene) {
+    this.fx = new Fx(scene);
     // shelf products: one instanced mesh per shelf section (count = real shelf stock)
     const sections = [
       ...SHELF_LAYOUT.map((x) => ({ id: `shelf_${x.product}`, bid: 'market', gx: x.gx, zc: x.zc, len: 4.5 })),
@@ -1313,7 +1320,18 @@ export class Views {
       if (!obj) { obj = buildCar(v.color ?? '#8a8f94', 0, 0, 0, false, CAR_MODELS.find((m) => m.id === v.model)?.body ?? 'car'); this.scene.add(obj); this.cars.set(v.id, obj); }
       obj.position.set(v.pos.x, 0, v.pos.z);
       obj.rotation.y = v.heading;
+      // dents, smoke from a hurt engine, fire, and the moment it goes up
+      if (v.dmg || v.wrecked) applyCarDamage(obj, v.dmg ?? [0, 0, 0, 0], !!v.wrecked);
+      if (v.wrecked && !obj.userData.boomed) { obj.userData.boomed = true; if (state.minute - (v.burning ?? 0) < 3) { this.fx.explode(v.pos.x, v.pos.z); this.onBoom(v.pos.x, v.pos.z); } }
+      const bonnet = { x: v.pos.x + Math.sin(v.heading) * 1.6, z: v.pos.z + Math.cos(v.heading) * 1.6 };
+      const smoky = v.wrecked ? 'black' : v.burning != null ? 'fire' : v.condition < 22 ? 'black' : v.condition < 50 ? 'smoke' : null;
+      if (smoky && Math.random() < dt * (smoky === 'fire' ? 30 : 8)) {
+        const at = smoky === 'fire' || v.wrecked ? { x: v.pos.x + (Math.random() - 0.5) * 1.6, z: v.pos.z + (Math.random() - 0.5) * 3 } : bonnet;
+        this.fx.emit(smoky, at.x, 1.1, at.z, new THREE.Vector3((Math.random() - 0.5) * 0.4, smoky === 'fire' ? 1.8 : 1.1, (Math.random() - 0.5) * 0.4), smoky === 'fire' ? 0.9 : 0.7, smoky === 'fire' ? 0.6 : 2.4);
+        if (smoky === 'fire' && Math.random() < 0.5) this.fx.emit('black', at.x, 1.8, at.z, new THREE.Vector3(0, 1.6, 0), 0.9, 2.5);
+      }
     }
+    this.fx.update(dt);
     // spills
     this.updateStickers(state);
     for (const [id, m] of this.spills) if (!state.dirt[id]) { this.scene.remove(m); this.spills.delete(id); }

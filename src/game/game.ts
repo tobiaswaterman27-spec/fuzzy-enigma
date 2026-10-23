@@ -42,7 +42,7 @@ import { MarketStalls } from '../render/marketStalls';
 import { raining, seasonOf, snowCover, snowing } from '../sim/weather';
 import { safeWrite, loadSlot, type KV } from '../sim/save';
 import { news } from '../sim/events';
-import { CAR_MODELS, enterCar, exitCar, stealCar, stealOwnedCar, stealParked } from '../sim/cars';
+import { CAR_MODELS, damageCar, enterCar, exitCar, stealCar, stealOwnedCar, stealParked } from '../sim/cars';
 import { forkliftAction } from '../sim/forklift';
 import { attack, attackTarget, crime, flee, hitByVehicle, nextWeapon } from '../sim/health';
 import { fitnessFactor, trainRun } from '../sim/leisure';
@@ -298,6 +298,7 @@ export class Game {
     this.world = buildWorld(this.scene);
     this.city = new CityView(this.scene, getWorld().city);
     this.views = new Views(this.scene);
+    this.views.onBoom = (x, z) => this.audio.boom(Math.hypot(x - this.player.pos.x, z - this.player.pos.z));
     this.traffic = new Traffic(this.scene);
     this.carSeq = new CarSeq(this.scene);
     this.police = new PoliceCar(this.scene);
@@ -719,6 +720,8 @@ export class Game {
     return Object.values(this.state.vehicles).find((v) => v.driverId === p.id) ?? null;
   }
   private vanSpeed = 0;
+  private bumpCooldown = 0;
+  private fireWarned = false;
   private homeCheck = 0;
   private homeKey = '';
 
@@ -732,7 +735,11 @@ export class Game {
     const thr = canDrive ? (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0) : 0;
     const steer = canDrive ? (k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0) - (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) : 0;
     const fork = v.kind === 'forklift', boat = v.kind === 'boat';
-    const MAX = fork ? 4.5 : boat ? 7.5 : car?.topSpeed ?? 11, REV = fork ? 2.5 : 3;
+    // a battered engine loses its power; a burning or burnt-out car goes nowhere
+    const tired = v.kind === 'car' ? (v.condition < 25 ? 0.55 : v.condition < 50 ? 0.85 : 1) : 1;
+    const MAX = (fork ? 4.5 : boat ? 7.5 : car?.topSpeed ?? 11) * (v.wrecked || v.burning != null ? 0 : tired), REV = fork ? 2.5 : 3;
+    if (v.burning != null && !this.fireWarned) { this.fireWarned = true; this.onToast('The engine is on fire! Get out (E) before it goes up!'); }
+    if (v.burning == null) this.fireWarned = false;
     if (boat && this.player.action?.type === 'fish' && thr !== 0) cancelAction(this.state, this.player, 'moved');
     if (thr > 0) this.vanSpeed += (this.vanSpeed < 0 ? 9 : 3.5) * dt;
     else if (thr < 0) this.vanSpeed -= (this.vanSpeed > 0 ? 9 : 2.5) * dt;
@@ -747,7 +754,16 @@ export class Game {
       const dx = res.x - mx, dz = res.z - mz, d = Math.hypot(dx, dz);
       if (d < 3.4 && d > 1e-3) { res.x = mx + (dx / d) * 3.4; res.z = mz + (dz / d) * 3.4; }
     }
-    if (Math.hypot(res.x - nx, res.z - nz) > 0.01) { if (Math.abs(this.vanSpeed) > 2) taxiBump(this.state); this.vanSpeed *= 0.4; } // bumped into something
+    if (Math.hypot(res.x - nx, res.z - nz) > 0.01) {
+      // bumped into something: which side took it (the push-back points away from what was hit)
+      const cx = res.x - nx, cz = res.z - nz, cl = Math.hypot(cx, cz);
+      const fwd = (cx * Math.sin(v.heading) + cz * Math.cos(v.heading)) / cl, rt = (cx * -Math.cos(v.heading) + cz * Math.sin(v.heading)) / cl;
+      const side = Math.abs(fwd) > Math.abs(rt) ? (fwd < 0 ? 0 : 1) : (rt < 0 ? 3 : 2);
+      if (v.kind === 'car' && !this.bumpCooldown) { damageCar(this.state, v, Math.abs(this.vanSpeed), side as 0 | 1 | 2 | 3); this.bumpCooldown = 0.4; if (Math.abs(this.vanSpeed) > 4) this.audio.crash(Math.abs(this.vanSpeed)); }
+      if (Math.abs(this.vanSpeed) > 2) taxiBump(this.state);
+      this.vanSpeed *= 0.4;
+    }
+    this.bumpCooldown = Math.max(0, this.bumpCooldown - dt);
     v.odometer += Math.hypot(res.x - v.pos.x, res.z - v.pos.z);
     // people in the way are hit (and knocked aside)
     if (Math.abs(this.vanSpeed) > 1.5 && !boat) {

@@ -2,6 +2,7 @@
 // Fine-grained movement/actions run in sub-steps; economic and scheduled
 // systems run once per whole game minute so nothing is skipped when the
 // clock is accelerated (sleeping, fast-forward).
+import { carFireTick } from './cars';
 import { missionTick } from './missions';
 import { stationTick } from './station';
 import { crowdTick } from './crowd';
@@ -90,6 +91,7 @@ function substep(state: GameState, dt: number, ev: StepEvents) {
   stationTick(state);
   crowdTick(state);
   missionTick(state);
+  carFireTick(state);
   venuesTick(state);
   patronsTick(state);
   walletsTick(state);

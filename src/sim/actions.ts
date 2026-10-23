@@ -26,7 +26,7 @@ const PINT = 520;
 import { canDriveForklift, mountForklift, palletsWaiting } from './forklift';
 import { buyAtStall, marketOn, stallPrice } from './streetmarket';
 import { COURSES, completeSession, sessionBlocker, sessionMinutes } from './training';
-import { canDriveCar, enterCar } from './cars';
+import { canDriveCar, enterCar, garageJob, REPAIR_PER_POINT } from './cars';
 import type { ActionState, ActionType, GameState, Id, Person } from './types';
 import { dist, fmtMoney, clamp } from './core';
 import { count, firstItem, isEmpty, moveAll, moveItems, removeItems, spaceFor, total } from './inventory';
@@ -451,6 +451,13 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
       out.push({ type: 'ui', label: `Catch a bus (${fmtMoney(BUS_FARE)} any stop)`, enabled: true, ui: 'bus' });
       break;
     case 'chop_shop': {
+      // your own wheels (or a stolen car you mean to keep): fixed up, and resprayed if the police want it
+      const mine = Object.values(state.vehicles).find((v) => v.kind === 'car' && !v.wrecked && (v.driverId === actorId || ((v.ownerId === actorId || v.stolen) && v.state === 'parked')) && Math.hypot(v.pos.x - it.pos.x, v.pos.z - it.pos.z) < 14);
+      if (mine && p.isPlayer) {
+        const hot = !!state.wanted && state.wanted.level > 0;
+        const cost = Math.round((100 - mine.condition) * REPAIR_PER_POINT / 100) * 100 + (hot ? 50000 : 0);
+        out.push(opt('garage', hot ? `Respray the ${mine.name} and lose the police · ${fmtMoney(cost)}` : `Fix up the ${mine.name} · ${fmtMoney(cost)}`, cost <= 0 ? 'Nothing needs doing to it' : undefined, mine.id));
+      }
       const car = chopCandidate(state, it.pos);
       out.push(opt('chop', car ? `Sell the stolen ${car.name} for parts · ${fmtMoney(chopPrice(state, car.id))}` : 'Sell a stolen car for parts', car ? undefined : 'Bring a stolen car round to the yard gate'));
       break;
@@ -776,6 +783,7 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
     case 'chop':
       begin(p, type, itId, { duration: 0.8 }, now); break;
     case 'vince': return { ok: true, msg: arg === 'drop' ? dropMission(state) : callVince(state, p.id) };
+    case 'garage': { const v = state.vehicles[arg ?? '']; return { ok: !!v, msg: v ? garageJob(state, p.id, v) : '' }; }
     case 'match': return goToMatch(state, p.id, arg === 'watch' ? undefined : (arg as Pick));
     case 'ae': {
       const r = goToAandE(state, p.id);

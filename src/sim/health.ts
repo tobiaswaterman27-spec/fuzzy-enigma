@@ -205,8 +205,12 @@ export function hitByVehicle(state: GameState, victimId: Id, driverId: Id, speed
   const t = state.people[victimId], d = state.people[driverId];
   if (!t || t.dead || !t.visible || Math.abs(speed) < 1.5) return;
   const dmg = speed * speed * 0.55 + 4;
+  // sent flying the way the car was going (the view's ragdoll reads this)
+  const car = Object.values(state.vehicles).find((v) => v.driverId === driverId);
+  t.hit = { at: state.minute, dir: car?.heading ?? 0, heavy: true, by: driverId, force: Math.min(13, 2 + speed * 0.9) };
   hurt(state, t, dmg, `hit by ${d?.isPlayer ? 'your' : 'a'} car`, driverId, 0.03);
   if (!t.dead && !t.down && dmg > 14) knockDown(state, t);
+  else if (!t.dead && !t.down) floor(state, t, 1.2 + rand(state) * 0.6);
   if (!t.dead && !t.down && !t.isPlayer) flee(state, t, d?.pos ?? t.pos);
   if (d?.isPlayer) {
     t.relations[d.id] = Math.max(0, (t.relations[d.id] ?? 0) - 30);
