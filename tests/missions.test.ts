@@ -15,8 +15,8 @@ describe('Jobs for Vince', () => {
     me.pos = { ...boxes[0].pos }; me.where = 'outside'; me.visible = true;
     const o = optionsFor(s, me.id, boxes[0].id).find((x) => x.type === 'vince')!;
     expect(o.enabled).toBe(true);
-    const r = startAction(s, me.id, boxes[0].id, 'vince', 'call');
-    expect(r.msg).toMatch(/Vince/);
+    expect(startAction(s, me.id, boxes[0].id, 'vince', 'call').ok).toBe(true);
+    for (let i = 0; i < 8 && me.action; i++) step(s, 0.25);
     expect(s.mission).toBeTruthy();
     expect(missionGoal(s)).toBeTruthy();
   });

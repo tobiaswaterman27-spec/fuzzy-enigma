@@ -5,7 +5,7 @@
 // circling over you with its searchlight: you cannot lose it in the open, only by getting indoors.
 import * as THREE from 'three';
 import type { GameState } from '../sim/types';
-import { buildCar } from './world';
+import { buildCar, driverFigure } from './world';
 import { clearLine, resolveCircle } from '../sim/world/nav';
 import { collidersIn, getWorld, shellAt } from '../sim/world/layout';
 import { arrest } from '../sim/health';
@@ -25,6 +25,7 @@ class PatrolCar {
   aimAt = 0;
   constructor(private scene: THREE.Scene, x: number, z: number, heading: number) {
     const g = buildCar('#f4f6f7', 0, 0, 0, false, 'saloon');
+    g.add(driverFigure(x * 0.13 + z, '#f2f4f6', '#15181d'));
     // battenburg livery stripe, light bar on the roof
     const stripeMat = new THREE.MeshStandardMaterial({ color: '#1f5fd1', roughness: 0.4 });
     const yellow = new THREE.MeshStandardMaterial({ color: '#e8e010', roughness: 0.4 });

@@ -2,7 +2,7 @@
 // through simulation functions; it never computes money or outcomes itself.
 import { missionText } from '../sim/missions';
 import { rideTrain, trainMinutes, trainStops, TRAIN_FARE } from '../sim/train';
-import { BUS_FARE, busMinutes, busStops, rideBus } from '../sim/bus';
+import { BUS_FARE, busMinutes, busStops } from '../sim/bus';
 import { dealBlackjack, finishBlackjack, type Hand, handValue, hitBlackjack, roulette } from '../sim/venues';
 import { AVENUE_NAMES, CITY, DISTRICT_NAMES, districtAt, STREET_NAMES, streetAt } from '../sim/world/city';
 import { planX } from '../sim/world/levels';
@@ -219,12 +219,14 @@ export class UI {
   openPhone(tab: Tab) {
     this.tab = tab;
     this.phoneOpen = true;
+    // out comes your phone
+    if (!this.p.away && this.p.where !== 'vehicle') this.p.gesture = { clip: 'phone', until: this.s.minute + 600 };
     $('#phone').hidden = false;
     if (tab === 'jobs') this.s.flags.viewedJobs = true;
     this.renderPhone();
     this.syncModal();
   }
-  closePhone() { this.phoneOpen = false; $('#phone').hidden = true; this.syncModal(); }
+  closePhone() { this.phoneOpen = false; $('#phone').hidden = true; if (this.p.gesture?.clip === 'phone') this.p.gesture = null; this.syncModal(); }
 
   renderPhone() {
     this.lastPhoneRender = performance.now();
@@ -992,7 +994,7 @@ export class UI {
       .map((s) => `<button class="line" data-stop="${s.id}" style="width:100%;text-align:left"><span>${esc(s.name)}</span><span class="muted">${busMinutes(here.pos, s.pos)} min</span></button>`).join('');
     this.dialog(`<h2>${esc(here.name)}</h2><p class="muted">City buses: ${fmtMoney(BUS_FARE)} to any stop. Where to?</p><div style="max-height:52vh;overflow:auto">${rows}</div><div class="row"><button data-cancel="1">Not now</button></div>`, (btn) => {
       this.closeDialog();
-      if (btn.dataset.stop) this.toast(rideBus(this.s, p.id, btn.dataset.stop).msg);
+      if (btn.dataset.stop) this.game.boardBus(btn.dataset.stop);
     });
   }
 

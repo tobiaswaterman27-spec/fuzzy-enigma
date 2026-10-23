@@ -40,6 +40,8 @@ function mergeByMaterial(root: THREE.Object3D): THREE.Group {
   for (const [mat, geos] of byMat) {
     const merged = mergeGeometries(geos, false);
     if (!merged) continue;
+    // tinted glass you can see the people through (car windows, shop glass)
+    if (/glass/.test(mat.name) && !mat.transparent) { mat.transparent = true; mat.opacity = 0.45; mat.depthWrite = false; }
     const mesh = new THREE.Mesh(merged, mat);
     mesh.castShadow = !/glass/.test(mat.name);
     mesh.receiveShadow = true;

@@ -34,6 +34,7 @@ export function walletsTick(state: GameState) {
   walletSpots().forEach((p, i) => {
     if (found.includes(i) || Math.abs(p.x - me.pos.x) > 1.6 || Math.abs(p.z - me.pos.z) > 1.6) return;
     found.push(i);
+    me.gesture = { clip: 'pickup', until: state.minute + 0.35 };
     const cash = 1000 + ((i * 7919) % 9000);
     transfer(state, { from: state.externalId, to: me.accountId, amount: cash, reason: 'transfer', memo: 'A lost wallet', key: `wallet:${i}` });
     news(state, 'good', `You found a wallet (${found.length}/${WALLETS})`, `${fmtMoney(cash)} inside. ${found.length === WALLETS ? 'That is every one of them!' : 'There are more out there.'}`, true);

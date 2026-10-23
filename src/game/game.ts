@@ -19,6 +19,9 @@ import { onPcsoShift } from '../sim/station';
 import { finishRace, RACES } from '../sim/races';
 import { missionGoal } from '../sim/missions';
 import { CarSeq } from '../render/carseq';
+import { BusSeq } from '../render/busseq';
+import { STREETS } from '../sim/world/city';
+import { busStops, canRideBus, rideBus } from '../sim/bus';
 import { walletSpots } from '../sim/collect';
 import { planRoute } from '../sim/world/nav';
 import { LEVEL_DX, levelOf, planX, sceneOf , LEVEL_H } from '../sim/world/levels';
@@ -243,6 +246,23 @@ export class Game {
   /** a car break-in under way: the window goes at `at` (sim minutes) */
   private theft: { at: number; kerb: number | null; car: string | null } | null = null;
   private carSeq!: CarSeq;
+  private busSeq!: BusSeq;
+  private wasOnBus = false;
+  /** which way the road is from a pavement spot: +1 towards +z, -1 towards -z */
+  private roadSide(z: number) {
+    const streets = [0, ...STREETS];
+    const s = streets.reduce((a, b) => (Math.abs(b - z) < Math.abs(a - z) ? b : a));
+    return s >= z ? 1 : -1;
+  }
+  /** wait at the stop for the bus, get on, and go (the fare and the ride are the sim's) */
+  boardBus(toId: string) {
+    const p = this.player;
+    const why = canRideBus(this.state, p.id, toId);
+    if (why) { this.onToast(why); return; }
+    const stop = busStops().reduce((a, b) => (Math.hypot(b.pos.x - p.pos.x, b.pos.z - p.pos.z) < Math.hypot(a.pos.x - p.pos.x, a.pos.z - p.pos.z) ? b : a));
+    p.pos = { ...stop.pos };
+    this.busSeq.start('board', stop.pos, this.roadSide(stop.pos.z), () => this.onToast(rideBus(this.state, p.id, toId).msg));
+  }
   /** the driver of a car you have taken: out on the road and running */
   private ejectDriver(at: { x: number; z: number }) {
     const s = this.state;
@@ -301,6 +321,7 @@ export class Game {
     this.views.onBoom = (x, z) => this.audio.boom(Math.hypot(x - this.player.pos.x, z - this.player.pos.z));
     this.traffic = new Traffic(this.scene);
     this.carSeq = new CarSeq(this.scene);
+    this.busSeq = new BusSeq(this.scene);
     this.police = new PoliceCar(this.scene);
     this.gatheringProps = new GatheringProps(this.scene);
     this.harbour = new Harbour(this.scene);
@@ -882,6 +903,11 @@ export class Game {
     }
     if (this.theft) { this.vel.x = this.vel.z = 0; return; }
     if (this.carSeq.active) { this.vel.x = this.vel.z = 0; this.carSeq.update(dt, p, this.state.minute); return; }
+    // off the bus at the end of the ride: it pulls in at your stop and you step down
+    const onBus = p.away?.place === 'bus';
+    if (this.wasOnBus && !onBus && !p.away) this.busSeq.start('alight', { ...p.pos }, this.roadSide(p.pos.z), () => {});
+    this.wasOnBus = onBus;
+    if (this.busSeq.active) { this.vel.x = this.vel.z = 0; this.busSeq.update(dt, p); return; }
     if (this.drivingVan()) { this.updateDriving(dt); return; }
     this.vanSpeed = 0;
     const jailed = p.away?.place === 'prison' && p.visible;
@@ -892,7 +918,7 @@ export class Game {
       else { this.vel.x = this.vel.z = 0; return; }
     }
     // getting up off the bunk
-    if (jailed && this.state.serving && ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].some((k) => this.keys.has(k))) this.state.serving = false;
+    if (jailed && this.state.serving && ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].some((k) => this.keys.has(k))) { this.state.serving = false; if (p.action?.type === 'serve_time') p.action = null; }
     if (this.uiOpen || p.sleeping || p.down != null || (p.away && !jailed) || p.dead || this.state.serving) { this.vel.x = this.vel.z = 0; return; }
     // like GTA: W/A/S/D move you relative to the camera (away from it, to its left and right, towards
     // it), and you turn to face the way you are going. The mouse turns the camera.

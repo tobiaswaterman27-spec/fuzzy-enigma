@@ -44,6 +44,7 @@ export function releaseFromPrison(state: GameState, p: Person) {
   const v = prisonVenue();
   if (p.ownOutfit) { p.appearance.outfit = p.ownOutfit; delete p.ownOutfit; }
   state.serving = false;
+  if (p.action?.type === 'serve_time') p.action = null;
   if (v) { p.pos = { ...v.outside }; p.where = 'outside'; p.visible = true; }
 }
 

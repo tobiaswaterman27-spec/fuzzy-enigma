@@ -28,6 +28,18 @@ export function busMinutes(from: Vec2, to: Vec2): number {
   return Math.round(4 + (Math.abs(from.x - to.x) + Math.abs(from.z - to.z)) / 330);
 }
 
+/** whether you could catch a bus from here to there right now (and why not) */
+export function canRideBus(state: GameState, personId: Id, toId: string): string | null {
+  const p = state.people[personId];
+  const to = busStops().find((s) => s.id === toId);
+  if (!to) return 'No such stop.';
+  const from = busStops().reduce((a, b) => (dist(b.pos, p.pos) < dist(a.pos, p.pos) ? b : a));
+  if (dist(from.pos, p.pos) > 6) return 'Wait at a bus stop.';
+  if (from.id === to.id) return 'You are already here.';
+  if ((state.ledger.accounts[p.accountId]?.balance ?? 0) < BUS_FARE) return `The fare is ${fmtMoney(BUS_FARE)}.`;
+  return null;
+}
+
 /** get on: pay, and ride (hidden, time passing fast) until the bus reaches the stop */
 export function rideBus(state: GameState, personId: Id, toId: string): { ok: boolean; msg: string } {
   const p = state.people[personId];

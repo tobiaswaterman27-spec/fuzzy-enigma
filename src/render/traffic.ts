@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import type { GameState } from '../sim/types';
 import { getWorld } from '../sim/world/layout';
 import type { Lane } from '../sim/world/city';
-import { buildCar } from './world';
+import { buildCar, driverFigure } from './world';
 
 interface Car { obj: THREE.Object3D; lane: number; t: number; speed: number; cruise: number; color: string; body: string }
 const BODIES = ['car', 'saloon', 'suv', 'car', 'sports', 'saloon', 'suv'];
@@ -61,6 +61,7 @@ export class Traffic {
     const i = this.cars.length + this.taken;
     const body = BODIES[i % BODIES.length], color = COLORS[(i * 3) % COLORS.length];
     const obj = buildCar(color, 0, 0, 0, false, body);
+    obj.add(driverFigure(i + 0.37));
     this.scene.add(obj);
     const cruise = 8 + ((i * 37) % 5) + (body === 'sports' ? 2 : 0);
     const c: Car = { obj, lane: 0, t: 0, speed: cruise, cruise, color, body };

@@ -795,10 +795,15 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
     }
     case 'chop':
       begin(p, type, itId, { duration: 0.8 }, now); break;
-    case 'vince': return { ok: true, msg: arg === 'drop' ? dropMission(state) : callVince(state, p.id) };
+    // a call from the box: lift the receiver, talk, hang up (the job is given at the end)
+    case 'vince': begin(p, type, itId, { duration: 0.8, arg }, now); break;
     case 'garage': { const v = state.vehicles[arg ?? '']; return { ok: !!v, msg: v ? garageJob(state, p.id, v) : '' }; }
-    case 'prison_meal': return { ok: true, msg: prisonMeal(state, p.id) };
-    case 'serve_time': state.serving = true; return { ok: true, msg: 'You lie back and stare at the ceiling. The days go by. (Move to get up.)' };
+    case 'prison_meal': begin(p, type, itId, { duration: 0.4 }, now); break;
+    case 'serve_time':
+      // onto the bunk until you get up (or the gate opens)
+      state.serving = true;
+      begin(p, type, itId, { duration: 1e7 }, now);
+      return { ok: true, msg: 'You lie back and stare at the ceiling. The days go by. (Move to get up.)' };
     case 'prison_work': begin(p, type, itId, { duration: 60 }, now); break;
     case 'escape': begin(p, type, itId, { duration: 2 }, now); break;
     case 'match': return goToMatch(state, p.id, arg === 'watch' ? undefined : (arg as Pick));
@@ -1131,6 +1136,8 @@ export function tickAction(state: GameState, p: Person, dt: number): string | nu
       break;
     case 'workout': msg = workout(state, p.id, a.arg === 'weights' ? 'weights' : 'treadmill'); break;
     case 'prison_work': msg = laundryShift(state, p.id); break;
+    case 'vince': msg = a.arg === 'drop' ? dropMission(state) : callVince(state, p.id); break;
+    case 'prison_meal': msg = prisonMeal(state, p.id); if (!/shut/.test(msg)) p.gesture = { clip: 'eat', until: state.minute + 2.5 }; break;
     case 'escape': msg = tryEscape(state, p.id); break;
     case 'pray':
       p.needs.mood = clamp(p.needs.mood + 10, 0, 100); p.needs.energy = clamp(p.needs.energy + 4, 0, 100);

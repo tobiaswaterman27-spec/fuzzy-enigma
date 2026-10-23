@@ -64,8 +64,10 @@ export function applyCarDamage(obj: THREE.Object3D, dmg: readonly number[], wrec
     const mat = m.material as THREE.MeshStandardMaterial;
     if (!m.userData.ownMat) { m.material = mat.clone(); m.userData.ownMat = true; m.userData.baseColor = (m.material as THREE.MeshStandardMaterial).color.clone(); }
     const own = m.material as THREE.MeshStandardMaterial;
-    const light = /^head/.test(m.name) || /^tail/.test(m.name);
+    // (the model's parts are merged by material, so the lamps are known by theirs)
+    const nm = mat.name || m.name;
+    const head = /head/.test(nm), tail = /tail/.test(nm);
     if (wrecked) { own.color.set('#191714'); own.roughness = 1; own.metalness = 0.2; if (own.emissive) own.emissiveIntensity = 0; }
-    else if (light && ((/^head/.test(m.name) && f > 0.35) || (/^tail/.test(m.name) && r > 0.35))) { own.color.set('#222'); if (own.emissive) own.emissiveIntensity = 0; }
+    else if ((head && f > 0.35) || (tail && r > 0.35)) { own.color.set('#222'); if (own.emissive) own.emissiveIntensity = 0; }
   });
 }

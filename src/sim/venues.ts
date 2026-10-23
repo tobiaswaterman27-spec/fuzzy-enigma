@@ -107,6 +107,9 @@ export function buyAt(state: GameState, personId: Id, v: Venue, o: Offer): strin
   if (o.mood) p.needs.mood = clamp(p.needs.mood + o.mood, 0, 100);
   if (o.drink && o.drink > 2) p.drunk = Math.min(100, (p.drunk ?? 0) + o.drink);
   if (o.key === 'pass') (p as any).gymPass = dayIndex(state.minute);
+  // what you buy to have there and then, you eat or drink there and then
+  if (!o.item && o.eat && o.eat >= 15) p.gesture = { clip: 'eat', until: state.minute + 2.5 };
+  else if (!o.item && (o.drink || o.energy)) p.gesture = { clip: 'drink', until: state.minute + 1.6 };
   return o.item ? `${o.label}: ${fmtMoney(o.price)}. In your bag.` : o.key === 'pass' ? `Day pass: ${fmtMoney(o.price)}. Get to it.` : `${o.label}: ${fmtMoney(o.price)}.`;
 }
 

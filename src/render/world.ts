@@ -1695,6 +1695,37 @@ function buildObstacle(o: Obstacle): THREE.Object3D {
 }
 
 /** body styles: car (hatchback), saloon, suv, sports */
+/** A simple figure for the driver's seat of cars nobody plays (traffic, patrol cars): head, body and
+ * arms out to the wheel in one mesh, coloured per vertex. Cheap enough for every car on the road. */
+const driverMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8 });
+const SKINS = ['#f1c9a5', '#e3b48f', '#c68a62', '#8d5a3b', '#5c3a26', '#f5d6bd'];
+const SHIRTS = ['#3f6ea8', '#c0392b', '#2e7d4f', '#f0f0f0', '#2b2b2b', '#7d3c98', '#d68910', '#566573'];
+const HAIRS = ['#2b1d14', '#5a3a22', '#111111', '#a67b4b', '#d8c08a', '#777777'];
+export function driverFigure(seed: number, shirt?: string, hat?: string): THREE.Mesh {
+  const pick = <T>(a: T[], k: number) => a[Math.abs(Math.floor(seed * 7919 + k * 104729)) % a.length];
+  const part = (g: THREE.BufferGeometry, col: string, x: number, y: number, z: number, rx = 0) => {
+    const geo = g.toNonIndexed();
+    geo.rotateX(rx); geo.translate(x, y, z);
+    const c = new THREE.Color(col), n = geo.getAttribute('position').count, a = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) { a[i * 3] = c.r; a[i * 3 + 1] = c.g; a[i * 3 + 2] = c.b; }
+    geo.setAttribute('color', new THREE.BufferAttribute(a, 3));
+    for (const k of Object.keys(geo.attributes)) if (k !== 'position' && k !== 'normal' && k !== 'color') geo.deleteAttribute(k);
+    return geo;
+  };
+  const skin = pick(SKINS, 1), top = shirt ?? pick(SHIRTS, 2);
+  const geos = [
+    part(new THREE.BoxGeometry(0.4, 0.5, 0.22), top, 0, 0.85, 0),
+    part(new THREE.SphereGeometry(0.11, 10, 8), skin, 0, 1.2, 0.02),
+    part(hat ? new THREE.CylinderGeometry(0.12, 0.12, 0.08, 10) : new THREE.SphereGeometry(0.115, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), hat ?? pick(HAIRS, 3), 0, hat ? 1.3 : 1.22, -0.005),
+    part(new THREE.BoxGeometry(0.09, 0.09, 0.42), top, -0.2, 0.92, 0.2, 0.25),
+    part(new THREE.BoxGeometry(0.09, 0.09, 0.42), top, 0.2, 0.92, 0.2, 0.25),
+  ];
+  const m = new THREE.Mesh(mergeGeometries(geos, false)!, driverMat);
+  // in the driver's seat (on the right)
+  m.position.set(-0.4, -0.08, 0.05);
+  return m;
+}
+
 export function buildCar(color: string, x: number, z: number, rot: number, van = false, style = 'car'): THREE.Group {
   const name = van ? 'van' : style;
   const model = modelInstance(name, color) ?? (van ? null : modelInstance('car', color));

@@ -188,10 +188,13 @@ class PersonView {
       root.position.set(p.pos.x, 0, p.pos.z);
       this.lastPos.copy(root.position);
     }
-    root.visible = p.visible && !this.culled;
-    if (this.mop) this.mop.visible = root.visible;
-    if (this.binbag) this.binbag.visible = root.visible;
+    // at the wheel: drawn sitting in the driver's seat, hands on the wheel, seen through the glass
+    const seat = p.where === 'vehicle' ? Object.values(state.vehicles).find((v) => v.driverId === p.id && (v.kind === 'car' || v.kind === 'van' || v.kind === 'forklift')) : undefined;
+    root.visible = (p.visible || !!seat) && !this.culled;
+    if (this.mop) this.mop.visible = root.visible && !seat;
+    if (this.binbag) this.binbag.visible = root.visible && !seat;
     if (!root.visible) { root.position.set(p.pos.x, 0, p.pos.z); return; }
+    if (seat) { this.atWheel(seat, dt); return; }
     const key = JSON.stringify(p.appearance);
     // a change of clothes waits for the new body (built in the background) and then swaps it in
     if (key !== this.outfitKey && (requestHuman(p.appearance, true) || (!workerActive() && buildBudget > 0))) {
@@ -235,9 +238,10 @@ class PersonView {
     const a = p.action;
     const it = a ? getWorld().interactables[a.target] : null;
     // getting into and out of bed: sit on the edge, then swing round and lie down (and the reverse)
-    if (a?.type === 'sleep' && it) this.bedIt = it;
-    this.bedT = Math.max(0, Math.min(1, this.bedT + (a?.type === 'sleep' ? dt : -dt) / 1.6));
-    if (this.bedT <= 0 && a?.type !== 'sleep') this.bedIt = null;
+    const lying = a?.type === 'sleep' || a?.type === 'serve_time';
+    if (lying && it) this.bedIt = it;
+    this.bedT = Math.max(0, Math.min(1, this.bedT + (lying ? dt : -dt) / 1.6));
+    if (this.bedT <= 0 && !lying) this.bedIt = null;
     const bed = this.bedIt;
     if (bed) {
       const t = smooth(this.bedT);
@@ -463,6 +467,26 @@ class PersonView {
       this.flinch = Math.max(0, this.flinch - dt * 4);
     }
     this.placeProps(a?.type ?? null, p.facing);
+  }
+  /** sitting in the driver's seat of a car, van or forklift: placed in the cab, turned with it */
+  private atWheel(v: { kind: string; pos: { x: number; z: number }; heading: number }, dt: number) {
+    const root = this.rig.root;
+    // driver's seat: right-hand side (this is Britain); the van's cab is high and forward; the forklift's seat in the middle
+    const [lx, ly, lz] = v.kind === 'van' ? [-0.45, 0.15, 1.35] : v.kind === 'forklift' ? [0, 0.3, -0.25] : [-0.4, -0.5, 0.05];
+    const c = Math.cos(v.heading), s = Math.sin(v.heading);
+    root.position.set(v.pos.x + lx * c + lz * s, ly, v.pos.z - lx * s + lz * c);
+    root.rotation.y = v.heading;
+    this.rig.body.rotation.set(0, 0, 0);
+    this.rig.body.position.set(0, 0, 0);
+    this.ragdoll = null;
+    this.anim.update(dt, 0, false, 'g:sit');
+    // both hands forward on the wheel, elbows bent
+    const B = this.rig.bones;
+    B.armL.quaternion.setFromEuler(new THREE.Euler(-0.95, 0, -0.3));
+    B.armR.quaternion.setFromEuler(new THREE.Euler(-0.95, 0, 0.3));
+    B.foreL.quaternion.setFromEuler(new THREE.Euler(-0.7, 0, -0.2));
+    B.foreR.quaternion.setFromEuler(new THREE.Euler(-0.7, 0, 0.2));
+    this.lastPos.copy(root.position);
   }
   private ragdoll: Ragdoll | null = null;
   private getUpUntil = 0;
