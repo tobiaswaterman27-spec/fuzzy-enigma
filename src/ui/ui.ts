@@ -1,6 +1,7 @@
 // UIController: every panel reads authoritative state and requests changes
 // through simulation functions; it never computes money or outcomes itself.
 import { BUS_FARE, busMinutes, busStops, rideBus } from '../sim/bus';
+import { dealBlackjack, finishBlackjack, type Hand, handValue, hitBlackjack, roulette } from '../sim/venues';
 import { AVENUE_NAMES, CITY, DISTRICT_NAMES, districtAt, STREET_NAMES, streetAt } from '../sim/world/city';
 import { planX } from '../sim/world/levels';
 import type { Game } from '../game/game';
@@ -65,7 +66,7 @@ export class UI {
     game.onToast = (m) => this.toast(m);
     game.onApproach = (id) => void this.approached(id);
     game.onAmbientChat = (a, b) => void this.ambientChat(a, b);
-    game.onUi = (w, arg) => (w === 'bus' ? this.busMenu() : w === 'darts' ? this.darts() : w === 'chat' ? this.openChat(arg!, false) : w === 'jobs' || w === 'laptop' ? this.openPhone(w === 'laptop' ? this.tab : 'jobs') : w === 'homestore' ? this.openPhone('home') : w === 'invite' ? this.toast(inviteForCoffee(this.s, this.p.id, arg!).msg) : w === 'interview' ? this.interviewInPerson(arg!) : this.advisor());
+    game.onUi = (w, arg) => (w === 'roulette' ? this.roulette() : w === 'blackjack' ? this.blackjack() : w === 'bus' ? this.busMenu() : w === 'darts' ? this.darts() : w === 'chat' ? this.openChat(arg!, false) : w === 'jobs' || w === 'laptop' ? this.openPhone(w === 'laptop' ? this.tab : 'jobs') : w === 'homestore' ? this.openPhone('home') : w === 'invite' ? this.toast(inviteForCoffee(this.s, this.p.id, arg!).msg) : w === 'interview' ? this.interviewInPerson(arg!) : this.advisor());
     game.onQualityAuto = () => this.toast(`Graphics lowered to ${game.quality === 'medium' ? 'Medium' : 'Low'} for smoother play (Menu > Graphics to change).`);
     game.onFrame = () => this.frame();
     game.onHurt = (n) => { const f = $('#hurt-flash'); f.classList.add('on'); f.style.setProperty('--a', String(Math.min(1, n / 30))); requestAnimationFrame(() => requestAnimationFrame(() => f.classList.remove('on'))); };
@@ -159,7 +160,8 @@ export class UI {
     $('#objective').hidden = !obj && !rem;
     $('#objective').classList.toggle('urgent', !!rem?.urgent);
     const fav = (s.favours ?? []).find((f) => f.status === 'open');
-    const cabGoal = taxiTarget(s) ?? (fav && !rem ? { text: `Favour: ${fav.text}` } : null);
+    const raceText = (this.game as any).raceText as string;
+    const cabGoal = raceText ? { text: raceText } : taxiTarget(s) ?? (fav && !rem ? { text: `Favour: ${fav.text}` } : null);
     if (cabGoal) { $('#objective').hidden = false; $('#objective-text').textContent = cabGoal.text; }
     else if (rem) $('#objective-text').textContent = rem.text;
     else if (obj) $('#objective-text').textContent = obj.text;
@@ -933,6 +935,33 @@ export class UI {
     render();
   }
 
+  /** the roulette wheel: pick a stake and a bet, and spin */
+  roulette(last = '') {
+    const stakes = [500, 2000, 10000, 50000];
+    const bets = ['red', 'black', 'odd', 'even', '7', '17', '23', '0'];
+    let stake = (this as any).rStake ?? 2000;
+    this.dialog(`<h2>Roulette</h2>${last ? `<p><b>${esc(last)}</b></p>` : '<p class="muted">Red, black, odd or even pay evens. A single number pays 35 to 1.</p>'}
+      <p>Stake: ${stakes.map((v) => `<button data-stake="${v}" ${v === stake ? 'class="primary"' : ''}>${fmtMoney(v)}</button>`).join(' ')}</p>
+      <p>Bet: ${bets.map((b) => `<button data-bet="${b}">${b}</button>`).join(' ')}</p><p class="muted">Balance ${fmtMoney(this.s.ledger.accounts[this.p.accountId].balance)}</p><div class="row"><button data-cancel="1">Leave the table</button></div>`, (btn) => {
+      if (btn.dataset.stake) { (this as any).rStake = Number(btn.dataset.stake); this.closeDialog(); this.roulette(last); return; }
+      this.closeDialog();
+      if (btn.dataset.bet) { stake = (this as any).rStake ?? 2000; this.roulette(roulette(this.s, this.p.id, stake, btn.dataset.bet)); }
+    });
+  }
+
+  /** blackjack against the house */
+  blackjack(h: Hand | null = null, msg = '') {
+    const show = (c: number[]) => c.map((x) => (x === 1 ? 'A' : x === 10 ? ['10', 'J', 'Q', 'K'][c.length % 4] : String(x))).join(' ');
+    const body = !h ? `<p class="muted">Get closer to 21 than the dealer without going over. Blackjack pays 3 to 2.</p>${msg ? `<p>${esc(msg)}</p>` : ''}<p>Deal: ${[1000, 5000, 20000].map((v) => `<button data-deal="${v}">${fmtMoney(v)}</button>`).join(' ')}</p>`
+      : `<p>Dealer: <b>${show(h.dealer)}</b> (${handValue(h.dealer)})</p><p>You: <b>${show(h.you)}</b> (${handValue(h.you)})</p>${h.done ? `<p><b>${esc(h.result ?? '')}</b></p><p>Again: ${[1000, 5000, 20000].map((v) => `<button data-deal="${v}">${fmtMoney(v)}</button>`).join(' ')}</p>` : '<div class="row"><button class="primary" data-hit="1">Hit</button><button data-stand="1">Stand</button></div>'}`;
+    this.dialog(`<h2>Blackjack</h2>${body}<p class="muted">Balance ${fmtMoney(this.s.ledger.accounts[this.p.accountId].balance)}</p><div class="row"><button data-cancel="1">Leave the table</button></div>`, (btn) => {
+      this.closeDialog();
+      if (btn.dataset.deal) { const r = dealBlackjack(this.s, this.p.id, Number(btn.dataset.deal)); if (typeof r === 'string') this.blackjack(null, r); else this.blackjack(r); }
+      else if (btn.dataset.hit) this.blackjack(hitBlackjack(this.s, this.p.id));
+      else if (btn.dataset.stand) this.blackjack(finishBlackjack(this.s, this.p.id));
+    });
+  }
+
   /** the bus network from this stop: everywhere, nearest first, with the journey time */
   busMenu() {
     const p = this.p;
@@ -1013,7 +1042,7 @@ function setBar(sel: string, v: number) {
 }
 
 const ACTION_LABELS: Record<string, string> = {
-  rob: 'Holding up the till', buy_pint: 'Having a pint', buy_tackle: 'Buying tackle', sell_catch: 'Selling your catch', buy_weapon: 'Buying', hire_boat: 'Hiring a boat', knock: 'Knocking', break_in: 'Forcing the door', loot_till: 'Prising the till open', pickpocket: 'Dipping a pocket', mug: 'Demanding the wallet', chop: 'Doing the deal', hand_in: 'Giving yourself up', read_beat: 'Reading the board', break_up: 'Stepping in', search: 'Going through the drawers', scratch: 'Scratching the card', lotto: 'Buying a ticket', buy_round: 'Getting a round in', grab: 'Grabbing them',
+  rob: 'Holding up the till', buy_pint: 'Having a pint', buy_tackle: 'Buying tackle', sell_catch: 'Selling your catch', buy_weapon: 'Buying', hire_boat: 'Hiring a boat', knock: 'Knocking', break_in: 'Forcing the door', loot_till: 'Prising the till open', venue: 'Paying', shoplift: 'Pocketing it', rob_venue: 'Holding it up', crack_vault: 'Cracking the vault', dance: 'Dancing', workout: 'Working out', pickpocket: 'Dipping a pocket', mug: 'Demanding the wallet', chop: 'Doing the deal', hand_in: 'Giving yourself up', read_beat: 'Reading the board', break_up: 'Stepping in', search: 'Going through the drawers', scratch: 'Scratching the card', lotto: 'Buying a ticket', buy_round: 'Getting a round in', grab: 'Grabbing them',
   clock_in: 'Clocking in…', clock_out: 'Clocking out…', take_case: 'Picking up a case…', return_case: 'Returning stock…', stock_shelf: 'Stocking the shelf…',
   serve_customer: 'Scanning items…', self_checkout: 'Scanning and paying…', take_mop: 'Getting the mop…', return_mop: 'Putting the mop away…', clean: 'Mopping…',
   check_in_delivery: 'Counting the delivery in…', pick_item: 'Taking item…', sleep: 'Sleeping… (time is fast-forwarding)', eat: 'Eating…', store_food: 'Putting shopping away…',

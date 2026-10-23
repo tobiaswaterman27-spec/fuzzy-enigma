@@ -1,6 +1,7 @@
 // Other people's houses on Harbour Road. The front door is locked: knock and whoever is home may let
 // you in (friends will; strangers at night will not), or force it. Inside, people who are home are
 // there to see; the drawers hold some cash. Breaking in or stealing, if anyone sees, is burglary.
+import { addItems } from './inventory';
 import type { GameState, Id, Person } from './types';
 import { clamp, dist, fmtMoney, rand } from './core';
 import { lifeEvent, news } from './events';
@@ -155,6 +156,9 @@ export function searchValuables(state: GameState, personId: Id, houseId: Id): { 
   const v = victims.reduce((a, b) => ((state.ledger.accounts[b.accountId]?.balance ?? 0) > (state.ledger.accounts[a.accountId]?.balance ?? 0) ? b : a));
   const cash = Math.min(25000, Math.round((state.ledger.accounts[v.accountId]?.balance ?? 0) * 0.04));
   if (cash > 0) transfer(state, { from: v.accountId, to: me.accountId, amount: cash, reason: 'transfer', memo: 'Cash taken from a house', key });
+  // and something to sell on
+  const loot = ['jewellery', 'watch', 'laptop', 'phone_s'][Math.floor(rand(state) * 4)];
+  addItems(state.containers[me.bagId], loot, 1);
   for (const p of victims) { p.needs.mood = clamp(p.needs.mood - 20, 0, 100); p.relations[me.id] = Math.max(0, (p.relations[me.id] ?? 0) - 30); lifeEvent(state, p, 'Burgled: cash taken from the house'); }
   news(state, 'bad', `Burglary at ${getWorld().buildings.find((b) => b.id === houseId)?.name}`, `Cash was taken from the home of ${victims.map((p) => p.name).join(' and ')}. Police are appealing for witnesses.`, false);
   const home = residentsHome(state, houseId).filter((p) => p.visible);
@@ -162,7 +166,7 @@ export function searchValuables(state: GameState, personId: Id, houseId: Id): { 
     crime(state, 'burglary', 3);
     for (const p of home) { if (p.traits.patience < 0.4 && (p.health ?? 100) > 50) p.combat = { target: me.id, until: state.minute + 3, next: state.minute + 0.4 }; else flee(state, p, me.pos); }
   }
-  return { ok: true, msg: cash > 0 ? `You find ${fmtMoney(cash)} in cash.` : 'Just a few coins.' };
+  return { ok: true, msg: `${cash > 0 ? `You find ${fmtMoney(cash)} in cash` : 'Just a few coins'}, and take ${loot === 'phone_s' ? 'a phone' : loot === 'jewellery' ? 'some jewellery' : `a ${loot}`} (a pawnbroker will buy it).` };
 }
 
 /** every minute: people at home appear inside when you are in their house, and go back to being simulated off-screen when you leave */

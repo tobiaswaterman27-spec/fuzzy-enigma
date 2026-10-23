@@ -4,6 +4,8 @@
 // clock is accelerated (sleeping, fast-forward).
 import { stationTick } from './station';
 import { crowdTick } from './crowd';
+import { patronsTick, venuesTick } from './venues';
+import { walletsTick } from './collect';
 import { lifeDaily } from './life';
 import { healthDaily, healthMinute, healthSubstep } from './health';
 import { doorTick, housesTick } from './houses';
@@ -86,6 +88,9 @@ function substep(state: GameState, dt: number, ev: StepEvents) {
   housesTick(state);
   stationTick(state);
   crowdTick(state);
+  venuesTick(state);
+  patronsTick(state);
+  walletsTick(state);
   if (!state.rescue) rescueDogs(state);
   doorTick(state);
   logisticsTick(state, dt);

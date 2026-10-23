@@ -6,7 +6,9 @@ import { buyWeapon, finishRob, startRob, WEAPONS } from './health';
 import { bargeIn, breakIn, houseOf, houseOpen, knock, searchValuables } from './houses';
 import { breakUp, handIn, onPcsoShift, readBeat } from './station';
 import { BUS_FARE } from './bus';
-import { attack, goToAandE } from './health';
+import { arcadeGo, buyAt, crackVault, haircut, hasGymPass, newOutfit, offersAt, PAWN, pawnSell, robVenue, shoplift, slots, staffOf, venueOfSpot, workout } from './venues';
+import { venueOpen } from './world/venues';
+import { attack, crime, goToAandE } from './health';
 import { chopCandidate, chopPrice, mug, pickpocket, sellToChop } from './streetcrime';
 import { forceShop, lootTill, SHOP_IDS, shopLocked, shopOf, shopOpenNow } from './breakins';
 import { grabShoplifter } from './incidents';
@@ -49,7 +51,7 @@ export interface ActionOption {
   enabled: boolean;
   reason?: string;
   arg?: string;
-  ui?: 'jobs' | 'advisor' | 'interview' | 'laptop' | 'homestore' | 'invite' | 'chat' | 'darts' | 'bus';
+  ui?: 'jobs' | 'advisor' | 'interview' | 'laptop' | 'homestore' | 'invite' | 'chat' | 'darts' | 'bus' | 'roulette' | 'blackjack';
 }
 
 export function interactable(state: GameState, id: Id): Interactable | null {
@@ -391,6 +393,29 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
       break;
     case 'cell_bench':
       break;
+    case 'venue_till': case 'venue_shelf': case 'venue_fridge': case 'clothes_rail': case 'barber_chair': case 'vault': case 'slots':
+    case 'roulette': case 'blackjack': case 'dancefloor': case 'treadmill': case 'weights': case 'arcade': {
+      const v = venueOfSpot(it.id);
+      if (!v) break;
+      const open = venueOpen(v, state.minute), staff = staffOf(state, v);
+      const shut = !open ? `${v.name} is closed` : !staff ? 'Nobody is serving' : undefined;
+      if (it.kind === 'venue_till' || it.kind === 'venue_shelf' || it.kind === 'venue_fridge') {
+        for (const o of offersAt(v, it.kind)) out.push(opt('venue', `${o.label} · ${fmtMoney(o.price)}`, shut, `buy:${o.key}`));
+        if (it.kind !== 'venue_till' && p.isPlayer) for (const o of offersAt(v, it.kind).filter((x) => x.item).slice(0, 2)) out.push(opt('shoplift', `Pocket the ${o.label.toLowerCase()} (don't pay)`, undefined, o.item));
+        if (it.kind === 'venue_till' && v.kind === 'pawn') for (const k of Object.keys(PAWN)) if (count(state.containers[p.bagId], k)) out.push(opt('venue', `Sell ${PAWN[k].label} · ${fmtMoney(PAWN[k].price)}`, shut, `pawn:${k}`));
+        if (it.kind === 'venue_till' && v.kind === 'pawn' && !Object.keys(PAWN).some((k) => count(state.containers[p.bagId], k))) out.push(opt('venue', 'Sell something', 'Nothing worth selling (bring jewellery, watches, laptops, phones)', 'pawn:none'));
+        if (it.kind === 'venue_till' && p.isPlayer && staff) out.push(opt('rob_venue', p.weapon ? `Hold up the ${v.kind === 'bank' ? 'cashier' : 'till'} (${p.weapon === 'knife' ? 'knife' : 'bat'} out)` : 'Demand the cash from the till'));
+      }
+      if (it.kind === 'clothes_rail') { out.push(opt('venue', `A new casual look · ${fmtMoney(4500)}`, open ? undefined : shut, 'outfit:casual')); out.push(opt('venue', `Something smart · ${fmtMoney(9500)}`, open ? undefined : shut, 'outfit:smart')); }
+      if (it.kind === 'barber_chair') for (const [k, l] of [['short', 'Short back and sides'], ['curly', 'Curls'], ['long', 'Grow it long (extensions)'], ['bun', 'Tie it up'], ['bald', 'Shave it all off'], ['dye', 'Dye it a new colour']] as const) out.push(opt('venue', `${l} · ${fmtMoney(k === 'dye' ? 2500 : 1400)}`, shut, `hair:${k}`));
+      if (it.kind === 'vault') out.push(opt('crack_vault', 'Crack the vault (a few minutes; the alarm goes straight to the police)'));
+      if (it.kind === 'slots') { out.push(opt('venue', `Play the slots · ${fmtMoney(100)}`, open ? undefined : shut, 'slots:100')); out.push(opt('venue', `Big spin · ${fmtMoney(2000)}`, open ? undefined : shut, 'slots:2000')); }
+      if (it.kind === 'roulette' || it.kind === 'blackjack') out.push({ type: 'ui', label: it.kind === 'roulette' ? 'Play roulette' : 'Play blackjack', enabled: open, reason: shut, ui: it.kind });
+      if (it.kind === 'dancefloor') out.push(opt('dance', 'Dance', open ? undefined : shut));
+      if (it.kind === 'treadmill' || it.kind === 'weights') out.push(opt('workout', it.kind === 'treadmill' ? 'Run on the treadmill (20 min)' : 'Lift weights (20 min)', !open ? shut : !hasGymPass(state, p) ? 'Buy a day pass at the counter first' : undefined, it.kind));
+      if (it.kind === 'arcade') out.push(opt('venue', `Play a machine · ${fmtMoney(100)}`, open ? undefined : shut, 'arcade'));
+      break;
+    }
     case 'hospital_door':
       out.push(opt('ae', 'Go into A&E and get seen to', (p.health ?? 100) >= 90 && !p.injured ? 'You are fine' : undefined));
       break;
@@ -681,6 +706,15 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
       return { ok: true, msg: grabShoplifter(state, p.id, itId.slice(7)) };
     case 'break_in':
       begin(p, type, itId, { duration: 1.2 }, now); break;
+    case 'venue': begin(p, type, itId, { duration: 0.5, arg }, now); break;
+    case 'shoplift': begin(p, type, itId, { duration: 0.4, arg }, now); break;
+    case 'rob_venue': begin(p, type, itId, { duration: 1.4 }, now); break;
+    case 'crack_vault':
+      // the moment you touch it the alarm goes off
+      crime(state, 'breaking into a bank vault', 4);
+      begin(p, type, itId, { duration: 4 }, now); break;
+    case 'dance': begin(p, type, itId, { duration: 8 }, now); break;
+    case 'workout': begin(p, type, itId, { duration: 20, arg }, now); break;
     case 'punch':
       return { ok: true, msg: attack(state, p.id, itId.slice(7)) || '' };
     case 'barge_in':
@@ -1002,6 +1036,26 @@ export function tickAction(state: GameState, p: Person, dt: number): string | nu
     case 'hand_in': msg = handIn(state, p.id) || null; break;
     case 'read_beat': msg = readBeat(state, p.id); break;
     case 'break_up': msg = breakUp(state, p.id) || null; break;
+    case 'venue': {
+      const v = venueOfSpot(a.target);
+      const [verb, what] = (a.arg ?? '').split(':');
+      if (!v) { msg = null; break; }
+      if (verb === 'buy') { const o = offersAt(v, interactable(state, a.target)?.kind ?? '').find((x) => x.key === what); msg = o ? buyAt(state, p.id, v, o) : null; }
+      else if (verb === 'pawn') msg = what === 'none' ? null : pawnSell(state, p.id, what);
+      else if (verb === 'outfit') msg = newOutfit(state, p.id, v, what === 'smart');
+      else if (verb === 'hair') msg = haircut(state, p.id, v, what as 'short');
+      else if (verb === 'slots') msg = slots(state, p.id, Number(what)).msg;
+      else if (verb === 'arcade') msg = arcadeGo(state, p.id);
+      break;
+    }
+    case 'shoplift': { const v = venueOfSpot(a.target); msg = v ? shoplift(state, p.id, v, a.arg ?? 'snacks') : null; break; }
+    case 'rob_venue': { const v = venueOfSpot(a.target); msg = v ? robVenue(state, p.id, v) : null; break; }
+    case 'crack_vault': { const v = venueOfSpot(a.target); msg = v ? crackVault(state, p.id, v) : null; break; }
+    case 'dance':
+      p.needs.mood = clamp(p.needs.mood + 12, 0, 100); p.needs.energy = clamp(p.needs.energy - 6, 0, 100);
+      msg = (p.drunk ?? 0) > 40 ? 'You throw some shapes. Some of them are even in time.' : 'You lose yourself in the music for a while.';
+      break;
+    case 'workout': msg = workout(state, p.id, a.arg === 'weights' ? 'weights' : 'treadmill'); break;
     case 'pickpocket': msg = pickpocket(state, p.id, a.target.slice(7)) || null; break;
     case 'mug': msg = mug(state, p.id, a.target.slice(7)) || null; break;
     case 'chop': { const car = chopCandidate(state, interactable(state, a.target)?.pos ?? p.pos); msg = car ? sellToChop(state, p.id, car.id) : null; break; }

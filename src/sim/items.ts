@@ -1,5 +1,5 @@
 // Item catalogue. Prices are in cents.
-export type ItemCategory = 'grocery' | 'household' | 'clothing' | 'supplies' | 'meal';
+export type ItemCategory = 'grocery' | 'household' | 'clothing' | 'supplies' | 'meal' | 'loot';
 
 export interface ItemDef {
   id: string;
@@ -31,6 +31,10 @@ export const ITEMS: Record<string, ItemDef> = {
   pasta: { id: 'pasta', name: 'Pasta 500g', category: 'grocery', caseSize: 12, wholesale: 65, importCost: 45, retail: 145, satiety: 30, energy: 0, color: '#f2d06b', demand: 0.9, needsCooking: true },
   coffee: { id: 'coffee', name: 'Ground Coffee', category: 'grocery', caseSize: 8, wholesale: 290, importCost: 200, retail: 560, satiety: 0, energy: 15, color: '#5a3a22', demand: 0.5 },
   snacks: { id: 'snacks', name: 'Crisps', category: 'grocery', caseSize: 16, wholesale: 55, importCost: 35, retail: 135, satiety: 8, energy: 1, color: '#3b7dd8', demand: 1.1 },
+  jewellery: { id: 'jewellery', name: 'Jewellery', category: 'loot', caseSize: 1, wholesale: 0, importCost: 0, retail: 0, satiety: 0, energy: 0, color: '#d4af37', demand: 0 },
+  watch: { id: 'watch', name: 'Wristwatch', category: 'loot', caseSize: 1, wholesale: 0, importCost: 0, retail: 0, satiety: 0, energy: 0, color: '#9aa3a8', demand: 0 },
+  laptop: { id: 'laptop', name: 'Laptop', category: 'loot', caseSize: 1, wholesale: 0, importCost: 0, retail: 0, satiety: 0, energy: 0, color: '#2b2f33', demand: 0 },
+  phone_s: { id: 'phone_s', name: 'Mobile phone', category: 'loot', caseSize: 1, wholesale: 0, importCost: 0, retail: 0, satiety: 0, energy: 0, color: '#111111', demand: 0 },
   soap: { id: 'soap', name: 'Soap Bar', category: 'household', caseSize: 10, wholesale: 95, importCost: 60, retail: 210, satiety: 0, energy: 0, color: '#9ad0c2', demand: 0.5 },
   cafe_supplies: { id: 'cafe_supplies', name: 'Cafe Ingredients', category: 'supplies', caseSize: 20, wholesale: 210, importCost: 150, retail: 0, satiety: 0, energy: 0, color: '#bbbbbb', demand: 0 },
   meal: { id: 'meal', name: 'Cafe Meal', category: 'meal', caseSize: 1, wholesale: 0, importCost: 0, retail: 850, satiety: 55, energy: 5, color: '#ffffff', demand: 0 },

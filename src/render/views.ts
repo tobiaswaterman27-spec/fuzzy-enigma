@@ -399,6 +399,9 @@ class PersonView {
     this.syncPint(a?.type === 'buy_pint' && prog > 0.19);
     this.syncCash(p, a?.type === 'rob' ? prog > 0.78 && prog < 0.96 : a?.type === 'hand_over_cash' ? prog > 0.5 && prog < 0.9 : false);
     let clipAction = floored ? 'down' : beat ? beat : kick ? kick : gest ? gest : stage ? (stage.walking ? null : stage.clip) : this.bedIt ? this.bedPose : stepping ? null : siteClip ?? a?.type ?? null;
+    // everyone dances their own way; on a treadmill you run
+    if (clipAction === 'dance') { let h = 0; for (let i = 0; i < p.id.length; i++) h = (h * 31 + p.id.charCodeAt(i)) >>> 0; clipAction = `g:${['dance', 'dance_b', 'dance_c'][h % 3]}`; }
+    if (clipAction === 'workout' && a?.arg === 'treadmill') clipAction = 'g:run';
     // standing about with nothing to do: people check their phones, yawn when tired, stretch
     if (!clipAction && realSpeed === 0 && !p.isPlayer && !item) {
       this.idleFor += dt;

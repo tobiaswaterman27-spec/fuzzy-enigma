@@ -16,6 +16,8 @@ import { resolveCircle } from '../sim/world/nav';
 import { buildingAt, collidersIn, DWELLING_IDS, dwellingDoor, getWorld, stairCross, stairY, publicDoors, setHomeDesign, shellAt, SHOP_IDS } from '../sim/world/layout';
 import { shopLocked } from '../sim/breakins';
 import { onPcsoShift } from '../sim/station';
+import { finishRace, RACES } from '../sim/races';
+import { walletSpots } from '../sim/collect';
 import { LEVEL_DX, levelOf, planX, sceneOf } from '../sim/world/levels';
 import { houseOpen } from '../sim/houses';
 import { capability } from '../sim/needs';
@@ -89,6 +91,12 @@ export class Game {
     return this.lampCache.list;
   }
   private beatMarkers: THREE.Mesh[] = [];
+  /** a street race in progress */
+  race: { id: string; cp: number; t0: number } | null = null;
+  raceText = '';
+  private raceRing: THREE.Mesh | null = null;
+  private startRings: THREE.Mesh[] = [];
+  private walletMeshes = new Map<number, THREE.Object3D>();
   private seasonKey = '';
   private seasonTick = 0;
   private snowLayer: THREE.Mesh | null = null;
@@ -450,7 +458,7 @@ export class Game {
     return r;
   }
 
-  onUi: (which: 'jobs' | 'advisor' | 'interview' | 'laptop' | 'homestore' | 'invite' | 'chat' | 'darts' | 'bus', arg?: string) => void = () => {};
+  onUi: (which: 'jobs' | 'advisor' | 'interview' | 'laptop' | 'homestore' | 'invite' | 'chat' | 'darts' | 'bus' | 'roulette' | 'blackjack', arg?: string) => void = () => {};
 
   /** game minutes per real second right now */
   get rate() {
@@ -517,6 +525,8 @@ export class Game {
       this.cabMarker.visible = true;
       this.cabMarker.position.set(cab.pos.x, 0.15 + Math.sin(performance.now() / 300) * 0.05, cab.pos.z);
     } else if (this.cabMarker) this.cabMarker.visible = false;
+    this.updateRace();
+    this.updateWallets();
     // a PCSO's beat: a yellow ring at each point still to check in at
     const beat = this.state.beat && this.state.beat.by === this.player.id && onPcsoShift(this.state, this.player.id) ? this.state.beat.points.filter((q) => !q.done) : [];
     while (this.beatMarkers.length < beat.length) {
@@ -671,6 +681,54 @@ export class Game {
     v.pos = res;
     p.pos = { ...v.pos };
     p.facing = v.heading;
+  }
+
+  /** street races: drive into a start ring to go; make each checkpoint in turn; beat the time */
+  private updateRace() {
+    const p = this.player, car = this.drivingVan();
+    const ring = (color: string, r: number) => { const m = new THREE.Mesh(new THREE.TorusGeometry(r, 0.25, 8, 48), new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 1.6, transparent: true, opacity: 0.85 })); m.rotation.x = Math.PI / 2; this.scene.add(m); return m; };
+    if (!this.startRings.length) for (const r of RACES) { const m = ring('#00e5ff', 5); m.position.set(r.points[0].x, 0.3, r.points[0].z); this.startRings.push(m); }
+    const bob = 0.3 + Math.sin(performance.now() / 300) * 0.1;
+    this.startRings.forEach((m) => { m.visible = !this.race; m.position.y = bob; });
+    if (!this.race) {
+      this.raceText = '';
+      if (this.raceRing) this.raceRing.visible = false;
+      if (!car || car.kind === 'forklift' || car.kind === 'boat') return;
+      const r = RACES.find((x) => Math.hypot(x.points[0].x - car.pos.x, x.points[0].z - car.pos.z) < 6);
+      if (r) { this.race = { id: r.id, cp: 1, t0: performance.now() }; this.onToast(`${r.name}! Beat ${r.rival}'s time of ${Math.floor(r.target / 60)}:${String(r.target % 60).padStart(2, '0')}. Follow the orange rings. GO!`); }
+      return;
+    }
+    const r = RACES.find((x) => x.id === this.race!.id)!;
+    if (!car) { this.race = null; this.onToast('You got out: race abandoned.'); return; }
+    const t = (performance.now() - this.race.t0) / 1000;
+    const target = r.points[this.race.cp % r.points.length];
+    const last = this.race.cp === r.points.length;
+    const goal = last ? r.points[0] : target;
+    if (!this.raceRing) this.raceRing = ring('#ff6d00', 6);
+    this.raceRing.visible = true;
+    this.raceRing.position.set(goal.x, bob, goal.z);
+    this.raceText = `${r.name}: checkpoint ${Math.min(this.race.cp, r.points.length)}/${r.points.length} · ${t.toFixed(1)} s (beat ${r.target} s)`;
+    if (Math.hypot(goal.x - car.pos.x, goal.z - car.pos.z) < 9) {
+      if (last) { this.onToast(finishRace(this.state, p.id, r.id, t)); this.race = null; this.raceRing.visible = false; }
+      else this.race.cp++;
+    }
+  }
+
+  /** lost wallets glint on the ground as you get near */
+  private updateWallets() {
+    const p = this.player, found = this.state.wallets ?? [];
+    walletSpots().forEach((w, i) => {
+      const near = !found.includes(i) && Math.hypot(w.x - planX(p.pos.x), w.z - p.pos.z) < 50;
+      let m = this.walletMeshes.get(i);
+      if (near && !m) {
+        const g = new THREE.Group();
+        g.add(new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.04, 0.12), new THREE.MeshStandardMaterial({ color: '#5a3a22', roughness: 0.6 })));
+        const glint = new THREE.Mesh(new THREE.OctahedronGeometry(0.12), new THREE.MeshStandardMaterial({ color: '#ffd54f', emissive: '#ffd54f', emissiveIntensity: 2 }));
+        glint.position.y = 0.5; glint.name = 'glint'; g.add(glint);
+        g.position.set(w.x, 0.05, w.z); this.scene.add(g); this.walletMeshes.set(i, g); m = g;
+      }
+      if (m) { m.visible = near; const gl = m.getObjectByName('glint'); if (gl) { gl.rotation.y += 0.05; gl.position.y = 0.5 + Math.sin(performance.now() / 250 + i) * 0.08; } }
+    });
   }
 
   private updatePlayer(dt: number) {

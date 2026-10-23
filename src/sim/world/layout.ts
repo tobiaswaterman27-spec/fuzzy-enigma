@@ -9,6 +9,7 @@ import { PLOTS } from './plots';
 // Facing angle θ: forward direction = (sin θ, cos θ); θ = 0 faces +z.
 import { LEVEL_DX, levelOf } from './levels';
 import { buildCity, CITY, ROAD_HALF, WALK_W, type City } from './city';
+import { planVenues, type Venue, type VenueKind } from './venues';
 import type { Vec2 } from '../types';
 import { PRODUCTS } from '../items';
 
@@ -84,6 +85,12 @@ export type ObstacleKind =
   | 'stairguard'
   | 'cellbars'
   | 'reception'
+  | 'clothes_rack'
+  | 'mirror'
+  | 'vault'
+  | 'gaming_table'
+  | 'dancefloor'
+  | 'treadmill'
   | 'celldoor'
   | 'unitdoor'
   | 'mailboxes'
@@ -199,6 +206,19 @@ export type InteractKind =
   | 'chop_shop'
   | 'bus_stop'
   | 'hospital_door'
+  | 'venue_till'
+  | 'venue_shelf'
+  | 'venue_fridge'
+  | 'clothes_rail'
+  | 'barber_chair'
+  | 'vault'
+  | 'slots'
+  | 'roulette'
+  | 'blackjack'
+  | 'dancefloor'
+  | 'treadmill'
+  | 'weights'
+  | 'arcade'
   | 'police_desk'
   | 'cell_bench'
   | 'beat_board'
@@ -685,6 +705,9 @@ function homeOK(w: World): boolean {
 
 function buildWorldData(homeDesign: HomeDesign): World {
   let cached: World;
+  // the city, and the buildings in it that open as shops, pubs, the bank...
+  const venues = planVenues(buildCity(B.filter((b) => !b.unit && !b.level && !b.id.startsWith('v_')).map((b) => b.rect)));
+  if (!B.some((b) => b.id.startsWith('v_'))) for (const v of venues) { B.push(venueBuilding(v)); SHOP_IDS.push(v.id); }
   const obstacles: Obstacle[] = [];
   const I: Record<string, Interactable> = {};
   const add = (it: Omit<Interactable, 'range'> & { range?: number }) => {
@@ -798,6 +821,11 @@ function buildWorldData(homeDesign: HomeDesign): World {
   }
   // ---- Eastgate Motors' yard gate: stolen cars sold for parts
   add({ id: 'chop_shop', kind: 'chop_shop', label: 'Eastgate Motors (yard gate)', pos: { x: 84, z: -10.4 }, facing: Math.PI, obj: { x: 84, z: -12 }, locationId: 'outside', range: 1.6 });
+  // ---- the city's venues, fitted out
+  for (const v of venues) {
+    for (const o of v.obstacles) obstacles.push({ ...o, kind: o.kind as ObstacleKind });
+    for (const sp of v.spots) add({ ...sp, kind: sp.kind as InteractKind, locationId: v.id, range: sp.range ?? 1.6 });
+  }
   // ---- shop doors: after hours they are locked, and can be forced
   for (const id of SHOP_IDS) {
     const b = B.find((x) => x.id === id);
@@ -1133,6 +1161,39 @@ function buildWorldData(homeDesign: HomeDesign): World {
   // the city's pavements and crossings
   for (const n of city.nodes) N(n.id, n.x, n.z);
   for (const [a, b] of city.edges) L(a, b);
+  // into each venue: off the pavement, through the door, and round the inside
+  {
+    const clearV = (a: Vec2, b: Vec2) => !near(Math.min(a.x, b.x) - 1, Math.min(a.z, b.z) - 1, Math.max(a.x, b.x) + 1, Math.max(a.z, b.z) + 1).some((r) => segIntersectsRect(a, b, r, 0.2));
+    for (const v of venues) {
+      N(`door_${v.id}`, v.outside.x, v.outside.z); N(`in_${v.id}`, v.inside.x, v.inside.z, v.id);
+      L(`door_${v.id}`, `in_${v.id}`);
+      // the pavement's corner nodes either side along this street
+      const row = city.nodes.filter((n) => Math.abs(n.z - v.outside.z) < 1.2 && Math.abs(n.x - v.outside.x) < 135);
+      const west = row.filter((n) => n.x < v.outside.x).sort((a, b) => b.x - a.x)[0], east = row.filter((n) => n.x > v.outside.x).sort((a, b) => a.x - b.x)[0];
+      for (const c of [west, east]) if (c && clearV(c, v.outside)) L(`door_${v.id}`, c.id);
+      // a walking grid over the floor (the aisles between the shelves and machines), joined up
+      const r0 = v.rect, step = 1.1, grid: string[] = [];
+      const blocked = (x: number, z: number) => near(x - 1, z - 1, x + 1, z + 1).some((r) => x > r.x0 - 0.3 && x < r.x1 + 0.3 && z > r.z0 - 0.3 && z < r.z1 + 0.3);
+      for (let i = 0; r0.x0 + 0.55 + i * step < r0.x1 - 0.3; i++) for (let j = 0; r0.z0 + 0.55 + j * step < r0.z1 - 0.3; j++) {
+        const x = r0.x0 + 0.55 + i * step, z = r0.z0 + 0.55 + j * step;
+        if (blocked(x, z)) continue;
+        const id = `${v.id}_g${i}_${j}`; N(id, x, z, v.id); grid.push(id);
+        for (const [di, dj] of [[-1, 0], [0, -1], [-1, -1], [1, -1]]) { const o = `${v.id}_g${i + di}_${j + dj}`; if (nodes[o] && clearV(nodes[o], nodes[id])) L(o, id); }
+      }
+      const join = (id: string) => {
+        const nd = nodes[id];
+        const cands = grid.map((g) => ({ g, d: Math.hypot(nodes[g].x - nd.x, nodes[g].z - nd.z) })).filter((c) => c.d < 2.4).sort((p1, p2) => p1.d - p2.d);
+        let k = 0; for (const c of cands) { if (k >= 2) break; if (clearV(nd, nodes[c.g])) { L(id, c.g); k++; } }
+      };
+      join(`in_${v.id}`);
+      v.nodes.forEach((p, i) => { if (blocked(p.x, p.z)) return; N(`${v.id}_n${i}`, p.x, p.z, v.id); join(`${v.id}_n${i}`); });
+      for (const sp of v.spots) { N(`${sp.id}_at`, sp.pos.x, sp.pos.z, v.id); join(`${sp.id}_at`); }
+      // floor cut off behind counters and fittings is not part of the walking graph
+      const seen = new Set<string>([`in_${v.id}`]), q = [`in_${v.id}`];
+      while (q.length) { const x = q.pop()!; for (const y of edges[x] ?? []) if (!seen.has(y)) { seen.add(y); q.push(y); } }
+      for (const g of grid) if (!seen.has(g)) { for (const y of edges[g] ?? []) edges[y] = edges[y].filter((z) => z !== g); delete edges[g]; delete nodes[g]; }
+    }
+  }
   // north sidewalk (z=-6.5)
   const nS = [-88, -70, -50, -24, -6.5];
   nS.forEach((x) => N(`nw_${x}`, x, -6.5));
@@ -1483,6 +1544,21 @@ export function collidersIn(x0: number, z0: number, x1: number, z1: number, w: W
   const out = new Set<Rect>();
   for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) for (const r of w.grid.get(`${i},${j}`) ?? []) out.add(r);
   return [...out];
+}
+
+const KIND_ROLE: Record<VenueKind, string> = {
+  shop: 'Corner shop - snacks, drinks and groceries', cafe: 'Cafe - coffee and something to eat', takeaway: 'Takeaway - hot food to eat now', pub: 'Pub - pints, a seat, darts',
+  clothes: 'Clothes shop - a new look', barber: 'Barber - a new haircut', bank: 'Bank - and a vault full of cash', casino: 'Casino - roulette, blackjack, slots',
+  nightclub: 'Nightclub - drinks and dancing, late', gym: 'Gym - get fit', arcade: 'Amusement arcade', pawn: 'Pawnbroker - sells and buys anything',
+};
+function venueBuilding(v: Venue): BuildingDef {
+  const side = v.front === 'n' ? 'zmin' : 'zmax';
+  return {
+    id: v.id, name: v.name, category: 'functional', role: KIND_ROLE[v.kind], rect: v.rect, height: Math.max(3.4, v.height), floors: Math.max(1, Math.round(v.height / 3.2)),
+    color: v.kind === 'pub' || v.kind === 'barber' ? '#9c5a44' : v.kind === 'bank' ? '#d8d0bf' : '#e4dccb', trim: v.color, roof: '#4a4f55',
+    sign: { text: v.name.toUpperCase(), side, color: '#ffffff', bg: v.color }, doors: [{ side, a: v.door.a, b: v.door.b, open: true }], interior: true,
+    floorColor: v.kind === 'pub' ? '#6b4a32' : '#cfcac0',
+  };
 }
 
 export function buildingAt(p: Vec2): BuildingDef | null {

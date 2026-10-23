@@ -175,6 +175,12 @@ export type ActionType =
   | 'ae'
   | 'barge_in'
   | 'punch'
+  | 'venue'
+  | 'shoplift'
+  | 'rob_venue'
+  | 'crack_vault'
+  | 'dance'
+  | 'workout'
   | 'read_beat'
   | 'break_up'
   | 'search'
@@ -737,6 +743,12 @@ export interface GameState {
   robbery?: { robber: Id; clerk: Id; business: Id } | null;
   /** today's PCSO beat: the points to check in at */
   beat?: { day: number; by: Id; points: { x: number; z: number; label: string; done: boolean }[] } | null;
+  /** the city's venues: what is in the till today, and what has been robbed */
+  venueState?: Record<string, { till: number; day: number; robbedDay?: number; vaultDay?: number }>;
+  /** lost wallets picked up (indices into walletSpots) */
+  wallets?: number[];
+  /** your best street race times, seconds */
+  raceBest?: Record<string, number>;
   /** kerbside parked cars (world.parked indices) that have been stolen */
   takenParked?: number[];
   /** the player has died */

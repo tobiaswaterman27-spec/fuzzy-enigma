@@ -466,7 +466,7 @@ function buildBuilding(g: THREE.Group, b: BuildingDef, cutaway: WorldView['cutaw
     // where the windows go (shared by the wall openings and the frames)
     const wins: { side: 'zmin' | 'zmax' | 'xmin' | 'xmax'; along: number; ww: number; wh: number; wy: number }[] = [];
     for (const ws of [{ side: 'zmin', len: W }, { side: 'zmax', len: W }, { side: 'xmin', len: D }, { side: 'xmax', len: D }] as const) {
-      const shopFront = (b.id === 'market' && ws.side === 'zmax') || (b.id === 'unit4' && ws.side === 'zmin') || (b.id === 'cafe' && ws.side === 'zmin');
+      const shopFront = (b.id === 'market' && ws.side === 'zmax') || (b.id === 'unit4' && ws.side === 'zmin') || (b.id === 'cafe' && ws.side === 'zmin') || (b.id.startsWith('v_') && ws.side === b.doors[0]?.side);
       const spacing = shopFront ? 3.4 : 3.2;
       const n = Math.floor((ws.len - 2) / spacing);
       for (let i = 0; i < n; i++) {
@@ -1010,11 +1010,12 @@ function buildObstacle(o: Obstacle): THREE.Object3D {
       }
       break;
     case 'kitchen':
-      if (hasModel('kitchen_base') && hasModel('fridge')) {
+      if (hasModel('kitchen_base') && hasModel('fridge') && W > D) {
         // fridge at the left end, a run of 60 cm base units, a sink in the worktop, wall cupboards above
-        fit('fridge', { x0: r.x0, z0: r.z0, x1: r.x0 + 0.7, z1: r.z1 }, Math.PI);
+        const kr = Math.abs(Math.cos(o.rot ?? Math.PI)) > 0.5 ? (o.rot ?? Math.PI) : Math.PI;
+        fit('fridge', { x0: r.x0, z0: r.z0, x1: r.x0 + 0.7, z1: r.z1 }, kr);
         const n = Math.max(1, Math.round((W - 0.7) / 0.6)), uw = (W - 0.7) / n;
-        for (let k = 0; k < n; k++) fit('kitchen_base', { x0: r.x0 + 0.7 + k * uw, z0: r.z0, x1: r.x0 + 0.7 + (k + 1) * uw, z1: r.z1 }, Math.PI, '#e9e6df', o.height);
+        for (let k = 0; k < n; k++) fit('kitchen_base', { x0: r.x0 + 0.7 + k * uw, z0: r.z0, x1: r.x0 + 0.7 + (k + 1) * uw, z1: r.z1 }, kr, '#e9e6df', o.height);
         grp.add(box(0.55, 0.02, 0.42, metal('#c6c9cc', 0.2), cx + 0.6, o.height + 0.005, cz));
         grp.add(box(0.48, 0.015, 0.36, metal('#9da1a5', 0.25), cx + 0.6, o.height + 0.012, cz));
         grp.add(cyl(0.015, 0.015, 0.3, metal('#d0d3d6', 0.2), cx + 0.6, o.height + 0.15, r.z1 - 0.08, 10));
@@ -1240,6 +1241,64 @@ function buildObstacle(o: Obstacle): THREE.Object3D {
           (geo.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
         }
       });
+      break;
+    }
+    case 'clothes_rack': {
+      // a chrome rail on two stands, hung with clothes in a few colours
+      const chrome = metal('#c9ccd0', 0.25);
+      for (const x of [r.x0 + 0.05, r.x1 - 0.05]) grp.add(box(0.04, o.height, 0.04, chrome, x, o.height / 2, cz, false));
+      grp.add(box(W, 0.03, 0.03, chrome, cx, o.height - 0.05, cz, false));
+      const cols = ['#7a2f2f', '#2f4f7a', '#3d3d3d', '#c9b27a', '#5f7a5c', '#d8d4cc', '#8a3e6a'];
+      for (let x = r.x0 + 0.2, i = 0; x < r.x1 - 0.15; x += 0.11, i++) grp.add(box(0.05, 0.75, 0.42, M(cols[(i + Math.floor(cx)) % cols.length], 0.9), x, o.height - 0.45, cz));
+      break;
+    }
+    case 'mirror': {
+      const along = W > D;
+      grp.add(along ? box(W, 1.2, 0.03, M('#d9e4ea', 0.05, { metalness: 0.9 }), cx, 1.4, cz, false) : box(0.03, 1.2, D, M('#d9e4ea', 0.05, { metalness: 0.9 }), cx, 1.4, cz, false));
+      grp.add(along ? box(W + 0.1, 1.3, 0.02, M('#2b2b2b', 0.5), cx, 1.4, cz + (cz > 0 ? 0.01 : -0.01), false) : box(0.02, 1.3, D + 0.1, M('#2b2b2b', 0.5), cx, 1.4, cz, false));
+      break;
+    }
+    case 'vault': {
+      // a great round steel door in its frame, with the locking wheel
+      const steel = metal('#9aa3a8', 0.3), dark = metal('#5a6066', 0.4);
+      grp.add(box(W + 0.4, o.height + 0.3, D, dark, cx, (o.height + 0.3) / 2, cz));
+      const door = cyl(o.height / 2 - 0.05, o.height / 2 - 0.05, 0.25, steel, cx, o.height / 2 + 0.1, cz, 32);
+      door.rotation.x = Math.PI / 2; grp.add(door);
+      const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.35, 0.04, 8, 24), metal('#d6c16b', 0.25));
+      wheel.position.set(cx, o.height / 2 + 0.1, cz + (cz > 0 ? -0.2 : 0.2)); grp.add(wheel);
+      for (let k = 0; k < 3; k++) { const sp = box(0.66, 0.04, 0.04, metal('#d6c16b', 0.25), cx, o.height / 2 + 0.1, cz + (cz > 0 ? -0.2 : 0.2), false); sp.rotation.z = (k * Math.PI) / 3; grp.add(sp); }
+      break;
+    }
+    case 'gaming_table': {
+      // green baize on a wooden table; a roulette wheel or a card shoe
+      grp.add(box(W, 0.12, D, M('#5a3a22', 0.6), cx, o.height - 0.06, cz));
+      grp.add(box(W - 0.2, 0.02, D - 0.2, M(o.color ?? '#1d6b3a', 0.95), cx, o.height + 0.01, cz, false));
+      for (const [dx, dz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) grp.add(box(0.1, o.height - 0.1, 0.1, M('#3a2616', 0.6), cx + dx * (W / 2 - 0.2), (o.height - 0.1) / 2, cz + dz * (D / 2 - 0.2)));
+      const wheel = cyl(0.42, 0.42, 0.1, M('#3a2616', 0.4), cx + W / 4, o.height + 0.07, cz, 24); grp.add(wheel);
+      grp.add(cyl(0.3, 0.3, 0.02, M('#a0201c', 0.4), cx + W / 4, o.height + 0.13, cz, 24));
+      break;
+    }
+    case 'dancefloor': {
+      // lit squares that change colour (animated in fixtures)
+      const tiles: THREE.MeshStandardMaterial[] = [];
+      for (let x = r.x0; x < r.x1 - 0.5; x += 1) for (let z = r.z0; z < r.z1 - 0.5; z += 1) {
+        const m = M('#222', 0.3, { emissive: new THREE.Color('#ff00aa'), emissiveIntensity: 0.6 });
+        tiles.push(m);
+        grp.add(box(0.96, 0.03, 0.96, m, x + 0.5, 0.1, z + 0.5, false));
+      }
+      const cols = ['#ff1493', '#00e5ff', '#ffea00', '#76ff03', '#d500f9', '#ff3d00'];
+      let t = 0;
+      fixtures.push((_s, dt) => { t += dt; if (Math.floor(t * 2) !== Math.floor((t - dt) * 2)) tiles.forEach((m, i) => m.emissive.set(cols[(i * 7 + Math.floor(t * 2)) % cols.length])); });
+      grp.traverse((x) => (x.userData.dynamic = true));
+      break;
+    }
+    case 'treadmill': {
+      const dark = M('#2b2b2b', 0.5);
+      grp.add(box(W, 0.18, D, dark, cx, 0.09, cz));
+      grp.add(box(W - 0.15, 0.02, D - 0.4, M('#111', 0.9), cx, 0.19, cz, false));
+      const fz = cz > 0 ? r.z0 + 0.1 : r.z0 + 0.1;
+      for (const x of [r.x0 + 0.05, r.x1 - 0.05]) grp.add(box(0.05, 1.2, 0.05, metal('#9aa3a8', 0.4), x, 0.7, fz, false));
+      grp.add(box(W, 0.3, 0.1, M('#333', 0.4, { emissive: new THREE.Color('#2b8cff'), emissiveIntensity: 0.4 }), cx, 1.3, fz, false));
       break;
     }
     case 'stairguard': {

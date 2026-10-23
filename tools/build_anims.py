@@ -90,6 +90,11 @@ CLIPS = {
     'scared': ('79_73', None, True, 'free', (1.5, 4.0)),
     'drink': ('79_33', None, True, 'free', (2.0, 4.0)),
     'kick': ('144_05', None, True, 'free', (0.6, 1.4)),
+    # nights out and the gym
+    'dance': ('05_02', None, True, 'free', (2.0, 5.0)),
+    'dance_b': ('93_02', None, True, 'free', (2.0, 5.0)),
+    'dance_c': ('60_01', None, True, 'free', (2.0, 5.0)),
+    'workout': ('13_29', None, True, 'free', (1.0, 3.0)),
 }
 
 

@@ -10,6 +10,7 @@ import { transfer } from './ledger';
 import { pubOpen } from './pub';
 import { isOpen } from './retail';
 import { getWorld, SHOP_IDS } from './world/layout';
+import { planVenues, venueOpen } from './world/venues';
 
 export { SHOP_IDS };
 export const shopOf = (interactableId: string) => interactableId.replace(/_door\d*$/, '');
@@ -18,6 +19,7 @@ const businessAt = (state: GameState, id: string) => Object.values(state.busines
 
 export function shopOpenNow(state: GameState, id: string): boolean {
   if (id === 'pub') return pubOpen(state.minute);
+  if (id.startsWith('v_')) { const v = planVenues(getWorld().city).find((x) => x.id === id); return !!v && venueOpen(v, state.minute); }
   if (id === 'jobcentre') { const m = state.minute % 1440, dow = dayIndex(state.minute) % 7; return dow < 5 && m >= 9 * 60 && m < 17 * 60; }
   const b = businessAt(state, id);
   return !!b && isOpen(b, state.minute);
