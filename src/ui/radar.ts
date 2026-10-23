@@ -44,7 +44,7 @@ export class Radar {
     this.base = cv;
   }
 
-  update(state: GameState, camYaw: number, driving: boolean, waypoint: { x: number; z: number } | null) {
+  update(state: GameState, camYaw: number, driving: boolean, waypoint: { x: number; z: number } | null, cops: { x: number; z: number; heli?: boolean }[] = []) {
     const now = performance.now();
     if (now - this.last < 60) return;
     this.last = now;
@@ -87,6 +87,7 @@ export class Radar {
     if (waypoint) blip(waypoint.x, waypoint.z, '#ffd400', 6);
     const flash = Math.floor(now / 250) % 2 === 0;
     for (const o of Object.values(state.people)) if (o.police && o.visible && !o.dead && o.where === 'outside') blip(planX(o.pos.x), o.pos.z, state.wanted ? (flash ? '#e53935' : '#1e5bff') : '#5c8dff', 3.5, 'dot', false);
+    for (const c of cops) blip(c.x, c.z, flash ? '#e53935' : '#1e5bff', c.heli ? 6 : 4.5, c.heli ? 'square' : 'dot', !c.heli);
     // north
     const [nx, nz] = toR(px, pz - 1e5);
     ctx.fillStyle = '#fff'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';

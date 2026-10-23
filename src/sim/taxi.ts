@@ -7,12 +7,29 @@ import { transfer } from './ledger';
 import { getWorld } from './world/layout';
 import { playerCar } from './cars';
 import { gesture } from './talk';
+import { AVENUES, DISTRICT_NAMES, districtAt, ROAD_HALF, STREETS, streetAt, WALK_W } from './world/city';
 
 export interface TaxiJob { passenger: Id; pickup: Vec2; dropoff: Vec2; from: string; to: string; stage: 'pickup' | 'ride'; since: number; bumps: number; last?: Vec2; slow?: number }
 const FIRM_CUT = 0.2;
 
-/** kerbside spots on the main road and Harbour Road */
+/** kerbside spots: the main road and Harbour Road, and halfway along every street in the city */
+let spotCache: { w: unknown; spots: { pos: Vec2; name: string }[] } | null = null;
 export function taxiSpots(): { pos: Vec2; name: string }[] {
+  const w = getWorld();
+  if (spotCache?.w === w) return spotCache.spots;
+  const spots = [...harbourSpots(), ...citySpots()];
+  spotCache = { w, spots };
+  return spots;
+}
+function citySpots(): { pos: Vec2; name: string }[] {
+  const C = ROAD_HALF + WALK_W / 2, out: { pos: Vec2; name: string }[] = [];
+  const harbour = (x: number, z: number) => Math.abs(x) < 135 && z > -135;
+  const add = (x: number, z: number) => { if (!harbour(x, z)) out.push({ pos: { x, z }, name: `${streetAt(x, z)}, ${DISTRICT_NAMES[districtAt(x, z)]}` }); };
+  for (const z of STREETS) for (let i = 0; i + 1 < AVENUES.length; i++) for (const dz of [-C, C]) add((AVENUES[i] + AVENUES[i + 1]) / 2, z + dz);
+  for (const x of AVENUES) for (let j = 0; j + 1 < STREETS.length; j++) for (const dx of [-C, C]) add(x + dx, (STREETS[j] + STREETS[j + 1]) / 2);
+  return out;
+}
+function harbourSpots(): { pos: Vec2; name: string }[] {
   const w = getWorld();
   const pts: Vec2[] = [];
   for (const x of [-80, -52, -24, 24, 50, 80]) for (const z of [-6.6, 6.6]) pts.push({ x, z });
@@ -51,10 +68,10 @@ export function taxiTick(state: GameState) {
   if (!t.job) {
     if (!car || rand(state) > 0.02) return;
     const spots = taxiSpots();
-    const near = spots.filter((s) => { const d = dist(s.pos, car.pos); return d > 15 && d < 90; });
+    const near = spots.filter((s) => { const d = dist(s.pos, car.pos); return d > 15 && d < 160; });
     if (!near.length) return;
     const from = near[Math.floor(rand(state) * near.length)];
-    const dests = spots.filter((s) => dist(s.pos, from.pos) > 45);
+    const dests = spots.filter((s) => { const d = dist(s.pos, from.pos); return d > 45 && d < 800; });
     const to = dests[Math.floor(rand(state) * dests.length)];
     const p = Object.values(state.people).find((q) => q.npc && !q.isPlayer && !q.police && !q.dead && !q.away && !q.sleeping && !q.action && !q.combat && q.npc.goal === 'idle_home' && !q.visible && rand(state) < 0.3);
     if (!p || !to) return;
@@ -76,7 +93,7 @@ export function taxiTick(state: GameState) {
   j.slow = moved < 0.05 ? (j.slow ?? 0) + 1 : 0;
   // they give up if you take too long to arrive
   if (j.stage === 'pickup' && state.minute - j.since > 40) { p.npc!.plan = []; p.npc!.nextDecision = state.minute; t.job = null; news(state, 'bad', 'Fare cancelled', `${p.name.split(' ')[0]} gave up waiting and walked.`, true); return; }
-  if (j.stage === 'pickup' && dist(car.pos, j.pickup) < 5 && (j.slow ?? 0) > 3) {
+  if (j.stage === 'pickup' && dist(car.pos, j.pickup) < 8 && (j.slow ?? 0) > 3) {
     p.visible = false; p.where = 'vehicle'; p.npc!.plan = [{ kind: 'wait', until: state.minute + 240 }]; p.npc!.nextDecision = state.minute + 240;
     j.stage = 'ride'; j.since = state.minute;
     (p.knowsYou ??= { since: state.minute, talks: 0, last: state.minute, notes: [] });
@@ -84,7 +101,7 @@ export function taxiTick(state: GameState) {
   }
   if (j.stage === 'ride') {
     p.pos = { ...car.pos };
-    if (dist(car.pos, j.dropoff) < 6 && (j.slow ?? 0) > 3) {
+    if (dist(car.pos, j.dropoff) < 8 && (j.slow ?? 0) > 3) {
       const metres = dist(j.pickup, j.dropoff) * 1.3;
       const fare = Math.round(350 + metres * 1.6);
       const tip = j.bumps === 0 ? Math.round(fare * 0.15) : j.bumps < 3 ? Math.round(fare * 0.05) : 0;

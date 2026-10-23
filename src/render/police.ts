@@ -69,6 +69,12 @@ export class PoliceCar {
   private leaving = 0;
   constructor(private scene: THREE.Scene) {}
   get active() { return this.cars.length > 0 || !!this.heli; }
+  /** where the patrol cars and the helicopter are, for the radar */
+  blips(): { x: number; z: number; heli?: boolean }[] {
+    const out: { x: number; z: number; heli?: boolean }[] = [...this.cars, ...this.blocks].map((c) => ({ x: c.pos.x, z: c.pos.y }));
+    if (this.heli) out.push({ x: this.heli.position.x, z: this.heli.position.z, heli: true });
+    return out;
+  }
 
   /** where the cars are, for collisions */
   rects(): R[] { return [...this.cars, ...this.blocks].map((c) => c.rect()); }

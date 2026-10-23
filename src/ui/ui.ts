@@ -140,7 +140,7 @@ export class UI {
 
   // ------------------------------------------------------------ HUD
   frame() {
-    this.radar.update(this.s, this.game.camYaw, !!this.game.drivingVan(), this.game.waypoint);
+    this.radar.update(this.s, this.game.camYaw, !!this.game.drivingVan(), this.game.waypoint, this.game.police.blips());
     const s = this.s, p = this.p;
     $('#clock').textContent = fmtClock(s.minute);
     $('#date').textContent = `${fmtDate(s.minute)} · ${seasonOf(s.minute)} · ${weatherLabel(s)}`;
@@ -247,8 +247,11 @@ export class UI {
   private bigTitle(text: string, cls: string) {
     const el = $('#bigtitle');
     el.textContent = text; el.className = cls; el.hidden = false;
+    // the world drains of colour behind WASTED and BUSTED, and the view pushes in slowly
+    document.body.classList.remove('fx-wasted', 'fx-busted');
+    if (cls === 'wasted' || cls === 'busted') document.body.classList.add(`fx-${cls}`);
     clearTimeout(this.titleTimer);
-    this.titleTimer = window.setTimeout(() => { el.hidden = true; }, 3200);
+    this.titleTimer = window.setTimeout(() => { el.hidden = true; document.body.classList.remove('fx-wasted', 'fx-busted'); }, 4200);
   }
   private titleTimer = 0;
   closePhone() { this.phoneOpen = false; $('#phone').hidden = true; if (this.p.gesture?.clip === 'phone') this.p.gesture = null; this.syncModal(); }
