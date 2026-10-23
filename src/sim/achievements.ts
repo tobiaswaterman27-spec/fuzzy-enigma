@@ -52,8 +52,8 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'jail', title: 'Jailbird', how: 'Do time in HMP Harbourside', check: (s) => hist(s, /^Sent to prison/) },
   { id: 'escape', title: 'The great escape', how: 'Break out of prison', check: (s) => hist(s, /^Escaped from HMP/) },
   { id: 'clean', title: 'Clean slate', how: 'Have your record wiped at City Hall', check: (s) => hist(s, /record expunged/) },
-  { id: 'grand', title: 'Comfortable', how: 'Net worth over Cr 10,000', check: (s) => netWorth(s, s.playerId).total >= 1000000 },
-  { id: 'bigshot', title: 'THE BIGSHOT', how: 'Net worth over Cr 1,000,000', check: (s) => netWorth(s, s.playerId).total >= 100000000 },
+  { id: 'grand', title: 'Comfortable', how: 'Net worth over £10,000', check: (s) => netWorth(s, s.playerId).total >= 1000000 },
+  { id: 'bigshot', title: 'THE BIGSHOT', how: 'Net worth over £1,000,000', check: (s) => netWorth(s, s.playerId).total >= 100000000 },
 ];
 
 /** every minute: anything newly achieved is announced */

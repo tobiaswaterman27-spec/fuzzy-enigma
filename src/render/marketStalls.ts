@@ -66,7 +66,7 @@ export class MarketStalls {
       c2.fillStyle = '#1c1f1d'; c2.fillRect(0, 0, 256, 128);
       c2.fillStyle = '#f3efe2'; c2.font = 'bold 30px sans-serif'; c2.textAlign = 'center';
       c2.fillText(ITEMS[st.product].name.toUpperCase(), 128, 52);
-      c2.font = '26px sans-serif'; c2.fillText(`Cr ${(Math.round(ITEMS[st.product].retail * 1.15 / 5) * 5 / 100).toFixed(2)}`, 128, 96);
+      c2.font = '26px sans-serif'; c2.fillText(`£${(Math.round(ITEMS[st.product].retail * 1.15 / 5) * 5 / 100).toFixed(2)}`, 128, 96);
       const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
       const board = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.3), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.8 }));
       board.position.set(0.9, 1.25, -0.96); board.rotation.y = Math.PI;

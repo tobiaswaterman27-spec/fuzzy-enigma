@@ -44,5 +44,5 @@ export const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 export function fmtMoney(cents: number): string {
   const neg = cents < 0;
   const v = Math.abs(cents) / 100;
-  return `${neg ? '-' : ''}Cr ${v.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `${neg ? '-' : ''}£${v.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }

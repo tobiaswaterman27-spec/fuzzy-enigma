@@ -368,7 +368,7 @@ export class UI {
           + mine.map((b) => { const pl = PLOTS.find((x) => x.id === b.plotId)!; return `<div class="card good"><b>${esc(pl.name)}</b><div class="line"><span>Tenant</span><span>${b.tenant ? esc(b.tenant) : 'being found'}</span></div>${b.nextRent ? `<div class="line"><span>Next rent</span><span>${fmtDate(b.nextRent)}</span></div>` : ''}<div class="row"><button data-letsell="${b.plotId}">Sell (${fmtMoney(Math.round(b.price * RESALE_SHARE))})</button></div></div>`; }).join('')
           + sale.map(({ plot }) => `<div class="card"><b>${esc(plot.name)}</b> · new build · ${fmtMoney(NEW_BUILD_PRICE)}<div class="row"><button data-letbuy="${plot.id}" ${s.ledger.accounts[p.accountId].balance >= NEW_BUILD_PRICE ? '' : 'disabled'}>Buy to let</button></div></div>`).join('');
       })()}
-      <h3>Transactions</h3>${txns.map((t) => `<div class="line"><span><span class="muted">${fmtDate(t.time).split(',')[1]} ${fmtClock(t.time)}</span> ${esc(t.memo)}</span><span class="${t.to === acc.id ? 'pos' : 'neg'}">${t.to === acc.id ? '+' : '-'}${fmtMoney(t.amount).replace('Cr ', '')}</span></div>`).join('') || '<p class="muted">No transactions yet.</p>'}`;
+      <h3>Transactions</h3>${txns.map((t) => `<div class="line"><span><span class="muted">${fmtDate(t.time).split(',')[1]} ${fmtClock(t.time)}</span> ${esc(t.memo)}</span><span class="${t.to === acc.id ? 'pos' : 'neg'}">${t.to === acc.id ? '+' : '-'}${fmtMoney(t.amount).replace('£', '')}</span></div>`).join('') || '<p class="muted">No transactions yet.</p>'}`;
   }
 
   tab_status(): string {
@@ -596,7 +596,7 @@ export class UI {
       return `<div class="card"><b>Property to let: Dockside Unit 4</b><br><span class="muted">Empty shop unit on the east end of Main Street. Shelving for four product lines, counter, store room, goods-in door.</span>
         <div class="line"><span>Rent</span><span>${fmtMoney(E.UNIT4_RENT)}/week</span></div><div class="line"><span>Deposit</span><span>${fmtMoney(E.UNIT4_DEPOSIT)}</span></div>
         <div class="line"><span>Business registration</span><span>${fmtMoney(E.REGISTRATION_FEE)}</span></div><div class="line"><span>Till system (needed to sell)</span><span>${fmtMoney(E.TILL_COST)}</span></div>
-        <p class="muted">You also need money for opening stock (about Cr 1 per item from Harbour Wholesale) and for wages if you hire staff. Location: quieter than Corner Market, so fewer passing customers.</p>
+        <p class="muted">You also need money for opening stock (about £1 per item from Harbour Wholesale) and for wages if you hire staff. Location: quieter than Corner Market, so fewer passing customers.</p>
         ${taken ? '<p class="warn">Already let.</p>' : `<label class="muted" for="biz-name">Business name</label><input id="biz-name" type="text" maxlength="28" value="${esc(p.name.split(' ')[0])}'s Store">
         <p>Invest from your account (you have ${fmtMoney(myBal)}):</p><div class="row">${[E.START_MIN_CAPITAL + E.TILL_COST + 20000, 100000, 150000, 250000].map((a) => `<button data-found="${a}" class="${myBal >= a ? 'primary' : ''}" ${myBal >= a ? '' : 'disabled'}>${fmtMoney(a)}</button>`).join('')}</div>
         <p class="muted">Minimum ${fmtMoney(E.START_MIN_CAPITAL)} covers deposit, first week and registration only.</p>`}</div>`;
@@ -630,7 +630,7 @@ export class UI {
     const hyg = hygieneOf(s, b.id);
     return `<div class="card"><b>${esc(b.name)}</b> · Dockside Unit 4 · <span class="${open ? 'pos' : 'warn'}">${open ? 'OPEN' : 'CLOSED'}</span>${b.outage && s.minute < b.outage.until ? ` <span class="warn">power cut ${fmtClock(b.outage.from)}–${fmtClock(b.outage.until)}</span>` : ''} · hygiene ${hyg?.rating !== null && hyg?.rating !== undefined ? `<b>${hyg.rating}/5</b>` : 'not yet rated'}<br>
       Business cash <b>${fmtMoney(acc.balance)}</b> · reputation ${b.reputation.toFixed(0)}
-      <div class="row"><button data-invest="10000">Invest Cr 100</button><button data-invest="50000">Invest Cr 500</button><button data-withdraw="10000">Withdraw Cr 100</button><button data-closed="${b.manualClosed ? '0' : '1'}">${b.manualClosed ? 'Open doors' : 'Close doors'}</button><button data-nightfill="${b.nightFill ? '0' : '1'}">${b.nightFill ? 'Cancel night-fill crew' : 'Hire night-fill crew'}</button></div>
+      <div class="row"><button data-invest="10000">Invest £100</button><button data-invest="50000">Invest £500</button><button data-withdraw="10000">Withdraw £100</button><button data-closed="${b.manualClosed ? '0' : '1'}">${b.manualClosed ? 'Open doors' : 'Close doors'}</button><button data-nightfill="${b.nightFill ? '0' : '1'}">${b.nightFill ? 'Cancel night-fill crew' : 'Hire night-fill crew'}</button></div>
       <div class="row">${Object.entries(E.HOURS_PRESETS).map(([k, h]) => `<button data-hours="${k}" class="${JSON.stringify(b.open) === JSON.stringify(h.open) ? 'primary' : ''}">${h.label}</button>`).join('')}</div></div>
       <h3>Getting ready</h3>${checklist.map(([t, d]) => `<div class="line"><span>${d ? '✔' : '○'} ${t}</span></div>`).join('')}
       ${!b.equipment.till ? `<div class="row"><button class="primary" data-till="1">Buy till system (${fmtMoney(E.TILL_COST)})</button></div>` : ''}

@@ -434,6 +434,11 @@ export class CityView {
     const head = new THREE.BoxGeometry(0.3, 0.1, 0.5); head.translate(0, 5.05, 1.05);
     inst(head, this.bulbs, lamps, (p, m) => place(p, m, 0), false);
     // benches and bins
+    // the red pillar box: a cylinder with a domed cap and a black plinth
+    const pbody = mergeGeometries([new THREE.CylinderGeometry(0.27, 0.27, 1.25, 14).translate(0, 0.78, 0), new THREE.CylinderGeometry(0.31, 0.31, 0.1, 14).translate(0, 1.45, 0), new THREE.SphereGeometry(0.29, 14, 6, 0, Math.PI * 2, 0, Math.PI / 2).translate(0, 1.5, 0)])!;
+    inst(pbody, new THREE.MeshStandardMaterial({ color: '#c8102e', roughness: 0.4, metalness: 0.1 }), of('postbox'), (p, m) => place(p, m, 0));
+    inst(new THREE.CylinderGeometry(0.31, 0.33, 0.16, 14).translate(0, 0.08, 0), new THREE.MeshStandardMaterial({ color: '#1a1a1a', roughness: 0.6 }), of('postbox'), (p, m) => place(p, m, 0));
+    inst(new THREE.BoxGeometry(0.22, 0.03, 0.06).translate(0, 1.1, 0.27), new THREE.MeshStandardMaterial({ color: '#111', roughness: 0.6 }), of('postbox'), (p, m) => place(p, m, 0), false);
     // a park bench: slatted seat and back on cast-iron ends (the seat faces +z)
     const part = (w: number, h: number, d: number, x: number, y: number, z: number, rx = 0) => { const g = new THREE.BoxGeometry(w, h, d); g.rotateX(rx); g.translate(x, y, z); return g; };
     const slats = mergeGeometries([0, 1, 2].map((k) => part(1.8, 0.04, 0.12, 0, 0.45, 0.16 - k * 0.15)).concat([0, 1].map((k) => part(1.8, 0.1, 0.03, 0, 0.62 + k * 0.15, -0.24 - k * 0.03, -0.25))))!;

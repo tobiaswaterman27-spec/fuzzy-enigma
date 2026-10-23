@@ -135,7 +135,7 @@ export function setNightFill(state: GameState, on: boolean): R {
   const b = own(state);
   if (!b) return no('You do not own a business.');
   b.nightFill = on;
-  return ok(on ? `Overnight shelf-fill crew hired (Cr ${(NIGHT_FILL_PER_UNIT / 100).toFixed(2)} per unit put out).` : 'Overnight shelf-fill crew cancelled.');
+  return ok(on ? `Overnight shelf-fill crew hired (£${(NIGHT_FILL_PER_UNIT / 100).toFixed(2)} per unit put out).` : 'Overnight shelf-fill crew cancelled.');
 }
 
 export function orderCost(state: GameState, items: Record<string, number>) {

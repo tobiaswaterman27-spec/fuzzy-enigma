@@ -23,7 +23,7 @@ export interface CityBuilding {
   tint: number;
 }
 
-export interface CityProp { kind: 'tree' | 'lamp' | 'bench' | 'bin' | 'crane' | 'container' | 'boat' | 'bus_stop' | 'fountain' | 'goal' | 'parasol' | 'hut'; x: number; z: number; rot: number; s?: number; color?: string }
+export interface CityProp { kind: 'tree' | 'lamp' | 'bench' | 'bin' | 'crane' | 'container' | 'boat' | 'bus_stop' | 'fountain' | 'goal' | 'parasol' | 'hut' | 'postbox'; x: number; z: number; rot: number; s?: number; color?: string }
 export interface Ground { rect: Rect; kind: 'paving' | 'grass' | 'garden' | 'concrete' | 'sand' | 'water' | 'gravel' | 'pitch' | 'car_park' }
 export interface Lane { from: Vec2; to: Vec2; axis: 'x' | 'z' }
 
@@ -245,6 +245,8 @@ export function buildCity(avoid: Rect[]): City {
   }
   // bus stops at the junctions of the main roads
   for (const x of [-520, -260, 0, 260, 520]) for (const z of [-130, -390, -650, -910]) props.push({ kind: 'bus_stop', x: x + 12, z: z - C - 0.3, rot: 0 });
+  // red post boxes at the back of the pavement, every few blocks
+  AVENUES.forEach((x, i) => STREETS.forEach((z, k) => { if ((i + k) % 3 === 0 && z !== 0 && Math.abs(x) > 140) props.push({ kind: 'postbox', x: x - 20, z: z + C + 1.0, rot: 0 }); }));
 
   cached = { buildings, ground, props, roads, lanes, junctions, nodes, edges, joins };
   return cached;

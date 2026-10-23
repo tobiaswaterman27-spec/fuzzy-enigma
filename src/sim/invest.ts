@@ -11,7 +11,7 @@ export const BLOCK = 5;
 export const MAX_STAKE = 49;
 /** the business's weekly profit is valued at this many weeks, plus its cash */
 export const EARNINGS_WEEKS = 26;
-const FLOOR = 2000000; // Cr 20,000: going-concern value of the premises, fittings and trade
+const FLOOR = 2000000; // £20,000: going-concern value of the premises, fittings and trade
 const INVESTABLE: ReadonlySet<string> = new Set(['retail', 'wholesale', 'cafe', 'store', 'construction']);
 
 export function canInvestIn(b: Business): boolean {

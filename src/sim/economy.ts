@@ -142,7 +142,7 @@ export function dailyEconomy(state: GameState) {
   const d = state.districts.harbourside;
   const gov = state.businesses[state.governmentId];
   // district households earn income elsewhere in the country
-  const income = d.households * 4200; // Cr 42 per household per day
+  const income = d.households * 4200; // £42 per household per day
   const tax = Math.round(income * state.policy.incomeTax);
   transfer(state, { from: state.externalId, to: d.accountId, amount: income, reason: 'aggregate_income', memo: `District earnings ${fmtDate(state.minute)}`, key: `agg_income:${day}` });
   transfer(state, { from: d.accountId, to: gov.accountId, amount: tax, reason: 'income_tax', memo: 'District income tax', key: `agg_tax:${day}` });
