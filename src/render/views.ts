@@ -4,6 +4,7 @@ import type { GameState, Person } from '../sim/types';
 import { AnimationController, buildRig, dress, type Rig } from './character';
 import { buildCar } from './world';
 import { DogView } from './dog';
+import { stairY } from '../sim/world/layout';
 import { LEVEL_DX, LEVEL_H, levelOf, STAIR_RUN } from '../sim/world/levels';
 import { boat as harbourBoat } from './harbour';
 import { CAR_MODELS } from '../sim/cars';
@@ -208,7 +209,7 @@ class PersonView {
       this.outfitKey = key;
     }
     const stage = this.staging(state, p, dt);
-    const target = stage ? new THREE.Vector3(stage.pos.x, 0, stage.pos.z) : new THREE.Vector3(p.pos.x + this.nudge.x, 0, p.pos.z + this.nudge.z);
+    const target = stage ? new THREE.Vector3(stage.pos.x, 0, stage.pos.z) : new THREE.Vector3(p.pos.x + this.nudge.x, stairY(p.pos), p.pos.z + this.nudge.z);
     // on the stairs: partway up (or down) the flight to the next storey
     const m = p.move, nxt = m?.path[m.idx];
     if (m && nxt && (m.climb ?? 0) > 0 && levelOf(nxt.x) !== lv) {

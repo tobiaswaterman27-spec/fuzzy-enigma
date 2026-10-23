@@ -13,7 +13,7 @@ import type { GameState } from '../sim/types';
 import { step } from '../sim/sim';
 import { cancelAction, focusInteractable, optionsFor, startAction, enforceLocationRules, type ActionOption } from '../sim/actions';
 import { resolveCircle } from '../sim/world/nav';
-import { buildingAt, collidersIn, DWELLING_IDS, dwellingDoor, FLIGHTS, getWorld, publicDoors, setHomeDesign, shellAt, SHOP_IDS } from '../sim/world/layout';
+import { buildingAt, collidersIn, DWELLING_IDS, dwellingDoor, getWorld, stairCross, stairY, publicDoors, setHomeDesign, shellAt, SHOP_IDS } from '../sim/world/layout';
 import { shopLocked } from '../sim/breakins';
 import { onPcsoShift } from '../sim/station';
 import { LEVEL_DX, levelOf, planX, sceneOf } from '../sim/world/levels';
@@ -140,6 +140,7 @@ export class Game {
   private sunAnchor = new THREE.Vector3();
   /** mouse look: the automatic camera waits until this time (ms) */
   private manualUntil = 0;
+  private camAt: { x: number; z: number } | null = null;
   /** in conversation with someone: the camera looks past your shoulder at them */
   frameTalk(npcId: string | null) {
     if (!npcId) { this.manualUntil = 0; this.zoom = this.zoomBeforeTalk ?? this.zoom; this.zoomBeforeTalk = null; return; }
@@ -401,14 +402,25 @@ export class Game {
     // look around: drag with the mouse (either button) or a finger; the camera recentres by itself a few
     // seconds after you let go once you walk forward. Wheel to zoom.
     let drag: { x: number; y: number; id: number } | null = null;
-    this.canvas.addEventListener('pointerdown', (e) => { if (this.uiOpen) return; drag = { x: e.clientX, y: e.clientY, id: e.pointerId }; this.canvas.setPointerCapture?.(e.pointerId); });
+    this.canvas.addEventListener('pointerdown', (e) => {
+      if (this.uiOpen) return;
+      // a click captures the mouse so it turns the camera, as in GTA (Esc lets it go); touch drags
+      if (e.pointerType === 'mouse' && !document.pointerLockElement) { try { (this.canvas.requestPointerLock as () => unknown)?.call(this.canvas); } catch { /* not allowed here */ } }
+      drag = { x: e.clientX, y: e.clientY, id: e.pointerId }; this.canvas.setPointerCapture?.(e.pointerId);
+    });
+    document.addEventListener('mousemove', (e) => {
+      if (document.pointerLockElement !== this.canvas || this.uiOpen) return;
+      this.camYaw -= e.movementX * 0.0035;
+      this.camPitch = Math.max(-0.12, Math.min(1.25, this.camPitch + e.movementY * 0.0025));
+      this.manualUntil = performance.now() + 2500;
+    });
     this.canvas.addEventListener('pointermove', (e) => {
-      if (!drag || drag.id !== e.pointerId) return;
+      if (!drag || drag.id !== e.pointerId || document.pointerLockElement === this.canvas) return;
       const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
       drag.x = e.clientX; drag.y = e.clientY;
       this.camYaw -= dx * 0.006;
       this.camPitch = Math.max(-0.12, Math.min(1.25, this.camPitch + dy * 0.004));
-      this.manualUntil = performance.now() + 700;
+      this.manualUntil = performance.now() + 2500;
     });
     const end = (e: PointerEvent) => { if (drag?.id === e.pointerId) drag = null; };
     this.canvas.addEventListener('pointerup', end);
@@ -675,43 +687,31 @@ export class Game {
     if (this.drivingVan()) { this.updateDriving(dt); return; }
     this.vanSpeed = 0;
     if (this.uiOpen || p.sleeping || p.down != null || p.away || p.dead) { this.vel.x = this.vel.z = 0; return; }
-    // the camera sits behind your back: W walks forward, S steps back, A/D turn (turning on the spot
-    // when standing, carving round while walking). The body accelerates and slows smoothly.
+    // like GTA: W/A/S/D move you relative to the camera (away from it, to its left and right, towards
+    // it), and you turn to face the way you are going. The mouse turns the camera.
     const k = this.keys;
-    let iz = 0, turn = 0;
+    let iz = 0, ix = 0;
     if (k.has('KeyW') || k.has('ArrowUp')) iz += 1;
     if (k.has('KeyS') || k.has('ArrowDown')) iz -= 1;
-    if (k.has('KeyA') || k.has('ArrowLeft')) turn += 1;
-    if (k.has('KeyD') || k.has('ArrowRight')) turn -= 1;
+    if (k.has('KeyA') || k.has('ArrowLeft')) ix -= 1;
+    if (k.has('KeyD') || k.has('ArrowRight')) ix += 1;
     const run = k.has('ShiftLeft') || k.has('ShiftRight');
-    // on the stairs: the climb carries you to the next landing
-    if (p.move?.destLabel === 'stairs') { this.vel.x = this.vel.z = 0; return; }
-    // walking into the foot (or the head) of a flight takes it: up or down to the next floor
-    if (iz > 0 && !p.action) {
-      const w = getWorld();
-      for (const [lo, hi] of FLIGHTS) for (const [from, to] of [[lo, hi], [hi, lo]]) {
-        const a = w.nodes[from], b = w.nodes[to];
-        if (!a || !b || levelOf(a.x) !== levelOf(p.pos.x) || Math.hypot(a.x - p.pos.x, a.z - p.pos.z) > 0.7) continue;
-        // the flight runs away from the landing the node is on: south from the front landing, north from the back
-        const want = a.z < 13 ? 0 : Math.PI;
-        if (Math.abs(((p.facing - want + Math.PI * 3) % (Math.PI * 2)) - Math.PI) > 1.0) continue;
-        p.pos = { x: a.x, z: a.z };
-        p.move = { path: [{ x: b.x, z: b.z }], idx: 0, dest: { x: b.x, z: b.z }, destLabel: 'stairs', stuckTime: 0, lastDist: Infinity, replans: 0, climb: 0 };
-        this.vel.x = this.vel.z = 0;
-        return;
-      }
-    }
-    if (turn) {
-      if (p.action) cancelAction(this.state, p, 'moved');
-      p.facing += turn * (iz ? 2.4 : 3.0) * dt;
-    }
-    const len = Math.abs(iz);
+    const len = Math.min(1, Math.hypot(ix, iz));
     let tx = 0, tz = 0;
     if (len > 0) {
       if (p.action) cancelAction(this.state, p, 'moved');
-      const sp = (iz > 0 ? (run ? RUN_SPEED * fitnessFactor(p) : WALK_SPEED) : WALK_SPEED * 0.55) * capability(p).move;
-      tx = Math.sin(p.facing) * iz * sp;
-      tz = Math.cos(p.facing) * iz * sp;
+      // the camera's forward and right along the ground
+      const fx = -Math.sin(this.camYaw), fz = -Math.cos(this.camYaw);
+      const rx = Math.cos(this.camYaw), rz = -Math.sin(this.camYaw);
+      const mx = fx * iz + rx * ix, mz = fz * iz + rz * ix, ml = Math.hypot(mx, mz) || 1;
+      // turn towards it: quick, but a turn rather than a snap
+      const want = Math.atan2(mx / ml, mz / ml);
+      const dYaw = ((want - p.facing + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+      p.facing += dYaw * Math.min(1, dt * 11);
+      // you walk the way you face once you have turned (so a sharp turn starts with a step round)
+      const sp = (run ? RUN_SPEED * fitnessFactor(p) : WALK_SPEED) * capability(p).move * Math.max(0.15, Math.cos(Math.min(Math.PI / 2, Math.abs(dYaw))));
+      tx = Math.sin(p.facing) * sp * len;
+      tz = Math.cos(p.facing) * sp * len;
     }
     // drunk: you weave about whether you mean to or not
     const drunk = p.drunk ?? 0;
@@ -728,6 +728,8 @@ export class Game {
     const before = p.pos;
     p.pos = resolveCircle({ x: p.pos.x + this.vel.x * dt, z: p.pos.z + this.vel.z * dt }, 0.3, this.collidersWithCars());
     if (run && speed > 3) trainRun(p, Math.hypot(p.pos.x - before.x, p.pos.z - before.z));
+    // off the top of a flight onto the floor above, or off the bottom onto the floor below
+    p.pos = stairCross(p.pos);
     // people are solid too: step round them rather than through them
     for (const o of Object.values(this.state.people)) {
       if (o.isPlayer || !o.visible || o.sleeping) continue;
@@ -779,11 +781,15 @@ export class Game {
       const wantDist = (p.sleeping ? 3.4 : inside ? 3.3 : 4.4) * this.zoom;
       this.camDist += (wantDist - this.camDist) * Math.min(1, dt * 3);
     } else if (!this.camLocked) {
-      // automatic camera: settles behind the player; closer and higher indoors so rooms read clearly
-      // always behind your back, like a chase camera: it swings round with you as you turn
+      // automatic camera: while you walk it drifts round behind you (gently, like GTA's); standing
+      // still it stays where you left it. Closer and higher indoors so rooms read clearly
       const behind = p.facing + Math.PI;
       const dYaw = ((behind - this.camYaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
-      this.camYaw += dYaw * Math.min(1, dt * 7);
+      // a fresh start or a jump (a load, a teleport): put the camera straight behind you
+      if (!this.camAt || Math.hypot(this.camAt.x - p.pos.x, this.camAt.z - p.pos.z) > 12) this.camYaw = behind;
+      this.camAt = { x: p.pos.x, z: p.pos.z };
+      const moving = Math.hypot(this.vel.x, this.vel.z) > 0.5;
+      if (moving && Math.abs(dYaw) < 2.4) this.camYaw += dYaw * Math.min(1, dt * 1.6);
       // in a small room the walls pull the camera in: look down from higher up instead
       const cramped = inside && this.distCur > 0 && this.distCur < 1.6;
       const wantPitch = p.sleeping ? 0.75 : cramped ? 0.6 : inside ? 0.42 : 0.24;
@@ -795,7 +801,7 @@ export class Game {
     // follow the drawn body (it may be acting out a multi-step action away from its sim spot)
     const climbing = (p.move?.climb ?? 0) > 0;
     const drawn = p.action || climbing ? this.views.people.get(p.id)?.rig.root.getWorldPosition(new THREE.Vector3()) : null;
-    const sp = sceneOf(p.pos);
+    const sp = sceneOf(p.pos, stairY(p.pos));
     const pivot = new THREE.Vector3(drawn?.x ?? sp.x, (drawn ? drawn.y : sp.y) + (van ? (van.kind === 'forklift' ? 2.0 : van.kind === 'boat' ? 1.0 : 2.7) : p.sleeping ? 1.0 : 1.62), drawn?.z ?? p.pos.z);
     const pitch = this.camPitch;
     const dir = new THREE.Vector3(Math.sin(this.camYaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(this.camYaw) * Math.cos(pitch));

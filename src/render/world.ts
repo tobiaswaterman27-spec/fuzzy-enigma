@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { dartboardMesh } from './dartboard';
 import { LEVEL_DX, LEVEL_H, levelOf } from '../sim/world/levels';
 import { shopLocked } from '../sim/breakins';
-import { SHOP_IDS, getWorld, wallsFor, WALL_T, type BuildingDef, type Obstacle, type Rect } from '../sim/world/layout';
+import { flightsAt, MARLOW_LEVELS, type Flight, SHOP_IDS, getWorld, wallsFor, WALL_T, type BuildingDef, type Obstacle, type Rect } from '../sim/world/layout';
 import { fitModel, hasModel, modelInstance } from './models';
 import { FLOORS, WALLPAPERS } from '../sim/world/homes';
 import { tex, TILE, worldUV, planeUV, signTexture, normalOf } from './textures';
@@ -440,6 +440,17 @@ function windowMesh(w: number, h: number, frameCol: string, lit: THREE.MeshStand
   return grp;
 }
 
+/** a rectangle with a hole cut out of it, as up to four rectangles */
+function rectMinus(r: Rect, h: Rect | null): Rect[] {
+  if (!h) return [r];
+  const out: Rect[] = [];
+  if (h.z0 > r.z0) out.push({ x0: r.x0, x1: r.x1, z0: r.z0, z1: h.z0 });
+  if (h.z1 < r.z1) out.push({ x0: r.x0, x1: r.x1, z0: h.z1, z1: r.z1 });
+  if (h.x0 > r.x0) out.push({ x0: r.x0, x1: h.x0, z0: Math.max(r.z0, h.z0), z1: Math.min(r.z1, h.z1) });
+  if (h.x1 < r.x1) out.push({ x0: h.x1, x1: r.x1, z0: Math.max(r.z0, h.z0), z1: Math.min(r.z1, h.z1) });
+  return out;
+}
+
 function buildBuilding(g: THREE.Group, b: BuildingDef, cutaway: WorldView['cutaway'], windowsMat: THREE.MeshStandardMaterial[], doors: AnimDoor[]) {
   const { x0, z0, x1, z1 } = b.rect;
   const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, W = x1 - x0, D = z1 - z0;
@@ -500,7 +511,12 @@ function buildBuilding(g: THREE.Group, b: BuildingDef, cutaway: WorldView['cutaw
       }
     }
     const fl = FLOOR[b.id]?.() ?? (b.id.startsWith('house_') ? { t: tex.wood(b.floorColor ?? '#a8865f'), tile: TILE['wood#a0784e'] ?? 1.2 } : { t: tex.tiles('#cccccc', '#bbbbbb'), tile: 1.2 });
-    g.add(box(W, 0.08, D, texMat(fl.t, 0.75), cx, 0.04, cz, false, fl.tile));
+    // Marlow Court's floors have an opening where the stairs come up through them
+    const mk = (MARLOW_LEVELS as readonly string[]).indexOf(b.id);
+    const holeOf = (f: Flight | null): Rect | null => f && mk >= 0 ? { x0: f.x0 + mk * LEVEL_DX, x1: f.x1 + mk * LEVEL_DX, z0: Math.min(f.bottom, f.top), z1: Math.max(f.bottom, f.top) } : null;
+    const floorHole = mk >= 0 ? holeOf(flightsAt(mk).down) : null, ceilHole = mk >= 0 ? holeOf(flightsAt(mk).up) : null;
+    const flM = texMat(fl.t, 0.75);
+    for (const pr of rectMinus({ x0, z0, x1, z1 }, floorHole)) g.add(box(pr.x1 - pr.x0, 0.08, pr.z1 - pr.z0, flM, (pr.x0 + pr.x1) / 2, 0.04, (pr.z0 + pr.z1) / 2, false, fl.tile));
     // frames on both faces and one clear pane in each opening
     for (const w of wins) {
       for (const inner of [false, true]) {
@@ -590,10 +606,13 @@ function buildBuilding(g: THREE.Group, b: BuildingDef, cutaway: WorldView['cutaw
     }
     if (!b.stacked) { const hv = box(1.6, 0.9, 1.1, metal('#9aa3a8'), x1 - 3, roofTop + 0.7, z0 + 3); roofs.push(hv); g.add(hv); }
     // a solid ceiling slab that also blocks sunlight, so no light leaks along the top of the walls
-    const ceil = box(W + WALL_T, 0.08, D + WALL_T, M('#f3f1ec', 0.95), cx, 3.2, cz, true);
-    ceil.receiveShadow = true;
-    roofs.push(ceil);
-    g.add(ceil);
+    const ceilM = M('#f3f1ec', 0.95);
+    for (const pr of rectMinus({ x0: x0 - WALL_T / 2, z0: z0 - WALL_T / 2, x1: x1 + WALL_T / 2, z1: z1 + WALL_T / 2 }, ceilHole)) {
+      const ceil = box(pr.x1 - pr.x0, 0.08, pr.z1 - pr.z0, ceilM, (pr.x0 + pr.x1) / 2, 3.2, (pr.z0 + pr.z1) / 2, true);
+      ceil.receiveShadow = true;
+      roofs.push(ceil);
+      g.add(ceil);
+    }
     const panel = M('#ffffff', 0.3, { emissive: new THREE.Color('#fff6e0'), emissiveIntensity: 0.6 });
     for (let x = x0 + 3; x < x1 - 1.5; x += 5) for (let z = z0 + 3; z < z1 - 1.5; z += 5) { const p = box(1.4, 0.04, 0.5, panel, x, 3.16, z, false); roofs.push(p); g.add(p); }
     const nL = Math.max(1, Math.round((W * D) / 220));
@@ -1221,6 +1240,15 @@ function buildObstacle(o: Obstacle): THREE.Object3D {
           (geo.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
         }
       });
+      break;
+    }
+    case 'stairguard': {
+      // a rail where a flight drops away (the wall between the flights has its own handrail)
+      if (Math.min(W, D) > 0.15) break;
+      const railM = metal('#2f3337', 0.4);
+      const along = W > D, L = Math.max(W, D);
+      grp.add(along ? box(L, 0.05, 0.05, railM, cx, 1.0, cz, false) : box(0.05, 0.05, L, railM, cx, 1.0, cz, false));
+      for (let t = -L / 2 + 0.05; t <= L / 2; t += Math.max(0.3, L / 4)) grp.add(along ? box(0.04, 1.0, 0.04, railM, cx + t, 0.5, cz, false) : box(0.04, 1.0, 0.04, railM, cx, 0.5, cz + t, false));
       break;
     }
     case 'stairwell': {

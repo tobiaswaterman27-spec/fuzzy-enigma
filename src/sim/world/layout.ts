@@ -7,7 +7,7 @@ import { PLOTS } from './plots';
 //
 // Coordinate system: metres, x = east, z = south (so -z is "north").
 // Facing angle θ: forward direction = (sin θ, cos θ); θ = 0 faces +z.
-import { LEVEL_DX } from './levels';
+import { LEVEL_DX, levelOf } from './levels';
 import { buildCity, CITY, type City } from './city';
 import type { Vec2 } from '../types';
 import { PRODUCTS } from '../items';
@@ -81,6 +81,7 @@ export type ObstacleKind =
   | 'rug'
   | 'stairs'
   | 'stairwell'
+  | 'stairguard'
   | 'cellbars'
   | 'reception'
   | 'celldoor'
@@ -407,6 +408,46 @@ for (const zc of houseZ) {
 export const MARLOW = { x0: 12, z0: 10, x1: 30, z1: 26 };
 export const MARLOW_LEVELS = ['marlow', 'mc_1', 'flat', 'mc_3'] as const;
 export const STAIR_CORE = { x0: 12.15, z0: 11.3, x1: 14.75, z1: 16.3 };
+/** the two lanes of the stair core: a flight in each, rising in turns */
+const LANES = { a: { x0: 12.15, x1: 13.4 }, b: { x0: 13.5, x1: 14.75 } };
+export interface Flight { x0: number; x1: number; bottom: number; top: number }
+/** at storey k: the flight up from it, and the flight that comes up into it (plan coordinates) */
+export function flightsAt(k: number): { up: Flight | null; down: Flight | null } {
+  const up = (j: number): Flight | null => j < 0 || j > 2 ? null : j % 2 === 0 ? { ...LANES.a, bottom: STAIR_CORE.z0, top: STAIR_CORE.z1 } : { ...LANES.b, bottom: STAIR_CORE.z1, top: STAIR_CORE.z0 };
+  return { up: up(k), down: up(k - 1) };
+}
+const onFlight = (f: Flight | null, x: number, z: number) => !!f && x > f.x0 && x < f.x1 && z >= Math.min(f.bottom, f.top) && z <= Math.max(f.bottom, f.top);
+const isMarlow = (x: number, z: number) => x > STAIR_CORE.x0 - 1 && x < STAIR_CORE.x1 + 1 && z > STAIR_CORE.z0 - 2 && z < STAIR_CORE.z1 + 2;
+/** how far above (or below) its storey's floor someone standing here is: part way up a flight of stairs */
+export function stairY(p: Vec2): number {
+  const k = levelOf(p.x), x = p.x - k * LEVEL_DX;
+  if (!isMarlow(x, p.z) || k < 0 || k > 3) return 0;
+  const { up, down } = flightsAt(k);
+  const D = STAIR_CORE.z1 - STAIR_CORE.z0;
+  if (up && onFlight(up, x, p.z)) return (3.2 * Math.abs(p.z - up.bottom)) / D;
+  if (down && onFlight(down, x, p.z)) return (-3.2 * Math.abs(p.z - down.top)) / D;
+  return 0;
+}
+/** walking off the top of a flight onto the floor above, or off the bottom onto the floor below */
+export function stairCross(p: Vec2): Vec2 {
+  const k = levelOf(p.x), x = p.x - k * LEVEL_DX;
+  if (!isMarlow(x, p.z) || k < 0 || k > 3) return p;
+  const { up, down } = flightsAt(k);
+  if (up && onFlight(up, x, p.z) && Math.abs(p.z - up.top) < 0.45) return { x: p.x + LEVEL_DX, z: p.z };
+  if (down && onFlight(down, x, p.z) && Math.abs(p.z - down.bottom) < 0.45) return { x: p.x - LEVEL_DX, z: p.z };
+  return p;
+}
+/** what keeps you on the stairs: the wall between the flights, the rail on the open side, a rail where a
+ * flight drops away, and the lane under a flight where there is no headroom */
+function stairGuards(k: number): Rect[] {
+  const { up, down } = flightsAt(k);
+  const out: Rect[] = [{ x0: 13.4, x1: 13.5, z0: STAIR_CORE.z0, z1: STAIR_CORE.z1 }, { x0: 14.75, x1: 14.85, z0: STAIR_CORE.z0, z1: STAIR_CORE.z1 }];
+  const endStrip = (f: Flight, z: number) => ({ x0: f.x0, x1: f.x1, z0: z === STAIR_CORE.z1 ? z : z - 0.1, z1: z === STAIR_CORE.z1 ? z + 0.1 : z });
+  if (up) out.push(endStrip(up, up.top));
+  if (down) out.push(endStrip(down, down.bottom));
+  for (const lane of [LANES.a, LANES.b]) if (!(up && up.x0 === lane.x0) && !(down && down.x0 === lane.x0)) out.push({ ...lane, z0: STAIR_CORE.z0, z1: STAIR_CORE.z1 });
+  return out;
+}
 /** the buildings whose public doors lock when they close (see breakins.ts) */
 export const SHOP_IDS = ['market', 'cafe', 'homestore', 'pub', 'unit4', 'jobcentre'];
 /** a building's public doorways, as the strips of wall a locked door fills, with where you stand outside */
@@ -754,7 +795,10 @@ function buildWorldData(homeDesign: HomeDesign): World {
     publicDoors(b).forEach((d, i) => add({ id: `${id}_door${i ? i + 1 : ''}`, kind: 'shopdoor', label: `${b.name} (locked)`, pos: d.out, facing: d.facing, obj: d.mid, locationId: 'outside', range: 1.3 }));
   }
   // ---- Marlow Court: the stair core on every floor, and the other flats (locked: knock, or force the door)
-  for (let k = 0; k < 4; k++) obstacles.push({ kind: 'stairwell', rect: shiftX(STAIR_CORE, k * LEVEL_DX), height: 3.2, solid: true, rot: k, color: k === 3 ? 'top' : undefined });
+  for (let k = 0; k < 4; k++) {
+    obstacles.push({ kind: 'stairwell', rect: shiftX(STAIR_CORE, k * LEVEL_DX), height: 3.2, solid: false, rot: k, color: k === 3 ? 'top' : undefined });
+    for (const g of stairGuards(k)) obstacles.push({ kind: 'stairguard', rect: shiftX(g, k * LEVEL_DX), height: 1, solid: true, rot: k });
+  }
   for (const u of FLAT_UNITS) {
     const P = <T>(o: T): T => shiftX(o, u.level * LEVEL_DX);
     const hue = ['#5b6b7a', '#7a4f3a', '#4f6d60', '#6a5a7a', '#8a7a5a', '#3f5a6f'][FLAT_UNITS.indexOf(u) % 6];
