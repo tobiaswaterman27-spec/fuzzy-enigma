@@ -18,6 +18,7 @@ import { fmtClock } from './clock';
 import { getWorld } from './world/layout';
 import { netWorth, wealthTitle } from './wealth';
 import { buildingAt } from './world/layout';
+import { raining } from './weather';
 import { DISTRICT_NAMES, districtAt, streetAt } from './world/city';
 import { planX } from './world/levels';
 import { currentShift, nextShift } from './employment';
@@ -113,7 +114,10 @@ function appearanceOf(state: GameState, p: Person, remote: boolean): string[] {
   const dc = state.doorCall;
   if (!remote && dc && dc.answerer === p.id && dc.stage !== 'done') out.push('They knocked at your front door and you have opened it: they are on your doorstep and you are standing in the doorway of your home.');
   if (!remote) {
-    if (you.weapon) out.push(`They are holding a ${you.weapon === 'bat' ? 'cricket bat' : 'kitchen knife'} in front of you. That is frightening.`);
+    if (you.weapon) out.push(`They are holding a ${({ bat: 'cricket bat', knife: 'kitchen knife', golf: 'golf club', crowbar: 'crowbar' } as Record<string, string>)[you.weapon]} in front of you. That is frightening.`);
+    if (you.needs.energy < 15) out.push('They look absolutely shattered, barely keeping their eyes open.');
+    if (raining(state) > 0.3 && !buildingAt(you.pos)) out.push('They are soaked through from the rain.');
+    if ((p.relations[you.id] ?? 0) < 15 && you.appearance.outfit === 'outfit_smart') out.push('They look smart, like someone with money.');
     if ((you.drunk ?? 0) > 40) out.push('They are obviously drunk.');
     if (you.injured) out.push('They look hurt, bruised and bloodied.');
     if (you.dog) out.push(`They have their dog ${you.dog.name} with them.`);

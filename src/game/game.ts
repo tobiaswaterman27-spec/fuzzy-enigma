@@ -697,7 +697,7 @@ export class Game {
     }
     // the flat is refitted when an order arrives (or a save is loaded): rebuild it
     if (++this.homeCheck % 30 === 0) { const k = JSON.stringify(s.homeDesigns.flat ?? null); if (k !== this.homeKey) { if (this.homeKey) this.applyHomeDesign(); this.homeKey = k; } }
-    if (!this.paused) { this.chatter(); this.approaches(); }
+    if (!this.paused) { this.chatter(); this.approaches(); this.remarks(); }
     this.views.update(s, this.paused ? 0 : dt, this.player.pos, this.insideId, this.speech);
     // a jump: up and down, knees tucked in the air
     if (this.jumpY > 0 || this.jumpV > 0) {
@@ -814,6 +814,30 @@ export class Game {
   onApproach: (id: string) => void = () => {};
 
   /** now and then someone you pass stops, turns to you and starts a conversation */
+  /** passers-by say something about the state you are in: the smell, the bat, the blood, the drink */
+  private nextRemark = 0;
+  private remarks() {
+    const now = performance.now();
+    if (now < this.nextRemark || this.uiOpen || this.drivingVan() || this.insideId) return;
+    this.nextRemark = now + 3000;
+    const s = this.state, me = this.player;
+    const lines: string[] = [];
+    if (me.needs.hygiene < 20) lines.push('Phwoar. What is that smell?', 'Have you heard of a shower, mate?', 'Ugh, something died round here.');
+    if (me.weapon) lines.push(`Whoa, put the ${({ bat: 'bat', knife: 'knife', golf: 'club', crowbar: 'crowbar' } as Record<string, string>)[me.weapon]} down!`, `${me.appearance.frame === 'f' ? 'She' : 'He'}\'s got a weapon, careful!`, 'Someone ring the police!');
+    if (me.injured || (me.health ?? 100) < 45) lines.push('Are you alright? You\'re bleeding.', 'Blimey, what happened to you?');
+    if ((me.drunk ?? 0) > 40) lines.push('Someone\'s had a few.', 'Steady on, pal.');
+    if (raining(s) > 0.5 && me.needs.hygiene >= 20) lines.push('Lovely weather, eh?');
+    if (!lines.length) return;
+    const o = Object.values(s.people).find((q) => !q.isPlayer && q.visible && !q.sleeping && !q.action && !q.dead && q.down == null && !q.combat && q.npc && Math.hypot(q.pos.x - me.pos.x, q.pos.z - me.pos.z) < 3.2 && (this.remarked.get(q.id) ?? 0) < now);
+    if (!o) return;
+    this.remarked.set(o.id, now + 60000);
+    this.nextRemark = now + 14000;
+    o.facing = Math.atan2(me.pos.x - o.pos.x, me.pos.z - o.pos.z);
+    o.gesture = { clip: me.weapon ? 'scared' : me.needs.hygiene < 20 ? 'shrug' : 'talk', until: s.minute + 0.8 };
+    this.say(o.id, lines[Math.floor(Math.random() * lines.length)], 3.5);
+  }
+  private remarked = new Map<string, number>();
+
   private approaches() {
     const now = performance.now();
     if (now < this.nextApproach || this.uiOpen || this.drivingVan()) return;

@@ -505,7 +505,8 @@ export class UI {
       const c = o.contractId ? s.contracts[o.contractId] : null;
       const job = c ? `${c.title} at ${s.businesses[c.businessId]?.name ?? ''}` : o.npc?.retired ? 'Retired' : 'Looking for work';
       const seen = p.lastSeen?.[id];
-      h += `<div class="card"><b>${esc(o.name)}</b> <span class="tag">${relationLabel(v)}</span><br><span class="muted">${esc(job)}${seen ? ` · last seen ${fmtDate(seen).split(',')[1]} ${fmtClock(seen)}` : ''}</span>
+      const kind = p.partnerId === id ? (p.relationship === 'married' ? 'Spouse' : 'Partner') : c && p.contractId && s.contracts[p.contractId]?.businessId === c.businessId ? 'Colleague' : o.homeId && p.homeId && o.homeId.split('_')[0] === p.homeId.split('_')[0] ? 'Neighbour' : v >= FRIEND_AT ? relationLabel(v) : 'Acquaintance';
+      h += `<div class="card"><b>${esc(o.name)}</b> <span class="tag">${kind}</span>${kind !== relationLabel(v) && v >= FRIEND_AT ? ` <span class="tag">${relationLabel(v)}</span>` : ''}<br><span class="muted">${esc(job)}${seen ? ` · last seen ${fmtDate(seen).split(',')[1]} ${fmtClock(seen)}` : ''}</span>
         <div class="bar"><i style="width:${Math.round(v)}%"></i></div><div class="row">${this.s.people[id]?.knowsYou?.number ? `<button data-msg="${id}">Message</button><button data-call="${id}">Call</button>` : ''}${v >= FRIEND_AT && !m ? `<button data-invite="${id}">Invite for a coffee</button>` : ''}</div></div>`;
     }
     return h;

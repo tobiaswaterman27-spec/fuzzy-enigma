@@ -143,6 +143,7 @@ export function walkStyleFor(p: Person): string {
   if (p.injured || (p.health ?? 100) < 50) return 'walk_limp';
   if ((p.drunk ?? 0) > 40) return 'walk_drunk';
   if (p.needs.mood < 25) return 'walk_sad';
+  if (p.needs.energy < 15) return 'walk_slow';
   if (ageOf(p) > 70) return 'walk_slow';
   if (p.traits.ambition > 0.75 && p.needs.mood > 70) return 'walk_proud';
   if (p.gait) return p.gait;
@@ -481,18 +482,19 @@ class PersonView {
     if (clipAction === 'dance') { let h = 0; for (let i = 0; i < p.id.length; i++) h = (h * 31 + p.id.charCodeAt(i)) >>> 0; clipAction = `g:${['dance', 'dance_b', 'dance_c'][h % 3]}`; }
     if (clipAction === 'workout' && a?.arg === 'treadmill') clipAction = 'g:run';
     // standing about with nothing to do: people check their phones, yawn when tired, stretch
-    if (!clipAction && realSpeed === 0 && !p.isPlayer && !item) {
+    if (!clipAction && realSpeed === 0 && (!p.isPlayer || p.needs.energy < 25) && !item) {
       this.idleFor += dt;
       if (this.idleFidget && performance.now() < this.idleFidget.until) clipAction = `g:${this.idleFidget.clip}`;
       else if (this.idleFor > 6 && Math.random() < dt * 0.12) {
         const tired = p.needs.energy < 35;
         const r = Math.random();
-        const clip = tired && r < 0.5 ? 'yawn' : r < 0.6 ? 'phone' : r < 0.8 ? 'idle' : 'shrug';
+        const clip = p.isPlayer ? 'yawn' : tired && r < 0.5 ? 'yawn' : r < 0.6 ? 'phone' : r < 0.8 ? 'idle' : 'shrug';
         this.idleFidget = { clip, until: performance.now() + (clip === 'phone' ? 6000 : 2600) };
         this.idleFor = 0;
       }
     } else { this.idleFor = 0; this.idleFidget = null; }
     this.anim.walkStyle = walkStyleFor(p);
+    this.stinkFx(p, dt);
     this.anim.update(dt, realSpeed, !!item, clipAction);
     // keep the feet on the floor: whatever the animation does, the lower foot rests on the ground
     if (!this.bedIt && !floored && this.rig.joints && !this.seatAt) {
@@ -642,6 +644,31 @@ class PersonView {
       aimBone(arm, fore, elbow);
       aimBone(fore, h, grip);
     }
+  }
+  /** flies round the head and a whiff coming off someone who has not washed in days */
+  private stink: THREE.Group | null = null;
+  private stinkFx(p: Person, dt: number) {
+    const on = p.needs.hygiene < 22 && p.visible && !p.sleeping;
+    if (!on) { if (this.stink) { this.stink.parent?.remove(this.stink); this.stink = null; } return; }
+    if (!this.stink) {
+      const g = new THREE.Group();
+      const fly = new THREE.MeshBasicMaterial({ color: '#111' });
+      for (let i = 0; i < 3; i++) { const f = new THREE.Mesh(new THREE.SphereGeometry(0.012, 4, 3), fly); f.userData.k = i; g.add(f); }
+      const wisp = new THREE.MeshBasicMaterial({ color: '#b5c96a', transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide });
+      for (let i = 0; i < 2; i++) {
+        const geo = new THREE.PlaneGeometry(0.05, 0.4, 1, 8);
+        const pos = geo.getAttribute('position');
+        for (let v = 0; v < pos.count; v++) pos.setX(v, pos.getX(v) + Math.sin(pos.getY(v) * 14) * 0.035);
+        const m = new THREE.Mesh(geo, wisp.clone()); m.userData.w = i; g.add(m);
+      }
+      this.rig.root.add(g); this.stink = g;
+    }
+    const t = performance.now() / 1000;
+    for (const c of this.stink.children) {
+      if (c.userData.k !== undefined) { const k = c.userData.k as number, a = t * (5 + k) + k * 2.1; c.position.set(Math.cos(a) * 0.22, 1.72 + Math.sin(t * 7 + k) * 0.06, Math.sin(a * 1.3) * 0.22); }
+      else { const w = c.userData.w as number, ph = (t * 0.45 + w * 0.5) % 1; c.position.set(w ? 0.16 : -0.14, 1.25 + ph * 0.7, -0.05); ((c as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = 0.55 * Math.sin(ph * Math.PI); c.rotation.y = t * 0.6; }
+    }
+    void dt;
   }
   private pedal = 0;
   private seatAt: { x: number; z: number; y: number } | null = null;
