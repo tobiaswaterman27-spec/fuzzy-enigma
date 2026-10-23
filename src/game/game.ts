@@ -9,7 +9,7 @@ import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
-import type { GameState } from '../sim/types';
+import type { GameState , Vehicle } from '../sim/types';
 import { step } from '../sim/sim';
 import { cancelAction, focusInteractable, optionsFor, startAction, enforceLocationRules, type ActionOption } from '../sim/actions';
 import { resolveCircle } from '../sim/world/nav';
@@ -19,6 +19,8 @@ import { onPcsoShift } from '../sim/station';
 import { finishRace, RACES } from '../sim/races';
 import { missionGoal } from '../sim/missions';
 import { CarSeq } from '../render/carseq';
+import { RAMPS, type Ramp } from '../sim/world/spots';
+import { landedJump } from '../sim/stunts';
 import { Emergency } from '../render/emergency';
 import { leaveBike } from '../sim/bikes';
 import { BusSeq } from '../render/busseq';
@@ -806,7 +808,9 @@ export class Game {
     else this.vanSpeed -= Math.sign(this.vanSpeed) * Math.min(Math.abs(this.vanSpeed), 2.2 * dt);
     this.vanSpeed = Math.max(-REV, Math.min(MAX, this.vanSpeed));
     // steering: tighter at low speed, the turn rate scales with how fast the wheels roll
-    v.heading += steer * Math.sign(this.vanSpeed) * Math.min(Math.abs(this.vanSpeed), 3.5) * dt * 0.22;
+    // no steering in the air
+    if (!this.air) v.heading += steer * Math.sign(this.vanSpeed) * Math.min(Math.abs(this.vanSpeed), 3.5) * dt * 0.22;
+    else this.vanSpeed = Math.max(this.vanSpeed, this.air.speed * 0.98);
     const nx = v.pos.x + Math.sin(v.heading) * this.vanSpeed * dt, nz = v.pos.z + Math.cos(v.heading) * this.vanSpeed * dt;
     // a boat keeps to the water: the quay wall on one side, open sea (within reason) on the other
     const res = boat ? { x: Math.max(WATER.x0, Math.min(WATER.x1, nx)), z: Math.max(WATER.z0, Math.min(WATER.z1, nz)) } : resolveCircle({ x: nx, z: nz }, fork ? 0.8 : bike ? 0.45 : 1.15, this.collidersWithCars(v.id, false, { x: nx, z: nz }, 16));
@@ -856,6 +860,46 @@ export class Game {
     v.pos = res;
     p.pos = { ...v.pos };
     p.facing = v.heading;
+    if (v.kind === 'car' || v.kind === 'van') this.stunt(v, dt);
+  }
+
+  /** stunt ramps: up the slope, off the lip, through the air, and down again */
+  private air: { y: number; vy: number; t: number; x0: number; z0: number; ramp: number; pitch: number; speed: number } | null = null;
+  private onRamp: Ramp | null = null;
+  private stunt(v: Vehicle, dt: number) {
+    const a = this.air;
+    if (a) {
+      a.t += dt; a.y += a.vy * dt; a.vy -= 9.8 * dt;
+      a.pitch += (0.18 - a.pitch) * Math.min(1, dt * 1.2);
+      if (a.y <= 0) {
+        const impact = -a.vy;
+        if (impact > 6) { damageCar(this.state, v, impact * 0.55, 0); this.audio.crash(impact); }
+        this.onToast(landedJump(this.state, this.player.id, a.ramp, Math.hypot(v.pos.x - a.x0, v.pos.z - a.z0), a.t));
+        this.air = null; v.lift = 0; v.pitch = 0;
+        return;
+      }
+      v.lift = a.y; v.pitch = a.pitch;
+      return;
+    }
+    const fx = Math.sin(v.heading);
+    const r = RAMPS.find((q) => { const along = (v.pos.x - q.x) * q.dir; return along > 0 && along < q.len && Math.abs(v.pos.z - q.z) < 2.2; });
+    if (r && fx * r.dir > 0.7 && this.vanSpeed > 4) {
+      const along = (v.pos.x - r.x) * r.dir;
+      this.onRamp = r;
+      v.lift = (r.h * along) / r.len; v.pitch = -Math.atan2(r.h, r.len);
+      return;
+    }
+    if (this.onRamp) {
+      const q = this.onRamp;
+      this.onRamp = null;
+      // over the lip at speed: airborne
+      if ((v.pos.x - q.x) * q.dir >= q.len && this.vanSpeed > 4) {
+        const ang = Math.atan2(q.h, q.len);
+        this.air = { y: q.h, vy: this.vanSpeed * Math.sin(ang) * 1.15 + 1.5, t: 0, x0: v.pos.x, z0: v.pos.z, ramp: q.id, pitch: -ang, speed: this.vanSpeed };
+        return;
+      }
+    }
+    v.lift = 0; v.pitch = 0;
   }
 
   /** street races: drive into a start ring to go; make each checkpoint in turn; beat the time */
@@ -1067,7 +1111,7 @@ export class Game {
     const climbing = (p.move?.climb ?? 0) > 0;
     const drawn = p.action || climbing ? this.views.people.get(p.id)?.rig.root.getWorldPosition(new THREE.Vector3()) : null;
     const sp = sceneOf(p.pos, stairY(p.pos));
-    const pivot = new THREE.Vector3(drawn?.x ?? sp.x, (drawn ? drawn.y : sp.y) + (van ? (van.kind === 'forklift' ? 2.0 : van.kind === 'boat' ? 1.0 : van.kind === 'bike' ? 1.7 : 2.7) : p.sleeping ? 1.0 : 1.62), drawn?.z ?? p.pos.z);
+    const pivot = new THREE.Vector3(drawn?.x ?? sp.x, (drawn ? drawn.y : sp.y) + (van ? (van.kind === 'forklift' ? 2.0 : van.kind === 'boat' ? 1.0 : van.kind === 'bike' ? 1.7 : 2.7) + (van.lift ?? 0) : p.sleeping ? 1.0 : 1.62), drawn?.z ?? p.pos.z);
     const pitch = this.camPitch;
     const dir = new THREE.Vector3(Math.sin(this.camYaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(this.camYaw) * Math.cos(pitch));
     // over-the-shoulder offset to the right of the view direction

@@ -221,6 +221,7 @@ class PersonView {
     if (this.binbag) this.binbag.visible = root.visible && !seat;
     if (!root.visible) { root.position.set(p.pos.x, 0, p.pos.z); return; }
     if (seat) { this.atWheel(seat, dt); return; }
+    root.rotation.x = 0;
     const key = JSON.stringify(p.appearance);
     // a change of clothes waits for the new body (built in the background) and then swaps it in
     if (key !== this.outfitKey && (requestHuman(p.appearance, true) || (!workerActive() && buildBudget > 0))) {
@@ -495,13 +496,15 @@ class PersonView {
     this.placeProps(a?.type ?? null, p.facing);
   }
   /** sitting in the driver's seat of a car, van or forklift: placed in the cab, turned with it */
-  private atWheel(v: { kind: string; pos: { x: number; z: number }; heading: number }, dt: number) {
+  private atWheel(v: { kind: string; model?: string; pos: { x: number; z: number }; heading: number }, dt: number) {
     const root = this.rig.root;
     // driver's seat: right-hand side (this is Britain); the van's cab is high and forward; the forklift's seat in the middle
-    const [lx, ly, lz] = v.kind === 'van' ? [-0.45, 0.15, 1.35] : v.kind === 'forklift' ? [0, 0.3, -0.25] : v.kind === 'bike' ? [0, 0.32, -0.12] : [-0.4, -0.5, 0.05];
+    const [lx, ly, lz] = v.kind === 'van' ? [-0.45, 0.15, 1.35] : v.kind === 'forklift' ? [0, 0.3, -0.25] : v.kind === 'bike' ? [0, 0.32, -0.12] : v.model === 'coupe' ? [-0.4, -0.66, -0.1] : v.model === 'suv' ? [-0.4, -0.35, 0.05] : [-0.4, -0.5, 0.05];
     const c = Math.cos(v.heading), s = Math.sin(v.heading);
-    root.position.set(v.pos.x + lx * c + lz * s, ly, v.pos.z - lx * s + lz * c);
-    root.rotation.y = v.heading;
+    const lift = (v as { lift?: number }).lift ?? 0, pitch = (v as { pitch?: number }).pitch ?? 0;
+    root.position.set(v.pos.x + lx * c + lz * s, ly + lift - Math.sin(pitch) * lz, v.pos.z - lx * s + lz * c);
+    root.rotation.order = 'YXZ';
+    root.rotation.set(pitch, v.heading, 0);
     this.rig.body.rotation.set(0, 0, 0);
     this.rig.body.position.set(0, 0, 0);
     this.ragdoll = null;
@@ -1395,8 +1398,9 @@ export class Views {
       if (v.kind !== 'car') continue;
       let obj = this.cars.get(v.id);
       if (!obj) { obj = buildCar(v.color ?? '#8a8f94', 0, 0, 0, false, CAR_MODELS.find((m) => m.id === v.model)?.body ?? 'car'); this.scene.add(obj); this.cars.set(v.id, obj); }
-      obj.position.set(v.pos.x, 0, v.pos.z);
-      obj.rotation.y = v.heading;
+      obj.position.set(v.pos.x, v.lift ?? 0, v.pos.z);
+      obj.rotation.order = 'YXZ';
+      obj.rotation.set(v.pitch ?? 0, v.heading, 0);
       // dents, smoke from a hurt engine, fire, and the moment it goes up
       if (v.dmg || v.wrecked) applyCarDamage(obj, v.dmg ?? [0, 0, 0, 0], !!v.wrecked);
       if (v.wrecked && !obj.userData.boomed) { obj.userData.boomed = true; if (state.minute - (v.burning ?? 0) < 3) { this.fx.explode(v.pos.x, v.pos.z); this.onBoom(v.pos.x, v.pos.z); } }

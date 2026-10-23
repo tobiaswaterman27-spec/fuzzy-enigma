@@ -25,3 +25,17 @@ export const phoneBoxesOf = (city: CityLike): Vec2[] => city.props.filter((p) =>
 
 /** Harbour Bikes docks: beside some of the bus shelters */
 export const bikeDocksOf = (city: CityLike): Vec2[] => city.props.filter((p) => p.kind === 'bus_stop').filter((_, i) => i % 4 === 2).map((p) => ({ x: p.x - 5, z: p.z + 0.4 }));
+
+/** stunt ramps across the middle of the road on some long straight streets: the foot of the ramp, the way
+ * it faces (along x, +1 or -1), the length up to the lip and the height of the lip */
+export interface Ramp { id: number; x: number; z: number; dir: 1 | -1; len: number; h: number }
+export const RAMPS: Ramp[] = [
+  { id: 0, x: -830, z: -260, dir: 1, len: 6, h: 1.3 },
+  { id: 1, x: -460, z: -520, dir: -1, len: 6, h: 1.5 },
+  { id: 2, x: 70, z: -650, dir: 1, len: 7, h: 1.6 },
+  { id: 3, x: 450, z: -780, dir: -1, len: 6, h: 1.3 },
+  { id: 4, x: 700, z: -390, dir: 1, len: 7, h: 1.8 },
+  { id: 5, x: -200, z: -910, dir: 1, len: 6, h: 1.4 },
+  { id: 6, x: 320, z: ESPLANADE_Z, dir: 1, len: 8, h: 2.0 },
+  { id: 7, x: -720, z: ESPLANADE_Z, dir: -1, len: 7, h: 1.6 },
+];

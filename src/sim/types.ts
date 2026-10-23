@@ -664,6 +664,9 @@ export interface Vehicle {
   burning?: number | null;
   /** burnt out: a shell that will never move again */
   wrecked?: boolean;
+  /** off the ground (a stunt ramp): height and nose-up angle, for drawing it */
+  lift?: number;
+  pitch?: number;
 }
 
 // -------------------------------------------------------------- housing
@@ -769,6 +772,8 @@ export interface GameState {
   /** a hold-up in progress */
   robbery?: { robber: Id; clerk: Id; business: Id } | null;
   /** today's PCSO beat: the points to check in at */
+  /** stunt ramps whose bonus has been paid */
+  stunts?: number[];
   /** lying on your prison bunk letting the days pass */
   serving?: boolean;
   /** the job you are doing for Vince, and how far he trusts you */

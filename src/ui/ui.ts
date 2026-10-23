@@ -1,6 +1,7 @@
 // UIController: every panel reads authoritative state and requests changes
 // through simulation functions; it never computes money or outcomes itself.
 import { missionText } from '../sim/missions';
+import { RAMPS } from '../sim/world/spots';
 import { rideTrain, trainMinutes, trainStops, TRAIN_FARE } from '../sim/train';
 import { BUS_FARE, busMinutes, busStops } from '../sim/bus';
 import { dealBlackjack, finishBlackjack, type Hand, handValue, hitBlackjack, roulette } from '../sim/venues';
@@ -469,12 +470,20 @@ export class UI {
       for (const [x, n] of Object.entries(AVENUE_NAMES)) if (Math.abs(Number(x) - px) < R) svg += `<text x="${Number(x) + 1.4}" y="${pz - R * 0.4}" font-size="4" fill="#fff" transform="rotate(90 ${Number(x) + 1.4} ${pz - R * 0.4})">${esc(n)}</text>`;
       for (const b of w.buildings) if (!b.unit && !b.level && b.category === 'functional') svg += `<text x="${(b.rect.x0 + b.rect.x1) / 2}" y="${(b.rect.z0 + b.rect.z1) / 2}" font-size="3.6" text-anchor="middle" fill="#fff">${esc(b.name)}</text>`;
     }
+    // things to find: stunt ramps (orange, grey once done), bike docks (blue), phone boxes for Vince (red), rail halts (green)
+    const dot = (x: number, z: number, col: string, title: string, big = 1) => `<circle cx="${x}" cy="${z}" r="${(this.mapZoom ? 1.6 : 6.5) * big}" fill="${col}" stroke="#fff" stroke-width="${this.mapZoom ? 0.4 : 1.6}"><title>${esc(title)}</title></circle>`;
+    for (const r of RAMPS) svg += dot(r.x + r.dir * r.len / 2, r.z, (this.s.stunts ?? []).includes(r.id) ? '#9e9e9e' : '#ff8f00', 'Stunt ramp', 1.2);
+    for (const it of Object.values(w.interactables)) {
+      if (it.kind === 'bike_dock') svg += dot(it.pos.x, it.pos.z, '#1f6fd1', 'Harbour Bikes dock');
+      else if (it.kind === 'payphone') svg += dot(it.pos.x, it.pos.z, '#c8102e', 'Phone box (Vince)', 0.8);
+      else if (it.kind === 'platform' && it.id.startsWith('halt_')) svg += dot(it.pos.x, it.pos.z, '#2e7d32', it.label, 1.2);
+    }
     svg += `<circle cx="${px}" cy="${pz}" r="${this.mapZoom ? 2.6 : 12}" fill="#ff3b30" stroke="#fff" stroke-width="${this.mapZoom ? 0.8 : 3}"/></svg>`;
     const where = `${DISTRICT_NAMES[districtAt(px, pz)]} · ${streetAt(px, pz)}`;
     const legend = w.buildings.filter((b) => b.category !== 'decorative' && !b.id.startsWith('house_') && !b.unit && !b.level).map((b) => `<div class="line"><span><i class="sw" style="background:${cat[b.category]}"></i>${esc(b.name)}</span><span class="muted">${esc(b.role)}</span></div>`).join('');
     const wp = this.game.waypoint;
     if (wp) svg = svg.replace('</svg>', `<circle cx="${wp.x}" cy="${wp.z}" r="${this.mapZoom ? 3 : 14}" fill="#ffd400" stroke="#000" stroke-width="${this.mapZoom ? 0.6 : 3}"/></svg>`);
-    return `<div class="row"><b>${esc(where)}</b><button data-mapzoom="1">${this.mapZoom ? 'Whole city' : 'Close up'}</button>${wp ? '<button data-clearwp="1">Clear waypoint</button>' : ''}</div><p class="muted">Tap the map to set a waypoint.</p>${svg}<p class="muted"><i class="sw" style="background:#2e8b57"></i>usable &nbsp; <i class="sw" style="background:#c48a2c"></i>simulated, limited access &nbsp; <i class="sw" style="background:#6d7f99"></i>landmark</p>${legend}`;
+    return `<div class="row"><b>${esc(where)}</b><button data-mapzoom="1">${this.mapZoom ? 'Whole city' : 'Close up'}</button>${wp ? '<button data-clearwp="1">Clear waypoint</button>' : ''}</div><p class="muted">Tap the map to set a waypoint.</p>${svg}<p class="muted"><i class="sw" style="background:#2e8b57"></i>usable &nbsp; <i class="sw" style="background:#c48a2c"></i>simulated, limited access &nbsp; <i class="sw" style="background:#6d7f99"></i>landmark &nbsp; <i class="sw" style="background:#ff8f00"></i>stunt ramp &nbsp; <i class="sw" style="background:#1f6fd1"></i>bike dock &nbsp; <i class="sw" style="background:#c8102e"></i>phone box &nbsp; <i class="sw" style="background:#2e7d32"></i>rail halt</p>${legend}`;
   }
 
   tab_shop(): string {

@@ -1394,6 +1394,23 @@ function buildObstacle(o: Obstacle): THREE.Object3D {
       grp.traverse((x) => (x.userData.dynamic = true));
       break;
     }
+    case 'ramp': {
+      // a steel stunt ramp: a sloped deck rising to the lip, chevrons on it, a frame underneath
+      const dir = (o.rot ?? 1) > 0 ? 1 : -1, L = W, H = o.height;
+      const deckM = M('#c9a227', 0.6), frameM = metal('#4b5258', 0.5), chev = M('#1a1a1a', 0.7);
+      const len = Math.hypot(L, H), ang = Math.atan2(H, L);
+      const deck = box(len, 0.12, D, deckM, cx, H / 2, cz);
+      deck.rotation.z = dir * ang;
+      grp.add(deck);
+      for (let k = 0.15; k < 0.95; k += 0.2) {
+        const c = box(0.25, 0.02, D * 0.8, chev, cx - dir * (L / 2) + dir * L * k, H * k + 0.08, cz, false);
+        c.rotation.z = dir * ang; grp.add(c);
+      }
+      const lipX = cx + dir * (L / 2);
+      grp.add(box(0.15, H, D, frameM, lipX - dir * 0.08, H / 2, cz));
+      for (const s of [-1, 1]) grp.add(box(L, 0.1, 0.1, frameM, cx, 0.05, cz + s * (D / 2 - 0.1)));
+      break;
+    }
     case 'bike_rack': {
       // a row of steel hoops, a blue totem with the scheme's sign, and a couple of docked bikes
       const steel = metal('#8d949a', 0.35), blue = M('#1f6fd1', 0.4);

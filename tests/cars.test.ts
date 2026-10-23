@@ -41,3 +41,16 @@ describe('Car damage', () => {
     expect(auditLedger(s)).toEqual([]);
   });
 });
+
+import { landedJump } from '../src/sim/stunts';
+describe('Stunt jumps', () => {
+  it('pays the first decent jump off each ramp, once', () => {
+    const s = createNewGame(7, setup);
+    const me = s.people.player;
+    expect(landedJump(s, me.id, 2, 8, 0.5)).toMatch(/Jump/);
+    expect(landedJump(s, me.id, 2, 22, 1.4)).toMatch(/UNIQUE STUNT BONUS/);
+    expect(landedJump(s, me.id, 2, 30, 1.8)).not.toMatch(/BONUS/);
+    expect(s.stunts).toEqual([2]);
+    expect(auditLedger(s)).toEqual([]);
+  });
+});

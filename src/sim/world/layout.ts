@@ -1,5 +1,5 @@
 // Static world definition for the Harbourside starting district.
-import { bikeDocksOf, HALTS, phoneBoxesOf, turnstilesOf } from './spots';
+import { bikeDocksOf, HALTS, phoneBoxesOf, RAMPS, turnstilesOf } from './spots';
 import { STALLS } from '../streetmarket';
 import { defaultDesign, furnish, type HomeDesign, type PlacedItem } from './homes';
 import { PLOTS } from './plots';
@@ -87,6 +87,7 @@ export type ObstacleKind =
   | 'halt_sign'
   | 'phonebox'
   | 'bike_rack'
+  | 'ramp'
   | 'cellbars'
   | 'reception'
   | 'clothes_rack'
@@ -845,6 +846,8 @@ function buildWorldData(homeDesign: HomeDesign): World {
     obstacles.push({ kind: 'phonebox', rect: { x0: b.x - 0.5, z0: b.z - 0.5, x1: b.x + 0.5, z1: b.z + 0.5 }, height: 2.5, solid: false });
     add({ id: `payphone_${i}`, kind: 'payphone', label: 'Phone box', pos: { x: b.x, z: b.z + 1.0 }, facing: Math.PI, obj: { x: b.x, z: b.z }, locationId: 'outside', range: 1.8 });
   });
+  // ---- stunt ramps across the road (drawn only; cars ride up them)
+  for (const r of RAMPS) obstacles.push({ kind: 'ramp', rect: { x0: Math.min(r.x, r.x + r.dir * r.len), x1: Math.max(r.x, r.x + r.dir * r.len), z0: r.z - 2.2, z1: r.z + 2.2 }, height: r.h, solid: false, rot: r.dir });
   // ---- Harbour Bikes docks
   bikeDocksOf(buildCity(B.filter((b) => !b.unit && !b.level).map((b) => b.rect))).forEach((d, i) => {
     obstacles.push({ kind: 'bike_rack', rect: { x0: d.x - 1.6, z0: d.z - 0.9, x1: d.x + 1.6, z1: d.z - 0.3 }, height: 1.0, solid: false });
