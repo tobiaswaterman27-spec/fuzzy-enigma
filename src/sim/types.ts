@@ -344,6 +344,8 @@ export interface Person {
   down?: number | null;
   /** knocked off their feet for a moment (not collapsed): they get back up at this minute */
   downUntil?: number | null;
+  /** has already dropped their cash on being put down */
+  dropped?: boolean;
   /** clothes kept by the prison while you serve your sentence */
   ownOutfit?: string;
   /** the last blow taken: when, from which way, how hard, and who threw it (for the body's reaction) */
@@ -772,6 +774,10 @@ export interface GameState {
   /** a hold-up in progress */
   robbery?: { robber: Id; clerk: Id; business: Id } | null;
   /** today's PCSO beat: the points to check in at */
+  /** cash on the ground, dropped by someone you put down: picked up by walking over it */
+  drops?: { id: Id; pos: Vec2; amount: number; from: Id; at: number }[];
+  /** gang corners: the day each was last cleared, and how things stand there now */
+  turf?: Record<string, { day: number; warned?: number; hostile?: number }>;
   /** stunt ramps whose bonus has been paid */
   stunts?: number[];
   /** lying on your prison bunk letting the days pass */

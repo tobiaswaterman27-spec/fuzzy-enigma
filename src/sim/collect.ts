@@ -29,7 +29,18 @@ export function walletSpots(): Vec2[] {
 /** every minute: anything at your feet is yours */
 export function walletsTick(state: GameState) {
   const me = state.people[state.playerId];
+  // dropped cash lies about for a couple of hours before someone else has it
+  if (state.drops?.length) state.drops = state.drops.filter((d) => state.minute - d.at < 120);
   if (!me.visible || me.where === 'vehicle') return;
+  for (const d of [...(state.drops ?? [])]) {
+    if (Math.abs(d.pos.x - me.pos.x) > 1.2 || Math.abs(d.pos.z - me.pos.z) > 1.2) continue;
+    state.drops = state.drops!.filter((x) => x !== d);
+    const src = state.people[d.from];
+    const r = src ? transfer(state, { from: src.accountId, to: me.accountId, amount: d.amount, reason: 'transfer', memo: 'Cash off the pavement', key: `drop:${d.id}` }) : { ok: false };
+    if (!r.ok) continue;
+    me.gesture = { clip: 'pickup', until: state.minute + 0.35 };
+    news(state, 'info', `+${fmtMoney(d.amount)}`, 'Cash, scooped up off the ground.', true);
+  }
   const found = (state.wallets ??= []);
   walletSpots().forEach((p, i) => {
     if (found.includes(i) || Math.abs(p.x - me.pos.x) > 1.6 || Math.abs(p.z - me.pos.z) > 1.6) return;

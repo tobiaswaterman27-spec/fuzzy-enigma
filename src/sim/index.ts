@@ -51,3 +51,4 @@ export * from './newyear';
 export * from './boats';
 export * from './pub';
 export * from './rescue';
+export * from './gangs';

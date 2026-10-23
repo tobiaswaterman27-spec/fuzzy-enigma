@@ -243,6 +243,9 @@ export const GARMENTS: Record<string, Garment> = {
   uniform_wholesale: { top: { color: '#3a4652', tex: 'twill', sleeve: 'long', hem: 0.97 }, bottom: { color: '#2b3440', tex: 'twill', length: 'long' }, shoes: '#4a3520', over: { kind: 'vest', color: '#f2d000' } },
   uniform_police: { top: { color: '#f2f4f6', tex: 'shirt', sleeve: 'short', collar: '#f2f4f6', hem: 0.96 }, bottom: { color: '#15181d', tex: 'twill', length: 'long' }, shoes: '#0d0d0f', over: { kind: 'vest', color: '#d8e010' } },
   uniform_cafe: { top: { color: '#f3f0ea', tex: 'shirt', sleeve: 'short', collar: '#f3f0ea', hem: 0.96 }, bottom: { color: '#222', tex: 'twill', length: 'long' }, shoes: '#181818', over: { kind: 'apron', color: '#7b2d26' } },
+  // the gangs' tracksuits: the Dock Rats in red, the Northfield Crew in blue
+  gang_red: { top: { color: '#b71c1c', tex: 'knit', sleeve: 'long', hem: 0.97 }, bottom: { color: '#1a1a1a', tex: 'knit', length: 'long' }, shoes: '#f2f2f2' },
+  gang_blue: { top: { color: '#1565c0', tex: 'knit', sleeve: 'long', hem: 0.97 }, bottom: { color: '#1a1a1a', tex: 'knit', length: 'long' }, shoes: '#f2f2f2' },
   // prison greys: a sweatshirt and joggers, plimsolls
   outfit_prison: { top: { color: '#878c91', tex: 'knit', sleeve: 'long', hem: 0.97 }, bottom: { color: '#6c7176', tex: 'knit', length: 'long' }, shoes: '#2a2a2a' },
 };

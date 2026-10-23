@@ -101,9 +101,18 @@ export function hurt(state: GameState, p: Person, dmg: number, cause: string, by
   if (bleed) p.bleeding = Math.min(3, (p.bleeding ?? 0) + (bleed * dmg) / 20);
   if (dmg >= 9 || bleed) splash(state, p.pos, 0.18 + dmg / 90);
   p.needs.mood = clamp(p.needs.mood - dmg / 3, 0, 100);
-  if (p.health <= 0) { kill(state, p, cause, byId); return; }
+  if (p.health <= 0) { dropCash(state, p, byId); kill(state, p, cause, byId); return; }
   if (p.health < 55) p.injured = { severity: Math.max(p.injured?.severity ?? 0, Math.round(100 - p.health)), cause, since: p.injured?.since ?? state.minute };
-  if (p.health <= 20 && (p.down == null || p.downUntil != null)) knockDown(state, p);
+  if (p.health <= 20 && (p.down == null || p.downUntil != null)) { knockDown(state, p); dropCash(state, p, byId); }
+}
+
+/** put someone down and what was in their pockets ends up on the pavement (once) */
+function dropCash(state: GameState, p: Person, byId: Id | null) {
+  if (p.isPlayer || !byId || !state.people[byId]?.isPlayer || p.dropped) return;
+  p.dropped = true;
+  const amount = Math.min(state.ledger.accounts[p.accountId]?.balance ?? 0, 500 + randInt(state, 0, 6000));
+  if (amount <= 0) return;
+  (state.drops ??= []).push({ id: nextId(state, 'drop'), pos: { x: p.pos.x + (rand(state) - 0.5) * 0.8, z: p.pos.z + (rand(state) - 0.5) * 0.8 }, amount, from: p.id, at: state.minute });
 }
 
 /** blood on the ground */

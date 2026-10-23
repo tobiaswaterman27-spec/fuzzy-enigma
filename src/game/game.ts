@@ -51,7 +51,7 @@ import { safeWrite, loadSlot, type KV } from '../sim/save';
 import { news } from '../sim/events';
 import { CAR_MODELS, damageCar, enterCar, exitCar, stealCar, stealOwnedCar, stealParked } from '../sim/cars';
 import { forkliftAction } from '../sim/forklift';
-import { attack, attackTarget, crime, flee, hitByVehicle, nextWeapon } from '../sim/health';
+import { attack, attackTarget, crime, flee, floor, hitByVehicle, nextWeapon } from '../sim/health';
 import { fitnessFactor, trainRun } from '../sim/leisure';
 import { taxiBump, taxiTarget } from '../sim/taxi';
 import { castFromBoat, fishingBlocker, strike } from '../sim/fishing';
@@ -783,6 +783,7 @@ export class Game {
   }
   private vanSpeed = 0;
   private bumpCooldown = 0;
+  private diveCooldown = new Map<string, number>();
   private fireWarned = false;
   private homeCheck = 0;
   private homeKey = '';
@@ -837,6 +838,19 @@ export class Game {
         if (o.isPlayer || !o.visible || o.dead || o.where === 'vehicle') continue;
         const dx = o.pos.x - res.x, dz = o.pos.z - res.z;
         const along = dx * fx + dz * fz, side = dx * fz - dz * fx;
+        // someone in the path of a car coming fast: most throw themselves out of the way
+        if (!bike && this.vanSpeed > 7 && along > 3 && along < 11 && Math.abs(side) < 1.8 && o.down == null && !o.police && (this.diveCooldown.get(o.id) ?? 0) < now) {
+          this.diveCooldown.set(o.id, now + 6000);
+          if (Math.random() < 0.6) {
+            const away = side >= 0 ? 1 : -1;
+            const dir = v.heading + (away > 0 ? -Math.PI / 2 : Math.PI / 2);
+            o.pos = resolveCircle({ x: o.pos.x + Math.sin(dir) * 1.6, z: o.pos.z + Math.cos(dir) * 1.6 }, 0.3);
+            o.hit = { at: this.state.minute, dir, heavy: false, by: p.id, force: 3.2 };
+            floor(this.state, o, 0.8);
+            o.gesture = { clip: 'scared', until: this.state.minute + 1.5 };
+            continue;
+          }
+        }
         if (Math.abs(along) > (fork ? 1.3 : bike ? 0.9 : 2.3) || Math.abs(side) > (fork ? 0.8 : bike ? 0.45 : 1.05)) continue;
         if ((this.hitCooldown.get(o.id) ?? 0) > now) continue;
         this.hitCooldown.set(o.id, now + 1500);
@@ -963,7 +977,23 @@ export class Game {
       }
       if (m) { m.visible = near; const gl = m.getObjectByName('glint'); if (gl) { gl.rotation.y += 0.05; gl.position.y = 0.5 + Math.sin(performance.now() / 250 + i) * 0.08; } }
     });
+    // cash on the pavement: a green bundle of notes, spinning gently
+    const drops = this.state.drops ?? [];
+    for (const [id, m] of this.dropMeshes) if (!drops.some((d) => d.id === id)) { this.scene.remove(m); this.dropMeshes.delete(id); }
+    for (const d of drops) {
+      let m = this.dropMeshes.get(d.id);
+      if (!m) {
+        m = new THREE.Group();
+        const note = new THREE.MeshStandardMaterial({ color: '#4caf50', emissive: '#2e7d32', emissiveIntensity: 0.6, roughness: 0.6 });
+        for (let k = 0; k < 3; k++) { const n = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.02, 0.15), note); n.position.y = k * 0.025; n.rotation.y = k * 0.3; m.add(n); }
+        m.position.set(d.pos.x, 0.25, d.pos.z);
+        this.scene.add(m); this.dropMeshes.set(d.id, m);
+      }
+      m.rotation.y += 0.03;
+      m.position.y = 0.25 + Math.sin(performance.now() / 300) * 0.05;
+    }
   }
+  private dropMeshes = new Map<string, THREE.Object3D>();
 
   private updatePlayer(dt: number) {
     const p = this.player;

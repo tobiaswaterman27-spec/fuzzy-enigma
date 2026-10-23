@@ -24,6 +24,8 @@ export const OUTFITS: Record<string, OutfitStyle> = {
   uniform_wholesale: { top: '#3d4a57', bottom: '#2b3440', shoes: '#4a3520', kind: 'hivis', accent: '#f4d000' },
   uniform_cafe: { top: '#f2efe8', bottom: '#242424', shoes: '#1b1b1b', kind: 'apron', accent: '#7b2d26' },
   outfit_prison: { top: '#8a8f94', bottom: '#6b7076', shoes: '#2a2a2a', kind: 'tee' },
+  gang_red: { top: '#b71c1c', bottom: '#1a1a1a', shoes: '#f2f2f2', kind: 'tee' },
+  gang_blue: { top: '#1565c0', bottom: '#1a1a1a', shoes: '#f2f2f2', kind: 'tee' },
 };
 
 // --------------------------------------------------------------- rig
