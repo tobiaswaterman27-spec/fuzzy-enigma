@@ -120,6 +120,11 @@ export class Audio {
     this.thud(70, 2.5 + dist / 600, Math.min(0.9, 500 / dist));
     this.thud(140, 1.8, Math.min(0.6, 300 / dist));
   }
+  /** a flock of pigeons going up: a quick clatter of wingbeats */
+  wings(n: number) {
+    if (!this.ctx || this.muted) return;
+    for (let k = 0; k < Math.min(10, n * 2); k++) setTimeout(() => this.thud(900 + Math.random() * 900, 0.06, 0.07), k * 45 + Math.random() * 30);
+  }
   /** a car going up */
   boom(dist: number) {
     if (!this.ctx || this.muted) return;

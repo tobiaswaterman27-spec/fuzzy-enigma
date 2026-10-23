@@ -22,6 +22,7 @@ import { CarSeq } from '../render/carseq';
 import { RAMPS, type Ramp } from '../sim/world/spots';
 import { landedJump } from '../sim/stunts';
 import { Emergency } from '../render/emergency';
+import { Pigeons } from '../render/pigeons';
 import { leaveBike } from '../sim/bikes';
 import { BusSeq } from '../render/busseq';
 import { STREETS } from '../sim/world/city';
@@ -252,6 +253,7 @@ export class Game {
   private theft: { at: number; kerb: number | null; car: string | null } | null = null;
   private carSeq!: CarSeq;
   private emergency!: Emergency;
+  private pigeons!: Pigeons;
   private busSeq!: BusSeq;
   private wasOnBus = false;
   /** which way the road is from a pavement spot: +1 towards +z, -1 towards -z */
@@ -331,6 +333,7 @@ export class Game {
     this.carSeq = new CarSeq(this.scene);
     this.traffic.onHorn = (x, z) => this.audio.horn(Math.hypot(x - this.player.pos.x, z - this.player.pos.z));
     this.emergency = new Emergency(this.scene, this.views.fx);
+    this.pigeons = new Pigeons(this.scene);
     this.busSeq = new BusSeq(this.scene);
     this.police = new PoliceCar(this.scene);
     this.gatheringProps = new GatheringProps(this.scene);
@@ -719,6 +722,15 @@ export class Game {
     this.world.update(s, dt);
     this.emergency.update(s, this.paused ? 0 : dt, { x: planX(this.player.pos.x), z: this.player.pos.z });
     this.audio.siren(this.emergency.sirenAt);
+    if (!this.insideId) {
+      // the pigeons mind the player, anyone walking past, and the traffic
+      const px = planX(this.player.pos.x), pz = this.player.pos.z;
+      const threats: { x: number; z: number; speed: number; car?: boolean }[] = [{ x: px, z: pz, speed: this.drivingVan() ? Math.abs(this.vanSpeed) : Math.hypot(this.vel.x, this.vel.z), car: !!this.drivingVan() }];
+      for (const p of Object.values(s.people)) if (p.id !== this.player.id && p.where === 'outside' && p.visible && Math.abs(planX(p.pos.x) - px) < 60 && Math.abs(p.pos.z - pz) < 60) threats.push({ x: planX(p.pos.x), z: p.pos.z, speed: p.move ? 1.3 : 0 });
+      for (const c of this.traffic.cars) if (Math.abs(c.obj.position.x - px) < 60 && Math.abs(c.obj.position.z - pz) < 60) threats.push({ x: c.obj.position.x, z: c.obj.position.z, speed: c.speed });
+      this.pigeons.update(this.paused ? 0 : dt, threats, { x: px, z: pz }, true);
+      if (this.pigeons.flushed) this.audio.wings(this.pigeons.flushed);
+    } else this.pigeons.update(0, [], { x: planX(this.player.pos.x), z: this.player.pos.z }, false);
     this.world.cull(this.camera.position.x, this.camera.position.z);
     this.city.update(this.camera, this.nightLevel);
     this.city.setSignals(this.traffic.clock);
