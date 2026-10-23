@@ -314,7 +314,11 @@ class PersonView {
         root.position.set(it.obj.x, 0, it.obj.z);
         root.rotation.y = Math.atan2(it.obj.x - it.pos.x, it.obj.z - it.pos.z);
         yaw = root.rotation.y;
-      } else if ((a?.type === 'sit' || a?.type === 'watch_tv') && it && (it.kind === 'sofa' || it.kind === 'chair' || it.kind === 'iv_chair' || it.kind === 'iv_host')) {
+      } else if (a?.type === 'feed_pigeons' && it) {
+        // back to the bench, scattering crumbs on the ground in front
+        root.rotation.y = Math.atan2(it.pos.x - it.obj.x, it.pos.z - it.obj.z);
+        yaw = root.rotation.y;
+      } else if ((a?.type === 'sit' || a?.type === 'watch_tv') && it && (it.kind === 'sofa' || it.kind === 'chair' || it.kind === 'iv_chair' || it.kind === 'iv_host' || it.kind === 'bench')) {
         // sit on the seat itself, facing out from the back rest
         const dx = it.pos.x - it.obj.x, dz = it.pos.z - it.obj.z, l = Math.hypot(dx, dz) || 1;
         root.position.set(it.obj.x + (dx / l) * (it.kind === 'sofa' ? 0.12 : 0.02), 0, it.obj.z + (dz / l) * (it.kind === 'sofa' ? 0.12 : 0.02));

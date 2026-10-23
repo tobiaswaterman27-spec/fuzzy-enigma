@@ -254,6 +254,14 @@ export class Game {
   private carSeq!: CarSeq;
   private emergency!: Emergency;
   private pigeons!: Pigeons;
+  /** where the player is throwing crumbs: the ground in front of the bench */
+  private crumbsAt() {
+    const it = getWorld().interactables[this.player.action?.target ?? ''];
+    const px = planX(this.player.pos.x), pz = this.player.pos.z;
+    if (!it) return { x: px, z: pz };
+    const dx = it.pos.x - it.obj.x, dz = it.pos.z - it.obj.z, l = Math.hypot(dx, dz) || 1;
+    return { x: px + dx / l * 1.8, z: pz + dz / l * 1.8 };
+  }
   private busSeq!: BusSeq;
   private wasOnBus = false;
   /** which way the road is from a pavement spot: +1 towards +z, -1 towards -z */
@@ -725,10 +733,11 @@ export class Game {
     if (!this.insideId) {
       // the pigeons mind the player, anyone walking past, and the traffic
       const px = planX(this.player.pos.x), pz = this.player.pos.z;
-      const threats: { x: number; z: number; speed: number; car?: boolean }[] = [{ x: px, z: pz, speed: this.drivingVan() ? Math.abs(this.vanSpeed) : Math.hypot(this.vel.x, this.vel.z), car: !!this.drivingVan() }];
+      const feeding = this.player.action?.type === 'feed_pigeons';
+      const threats: { x: number; z: number; speed: number; car?: boolean }[] = feeding ? [] : [{ x: px, z: pz, speed: this.drivingVan() ? Math.abs(this.vanSpeed) : Math.hypot(this.vel.x, this.vel.z), car: !!this.drivingVan() }];
       for (const p of Object.values(s.people)) if (p.id !== this.player.id && p.where === 'outside' && p.visible && Math.abs(planX(p.pos.x) - px) < 60 && Math.abs(p.pos.z - pz) < 60) threats.push({ x: planX(p.pos.x), z: p.pos.z, speed: p.move ? 1.3 : 0 });
       for (const c of this.traffic.cars) if (Math.abs(c.obj.position.x - px) < 60 && Math.abs(c.obj.position.z - pz) < 60) threats.push({ x: c.obj.position.x, z: c.obj.position.z, speed: c.speed });
-      this.pigeons.update(this.paused ? 0 : dt, threats, { x: px, z: pz }, true);
+      this.pigeons.update(this.paused ? 0 : dt, threats, { x: px, z: pz }, true, feeding ? this.crumbsAt() : null);
       if (this.pigeons.flushed) this.audio.wings(this.pigeons.flushed);
     } else this.pigeons.update(0, [], { x: planX(this.player.pos.x), z: this.player.pos.z }, false);
     this.world.cull(this.camera.position.x, this.camera.position.z);

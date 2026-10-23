@@ -306,7 +306,28 @@ export function buildCity(avoid: Rect[]): City {
       if (cx < 0 && cz > -650 && x > r.x0 + 18 && x < r.x1 - 28 && z > r.z0 + 18 && z < r.z1 - 38) continue;
       props.push({ kind: 'tree', x, z, rot: rnd() * 6, s: 0.8 + rnd() * 0.7 });
     }
-    for (let k = -3; k <= 3; k++) props.push({ kind: 'bench', x: cx + 3.2, z: cz + k * 12 + 6, rot: -Math.PI / 2 });
+    const lake = cx < 0 && cz > -650 ? { x0: r.x0 + 20, z0: r.z0 + 20, x1: r.x1 - 30, z1: r.z1 - 40 } : null;
+    for (let k = -3; k <= 3; k++) {
+      const z = cz + k * 12 + 6;
+      if (lake && z > lake.z0 - 1 && z < lake.z1 + 1) continue;
+      props.push({ kind: 'bench', x: cx + 3.2, z, rot: -Math.PI / 2 });
+    }
+    // round the lake: benches along the near shore, looking out over the water
+    if (lake) for (let x = lake.x0 + 6; x < lake.x1 - 4; x += 14) if (Math.abs(x - cx) > 5) props.push({ kind: 'bench', x, z: lake.z1 + 1.6, rot: Math.PI });
+    // walking: the two paths, joined to the pavements round the park where they come out
+    const xA = r.x0 - W, xB = r.x1 + W, zA = r.z0 - W, zB = r.z1 + W;
+    const mid = node(cx, cz);
+    const ends: [number, number, [number, number][]][] = [
+      [cx, zA + C, [[xA + C, zA + C], [xB - C, zA + C]]], [cx, zB - C, [[xA + C, zB - C], [xB - C, zB - C]]],
+      [xA + C, cz, [[xA + C, zA + C], [xA + C, zB - C]]], [xB - C, cz, [[xB - C, zA + C], [xB - C, zB - C]]],
+    ];
+    for (const [x, z, cs] of ends) {
+      const e = node(x, z);
+      const ids = cs.map(([u, v]) => corner(u, v)).filter((q): q is string => !!q);
+      if (!ids.length) continue;
+      ids.forEach((q) => link(e, q));
+      if (lake && z === zB - C) { const shore = node(cx, lake.z1 + 2.4); link(mid, shore); link(shore, e); } else link(mid, e);
+    }
   }
   function beach(r: Rect, rnd: () => number) {
     // the esplanade's seaward side: a promenade, sand, beach huts and parasols

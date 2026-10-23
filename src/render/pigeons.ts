@@ -39,7 +39,7 @@ export class Pigeons {
   }
 
   private pickSpots() {
-    if (!this.spots) this.spots = getWorld().city.props.filter((p) => p.kind === 'bench' || p.kind === 'fountain').map((p, i) => ({ x: p.x + (p.kind === 'bench' ? Math.cos(p.rot) * 2.5 : 4) + (i % 3) - 1, z: p.z + (p.kind === 'bench' ? -Math.sin(p.rot) * 2.5 : 1) }));
+    if (!this.spots) this.spots = getWorld().city.props.filter((p) => p.kind === 'bench' || p.kind === 'fountain').map((p, i) => ({ x: p.x + (p.kind === 'bench' ? Math.sin(p.rot) * 2.6 : 4) + (i % 3) - 1, z: p.z + (p.kind === 'bench' ? Math.cos(p.rot) * 2.6 : 1) }));
     return this.spots;
   }
 
@@ -54,7 +54,8 @@ export class Pigeons {
   }
 
   /** threats: things moving about (the player, anyone walking, cars), with how fast they are going */
-  update(dt: number, threats: { x: number; z: number; speed: number; car?: boolean }[], at: { x: number; z: number }, visible: boolean) {
+  /** feed: where crumbs are being thrown (the nearest flock comes over, or one drops in) */
+  update(dt: number, threats: { x: number; z: number; speed: number; car?: boolean }[], at: { x: number; z: number }, visible: boolean, feed: { x: number; z: number } | null = null) {
     this.flushed = 0;
     const t = performance.now() / 1000;
     // keep a few flocks at the benches near you, drop the ones well behind
@@ -68,6 +69,18 @@ export class Pigeons {
         // not every bench has its birds
         if (((Math.floor(s.x) * 7 + Math.floor(s.z) * 13) & 3) === 0) continue;
         this.flocks.push(this.spawn(s.x, s.z));
+      }
+    }
+    if (feed) {
+      // crumbs: the nearest flock comes over, or a new one flies in from somewhere
+      let f = this.flocks.filter((q) => Math.hypot(q.x - feed.x, q.z - feed.z) < 30).sort((a, b) => Math.hypot(a.x - feed.x, a.z - feed.z) - Math.hypot(b.x - feed.x, b.z - feed.z))[0];
+      if (!f) {
+        f = this.spawn(feed.x, feed.z); this.flocks.push(f);
+        for (const b of f.birds) { const a = Math.random() * 6.3; b.x = feed.x + Math.cos(a) * 18; b.z = feed.z + Math.sin(a) * 18; b.y = 8 + Math.random() * 3; b.mode = 'land'; }
+      }
+      if (Math.hypot(f.x - feed.x, f.z - feed.z) > 0.5) {
+        f.x = feed.x; f.z = feed.z;
+        for (const b of f.birds) if (b.mode === 'ground' && Math.hypot(b.x - feed.x, b.z - feed.z) > 2.5) { b.mode = 'land'; b.vy = 2.5; }
       }
     }
     let i = 0, w = 0;

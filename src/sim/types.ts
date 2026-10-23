@@ -186,6 +186,7 @@ export type ActionType =
   | 'garage'
   | 'hire_bike'
   | 'ice_cream'
+  | 'feed_pigeons'
   | 'atm_balance'
   | 'smash_atm'
   | 'ride_bike'

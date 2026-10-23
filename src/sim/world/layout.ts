@@ -845,6 +845,11 @@ function buildWorldData(homeDesign: HomeDesign): World {
     add({ id: h.id, kind: 'platform', label: `${h.name} (rail halt)`, pos: h.pos, facing: Math.PI, obj: { x: h.pos.x, z: h.pos.z - 0.9 }, locationId: 'outside', range: 2.2 });
     obstacles.push({ kind: 'halt_sign', rect: { x0: h.pos.x - 1.4, z0: h.pos.z - 1.5, x1: h.pos.x + 1.4, z1: h.pos.z - 1.2 }, height: 3.0, solid: false });
   }
+  // ---- every bench on the city's pavements and in its parks can be sat on
+  buildCity(B.filter((b) => !b.unit && !b.level).map((b) => b.rect)).props.filter((p) => p.kind === 'bench').forEach((b, i) => {
+    const fx = Math.sin(b.rot), fz = Math.cos(b.rot);
+    add({ id: `cbench_${i}`, kind: 'bench', label: 'Bench', pos: { x: b.x + fx * 0.95, z: b.z + fz * 0.95 }, facing: b.rot + Math.PI, obj: { x: b.x + fx * 0.3, z: b.z + fz * 0.3 }, locationId: 'outside', range: 1.6 });
+  });
   // ---- red phone boxes (Vince is always at the other end)
   phoneBoxesOf(buildCity(B.filter((b) => !b.unit && !b.level).map((b) => b.rect))).forEach((b, i) => {
     obstacles.push({ kind: 'phonebox', rect: { x0: b.x - 0.5, z0: b.z - 0.5, x1: b.x + 0.5, z1: b.z + 0.5 }, height: 2.5, solid: false });
@@ -1187,6 +1192,14 @@ function buildWorldData(homeDesign: HomeDesign): World {
   const city = buildCity(B.filter((b) => !b.unit && !b.level).map((b) => b.rect));
   for (const cb of city.buildings) colliders.push(cb.rect);
   for (const pr of city.props) if (pr.kind === 'container') colliders.push(pr.rot === 0 ? box(pr.x, pr.z, 6.1, 2.5) : box(pr.x, pr.z, 2.5, 6.1));
+  // the park lakes: no walking on water (the gravel paths cross them as causeways)
+  for (const w of city.ground.filter((g) => g.kind === 'water').map((g) => g.rect)) {
+    const paths = city.ground.filter((g) => g.kind === 'gravel' && g.rect.x0 < w.x1 && g.rect.x1 > w.x0 && g.rect.z0 < w.z1 && g.rect.z1 > w.z0).map((g) => g.rect);
+    const cut = (lo: number, hi: number, gaps: [number, number][]) => { let out: [number, number][] = [[lo, hi]]; for (const [a, b] of gaps) out = out.flatMap(([p, q]) => (b <= p || a >= q ? [[p, q]] : [[p, a], [b, q]].filter(([u, v]) => v - u > 0.5)) as [number, number][]); return out; };
+    const xs = cut(w.x0, w.x1, paths.filter((g) => g.z0 <= w.z0 && g.z1 >= w.z1).map((g) => [g.x0, g.x1]));
+    const zs = cut(w.z0, w.z1, paths.filter((g) => g.x0 <= w.x0 && g.x1 >= w.x1).map((g) => [g.z0, g.z1]));
+    for (const [x0, x1] of xs) for (const [z0, z1] of zs) colliders.push({ x0: x0 + 0.3, z0: z0 + 0.3, x1: x1 - 0.3, z1: z1 - 0.3 });
+  }
   // world boundary: the edge of the city, and the sea
   const bounds = { x0: CITY.x0, z0: CITY.z0, x1: CITY.x1, z1: QUAY_EDGE - 0.4 };
   colliders.push({ x0: bounds.x0 - 1, z0: bounds.z0, x1: bounds.x0, z1: bounds.z1 });

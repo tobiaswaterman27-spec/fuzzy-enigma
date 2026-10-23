@@ -48,9 +48,9 @@ export interface ChatTurn { role: 'system' | 'user' | 'assistant'; content: stri
 
 /** a JSON answer from the model (parsed), or an error to show */
 export async function aiJson(messages: ChatTurn[], maxTokens = 220, signal?: AbortSignal): Promise<{ data: unknown } | { error: string }> {
-  if (sampleFn) return viaClaude(messages, maxTokens);
+  // your own OpenAI key comes first; Claude (inside claude.ai) when there is no key or OpenAI cannot be reached
   const key = getApiKey();
-  if (!key) return { error: 'No AI available: add an OpenAI key (Menu).' };
+  if (!key) return sampleFn ? viaClaude(messages, maxTokens) : { error: 'No AI available: add an OpenAI key (Menu).' };
   try {
     const r = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -66,6 +66,7 @@ export async function aiJson(messages: ChatTurn[], maxTokens = 220, signal?: Abo
     const content = j.choices?.[0]?.message?.content ?? '';
     try { return { data: JSON.parse(content) }; } catch { return { data: { reply: String(content) } }; }
   } catch (e) {
+    if (sampleFn && !signal?.aborted) return viaClaude(messages, maxTokens);
     return { error: `Could not reach OpenAI (${(e as Error).message}). If you are playing inside claude.ai, allow Claude for this page instead.` };
   }
 }

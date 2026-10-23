@@ -574,6 +574,7 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
     }
     case 'bench':
       out.push(opt('sit', 'Sit on bench'));
+      out.push(opt('feed_pigeons', 'Feed the pigeons (crumbs from your pocket)'));
       out.push(opt('sleep', 'Sleep rough until 07:00 (poor rest)', undefined, 'morning'));
       break;
     case 'board':
@@ -896,6 +897,8 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
     case 'sit':
     case 'watch_tv':
       begin(p, type, itId, { duration: 600 }, now); break;
+    case 'feed_pigeons':
+      begin(p, type, itId, { duration: 4 }, now); break;
     case 'shower':
       begin(p, type, itId, { duration: 8 }, now); break;
     case 'cook':
@@ -1202,6 +1205,10 @@ export function tickAction(state: GameState, p: Person, dt: number): string | nu
     case 'sit':
     case 'watch_tv':
       msg = null;
+      break;
+    case 'feed_pigeons':
+      p.needs.mood = Math.min(100, p.needs.mood + 6);
+      msg = 'The pigeons squabble over the last of the crumbs. Oddly calming.';
       break;
     case 'shower':
       p.needs.hygiene = 100;

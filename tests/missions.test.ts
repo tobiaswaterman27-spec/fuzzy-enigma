@@ -18,7 +18,8 @@ describe('Jobs for Vince', () => {
     expect(startAction(s, me.id, boxes[0].id, 'vince', 'call').ok).toBe(true);
     for (let i = 0; i < 8 && me.action; i++) step(s, 0.25);
     expect(s.mission).toBeTruthy();
-    expect(missionGoal(s)).toBeTruthy();
+    // a mark who is indoors has no marker until they come out
+    if (s.mission!.kind !== 'collect' || s.people[s.mission!.targetId!].visible) expect(missionGoal(s)).toBeTruthy();
   });
 
   it('pays for each kind of job', () => {
