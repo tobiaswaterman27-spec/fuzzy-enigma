@@ -47,6 +47,8 @@ export const ITEMS: Record<string, ItemDef> = {
   bricks: { id: 'bricks', name: 'Bricks', category: 'supplies', caseSize: 16, wholesale: 60, importCost: 40, retail: 0, satiety: 0, energy: 0, color: '#a5583e', demand: 0 },
   uniform_police: { id: 'uniform_police', name: 'Police Uniform', category: 'clothing', caseSize: 1, wholesale: 0, importCost: 0, retail: 0, satiety: 0, energy: 0, color: '#1b2433', demand: 0 },
   cricket_bat: { id: 'cricket_bat', name: 'Cricket Bat', category: 'household', caseSize: 1, wholesale: 0, importCost: 0, retail: 3500, satiety: 0, energy: 0, color: '#d9b77a', demand: 0 },
+  golf_club: { id: 'golf_club', name: 'Golf Club', category: 'household', caseSize: 1, wholesale: 0, importCost: 0, retail: 4500, satiety: 0, energy: 0, color: '#9aa3ab', demand: 0 },
+  crowbar: { id: 'crowbar', name: 'Crowbar', category: 'household', caseSize: 1, wholesale: 0, importCost: 0, retail: 1800, satiety: 0, energy: 0, color: '#8a1c1c', demand: 0 },
   kitchen_knife: { id: 'kitchen_knife', name: 'Kitchen Knife', category: 'household', caseSize: 1, wholesale: 0, importCost: 0, retail: 1200, satiety: 0, energy: 0, color: '#b8bcc2', demand: 0 },
   fishing_rod: { id: 'fishing_rod', name: 'Fishing Rod', category: 'household', caseSize: 1, wholesale: 0, importCost: 0, retail: 2500, satiety: 0, energy: 0, color: '#2b4a3a', demand: 0 },
   bait: { id: 'bait', name: 'Bait', category: 'household', caseSize: 10, wholesale: 0, importCost: 0, retail: 25, satiety: 0, energy: 0, color: '#8a6a48', demand: 0 },

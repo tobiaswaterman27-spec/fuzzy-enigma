@@ -166,6 +166,9 @@ export class UI {
   // ------------------------------------------------------------ HUD
   frame() {
     this.radar.update(this.s, this.game.camYaw, !!this.game.drivingVan(), this.game.waypoint, this.game.police.blips());
+    const van = this.game.drivingVan();
+    $('#speedo').hidden = !van || van.kind === 'boat';
+    if (van) $('#speedo b').textContent = String(Math.round(this.game.driveSpeed * 2.237));
     const s = this.s, p = this.p;
     $('#clock').textContent = fmtClock(s.minute);
     $('#date').textContent = `${fmtDate(s.minute)} · ${seasonOf(s.minute)} · ${weatherLabel(s)}`;

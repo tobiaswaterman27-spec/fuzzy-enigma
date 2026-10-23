@@ -52,12 +52,27 @@ const BASKET_GEO = (() => { const g = new THREE.CylinderGeometry(0.17, 0.14, 0.1
 const BAG_MAT = new THREE.MeshStandardMaterial({ color: '#f2f2ee', roughness: 0.7, side: THREE.DoubleSide, transparent: true, opacity: 0.92 });
 
 const BASE_WALKS = ['walk', 'walk_b', 'walk_c'];
-const GEAR = new Set(['fishing_rod', 'bait', 'cricket_bat', 'kitchen_knife']);
+const GEAR = new Set(['fishing_rod', 'bait', 'cricket_bat', 'kitchen_knife', 'golf_club', 'crowbar']);
 
 /** a cricket bat or a kitchen knife, gripped in the fist (the hand bone's -y runs out past the fingers) */
-function weaponMesh(kind: 'bat' | 'knife'): THREE.Group {
+function weaponMesh(kind: 'bat' | 'knife' | 'golf' | 'crowbar'): THREE.Group {
   const g = new THREE.Group();
-  if (kind === 'bat') {
+  if (kind === 'golf') {
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.007, 0.01, 0.95, 8), new THREE.MeshStandardMaterial({ color: '#c9ced3', metalness: 0.9, roughness: 0.25 }));
+    shaft.position.y = -0.4;
+    const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.014, 0.24, 10), new THREE.MeshStandardMaterial({ color: '#1d1d1f', roughness: 0.9 }));
+    grip.position.y = 0.0;
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.035, 0.03), new THREE.MeshStandardMaterial({ color: '#d4d8dc', metalness: 0.95, roughness: 0.2 }));
+    head.position.set(0.035, -0.88, 0);
+    g.add(shaft, grip, head);
+  } else if (kind === 'crowbar') {
+    const red = new THREE.MeshStandardMaterial({ color: '#8a1c1c', metalness: 0.6, roughness: 0.45 });
+    const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.62, 8), red);
+    bar.position.y = -0.24;
+    const hook = new THREE.Mesh(new THREE.TorusGeometry(0.045, 0.012, 6, 10, Math.PI), red);
+    hook.position.set(0.045, -0.55, 0); hook.rotation.z = Math.PI;
+    g.add(bar, hook);
+  } else if (kind === 'bat') {
     const wood = new THREE.MeshStandardMaterial({ color: '#d9b77a', roughness: 0.55 });
     const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.017, 0.017, 0.26, 10), new THREE.MeshStandardMaterial({ color: '#1d1d1f', roughness: 0.9 }));
     grip.position.y = -0.02;
@@ -75,6 +90,19 @@ function weaponMesh(kind: 'bat' | 'knife'): THREE.Group {
   }
   g.traverse((o) => { o.castShadow = true; });
   return g;
+}
+
+/** turn a bone so the way it runs (towards its child) points at a world position */
+const _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3(), _q = new THREE.Quaternion();
+function aimBone(bone: THREE.Object3D, child: THREE.Object3D, target: THREE.Vector3) {
+  if (!bone.parent || child.position.lengthSq() < 1e-8) return;
+  bone.parent.updateWorldMatrix(true, false);
+  const from = bone.getWorldPosition(_v1);
+  const dir = _v2.copy(target).sub(from);
+  if (dir.lengthSq() < 1e-8) return;
+  dir.normalize().applyQuaternion(bone.parent.getWorldQuaternion(_q).invert());
+  bone.quaternion.setFromUnitVectors(child.position.clone().normalize(), dir);
+  bone.updateMatrixWorld(true);
 }
 
 const BLOOD_MAT = new THREE.MeshStandardMaterial({ color: '#4a0606', roughness: 0.18, metalness: 0.05, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
@@ -514,6 +542,15 @@ class PersonView {
     this.ragdoll = null;
     this.anim.update(dt, 0, false, 'g:sit');
     const B = this.rig.bones;
+    // sat on the seat itself: measure where the sitting pose puts the hips and lift the body to the
+    // cushion height for this car (whatever the clip's own hip height is)
+    const HIPS: Record<string, number> = { sports: 0.42, coupe: 0.42, suv: 0.74, van: 1.0 };
+    if (v.kind === 'car' || v.kind === 'van') {
+      root.updateMatrixWorld(true);
+      const hy = B.hips.getWorldPosition(new THREE.Vector3()).y;
+      const want = (v.kind === 'van' ? HIPS.van : HIPS[v.model ?? ''] ?? 0.55) + lift;
+      root.position.y += want - hy;
+    }
     if (v.kind === 'bike') {
       // pedalling: the legs go round with the speed, leaning on the bars
       const moved = Math.hypot(root.position.x - this.lastPos.x, root.position.z - this.lastPos.z);
@@ -531,11 +568,21 @@ class PersonView {
       this.lastPos.copy(root.position);
       return;
     }
-    // both hands forward on the wheel, elbows bent
-    B.armL.quaternion.setFromEuler(new THREE.Euler(-0.95, 0, -0.3));
-    B.armR.quaternion.setFromEuler(new THREE.Euler(-0.95, 0, 0.3));
-    B.foreL.quaternion.setFromEuler(new THREE.Euler(-0.7, 0, -0.2));
-    B.foreR.quaternion.setFromEuler(new THREE.Euler(-0.7, 0, 0.2));
+    // both hands forward on the wheel, elbows bent: aim the upper arm at the elbow and the forearm at
+    // the wheel rim (worked out in the world, so it holds whatever the rig's bone axes are)
+    root.updateMatrixWorld(true);
+    const fwd = new THREE.Vector3(Math.sin(v.heading), 0, Math.cos(v.heading));
+    const chest = B.chest.getWorldPosition(new THREE.Vector3());
+    const wheel = chest.clone().addScaledVector(fwd, 0.45).add(new THREE.Vector3(0, -0.12, 0));
+    const turn = Math.sin(performance.now() / 900) * 0.02;
+    for (const [arm, fore, hand] of [[B.armL, B.foreL, B.handL], [B.armR, B.foreR, B.handR]] as const) {
+      const sh = arm.getWorldPosition(new THREE.Vector3());
+      const side = sh.clone().sub(chest); side.y = 0; side.addScaledVector(fwd, -side.dot(fwd));
+      const grip = wheel.clone().addScaledVector(side.normalize(), 0.17).add(new THREE.Vector3(0, turn * Math.sign(side.x + side.z), 0));
+      const elbow = sh.clone().lerp(grip, 0.5).addScaledVector(side, 0.07).add(new THREE.Vector3(0, -0.12, 0));
+      aimBone(arm, fore, elbow);
+      aimBone(fore, hand, grip);
+    }
     this.lastPos.copy(root.position);
   }
   private pedal = 0;

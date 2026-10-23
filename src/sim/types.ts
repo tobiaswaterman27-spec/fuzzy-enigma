@@ -361,7 +361,7 @@ export interface Person {
   /** health lost per game minute from open wounds */
   bleeding?: number;
   /** weapon in hand, if any */
-  weapon?: 'bat' | 'knife' | null;
+  weapon?: 'bat' | 'knife' | 'golf' | 'crowbar' | null;
   /** in hospital or in a police cell until a time */
   away?: { until: number; reason: string; place: 'hospital' | 'custody' | 'prison' | 'bus' | 'train' | 'stadium'; to?: Vec2 } | null;
   /** fighting someone: hits back while they are close, until a time */

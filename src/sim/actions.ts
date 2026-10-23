@@ -2,7 +2,7 @@
 // Actions are timed, interruptible and validated. State changes happen in
 // unit callbacks or on completion - never because an animation finished.
 import { useEnergy } from './bills';
-import { buyWeapon, finishRob, startRob, WEAPONS } from './health';
+import { ARMS, buyWeapon, finishRob, startRob, WEAPONS } from './health';
 import { bargeIn, breakIn, houseOf, houseOpen, knock, searchValuables } from './houses';
 import { breakUp, handIn, onPcsoShift, readBeat } from './station';
 import { BUS_FARE } from './bus';
@@ -396,7 +396,7 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
         break;
       }
       out.push({ type: 'ui', label: 'Browse furniture, wallpaper, flooring and rugs for your home', enabled: true, ui: 'homestore', reason: staffed ? undefined : 'Counter closed - you can still order online' });
-      for (const k of ['bat', 'knife'] as const) out.push(opt('buy_weapon', `Buy a ${WEAPONS[k].label} · ${fmtMoney(WEAPONS[k].price)}`, !staffed ? 'Counter closed' : count(state.containers[p.bagId], WEAPONS[k].item) ? 'You already have one' : undefined, k));
+      for (const k of ARMS) out.push(opt('buy_weapon', `Buy a ${WEAPONS[k].label} · ${fmtMoney(WEAPONS[k].price)}`, !staffed ? 'Counter closed' : count(state.containers[p.bagId], WEAPONS[k].item) ? 'You already have one' : undefined, k));
       break;
     }
     case 'police_desk': {
@@ -726,7 +726,7 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
     case 'change_outfit':
       begin(p, type, itId, { duration: 1, arg }, now); break;
     case 'buy_weapon': {
-      const r = buyWeapon(state, p.id, arg as 'bat' | 'knife', state.businesses[it.businessId ?? 'homestore']?.accountId ?? state.businesses.homestore.accountId);
+      const r = buyWeapon(state, p.id, arg as (typeof ARMS)[number], state.businesses[it.businessId ?? 'homestore']?.accountId ?? state.businesses.homestore.accountId);
       if (!r.ok) return r;
       begin(p, type, itId, { duration: 0.6 }, now);
       return r;
@@ -789,7 +789,8 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
     case 'grab':
       return { ok: true, msg: grabShoplifter(state, p.id, itId.slice(7)) };
     case 'break_in':
-      begin(p, type, itId, { duration: 1.2 }, now); break;
+      // a crowbar makes short work of a door
+      begin(p, type, itId, { duration: p.weapon === 'crowbar' ? 0.6 : 1.2 }, now); break;
     case 'venue': begin(p, type, itId, { duration: 0.5, arg }, now); break;
     case 'shoplift': begin(p, type, itId, { duration: 0.4, arg }, now); break;
     case 'rob_venue': begin(p, type, itId, { duration: 1.4 }, now); break;

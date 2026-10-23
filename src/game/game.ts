@@ -849,6 +849,8 @@ export class Game {
   }
   private wasInCar = false;
   private vanSpeed = 0;
+  /** how fast you are driving (m/s), for the speedometer */
+  get driveSpeed() { return Math.abs(this.vanSpeed); }
   /** the direction the car is moving (differs from where it points in a slide), how far out, how hard the tyres are scrubbing */
   private travel = 0;
   private slip = 0;

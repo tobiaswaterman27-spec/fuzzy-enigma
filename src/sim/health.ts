@@ -21,8 +21,13 @@ export const WEAPONS = {
   fists: { label: 'fists', verb: 'punched', min: 5, max: 12, bleed: 0, reach: 1.3, price: 0, item: '' },
   bat: { label: 'cricket bat', verb: 'hit', min: 14, max: 28, bleed: 0.04, reach: 1.7, price: 3500, item: 'cricket_bat' },
   knife: { label: 'kitchen knife', verb: 'stabbed', min: 18, max: 40, bleed: 0.5, reach: 1.25, price: 1200, item: 'kitchen_knife' },
+  golf: { label: 'golf club', verb: 'clubbed', min: 12, max: 26, bleed: 0.02, reach: 1.85, price: 4500, item: 'golf_club' },
+  crowbar: { label: 'crowbar', verb: 'hit', min: 16, max: 30, bleed: 0.08, reach: 1.5, price: 1800, item: 'crowbar' },
 } as const;
 export type WeaponId = keyof typeof WEAPONS;
+/** everything you can carry to hit people with (fists aside) */
+export const ARMS = ['bat', 'knife', 'golf', 'crowbar'] as const;
+export type ArmId = typeof ARMS[number];
 
 /** where people come out of hospital or the police station (the bus stop on Harbour Road) */
 const RELEASE_NODE = 'bus_e';
@@ -379,7 +384,7 @@ export function arrest(state: GameState, cop: Person) {
   const prison = w.level >= 4;
   const minutes = prison ? (w.level >= 5 ? 28 : 7) * 1440 : (w.level * 4 + (r.ok ? 0 : 12)) * 60;
   (me.record ??= []).push(`${w.crime} (day ${dayIndex(state.minute) + 1})`);
-  for (const k of ['bat', 'knife'] as const) removeItems(state.containers[me.bagId], WEAPONS[k].item, 99);
+  for (const k of ARMS) removeItems(state.containers[me.bagId], WEAPONS[k].item, 99);
   me.weapon = null;
   news(state, 'bad', `Arrested by ${cop.name}`, `${w.crime[0].toUpperCase()}${w.crime.slice(1)}. ${fine ? `Fined ${fmtMoney(fine)}${r.ok ? '' : ' (you could not pay: longer in custody)'}. ` : ''}${prison ? `Sentenced to ${Math.round(minutes / 1440)} days in prison.` : `Held overnight in the cells.`} Your weapons were taken.`, true);
   sendAway(state, me, prison ? 'prison' : 'custody', minutes, w.crime);
@@ -499,10 +504,10 @@ export function healthDaily(state: GameState) {
 export function nextWeapon(state: GameState, id: Id): string {
   const p = state.people[id];
   const bag = state.containers[p.bagId];
-  const owned: (WeaponId | null)[] = [null, ...(['bat', 'knife'] as const).filter((k) => count(bag, WEAPONS[k].item) > 0)];
-  if (owned.length === 1) { p.weapon = null; return 'You have no weapons. Harbour Home sells cricket bats and kitchen knives.'; }
+  const owned: (ArmId | null)[] = [null, ...ARMS.filter((k) => count(bag, WEAPONS[k].item) > 0)];
+  if (owned.length === 1) { p.weapon = null; return 'You have no weapons. Harbour Home sells cricket bats, golf clubs, crowbars and kitchen knives.'; }
   const i = owned.indexOf(p.weapon ?? null);
-  p.weapon = owned[(i + 1) % owned.length] as 'bat' | 'knife' | null;
+  p.weapon = owned[(i + 1) % owned.length];
   return p.weapon ? `Holding: ${WEAPONS[p.weapon].label}. Press F to use it.` : 'Weapon put away.';
 }
 
