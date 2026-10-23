@@ -721,6 +721,7 @@ export class Game {
     this.audio.siren(this.emergency.sirenAt);
     this.world.cull(this.camera.position.x, this.camera.position.z);
     this.city.update(this.camera, this.nightLevel);
+    this.city.setSignals(this.traffic.clock);
     setCarLights(this.nightLevel);
     // the ground gets wet in the rain and dries slowly after
     this.wetness += ((raining(s) > 0.1 && !snowing(s) ? Math.min(1, raining(s) * 1.4) : 0) - this.wetness) * Math.min(1, dt * (raining(s) > 0.1 ? 0.25 : 0.03));

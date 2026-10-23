@@ -8,6 +8,7 @@ import type { City, CityBuilding, CityProp, Ground, Style } from '../sim/world/c
 import { AVENUES, CITY, ESPLANADE_Z, STREETS } from '../sim/world/city';
 import { tex, signTexture } from './textures';
 import { wettable } from './wet';
+import { lampFor } from './signals';
 import { boat } from './harbour';
 
 const CHUNK = 260;
@@ -293,6 +294,7 @@ export class CityView {
     // long roads are drawn as one piece per chunk-length too
     this.markings(city);
     this.props(city.props);
+    this.signals(city);
     this.signs(city.buildings);
   }
 
@@ -364,6 +366,38 @@ export class CityView {
     mats.forEach((m, i) => im.setMatrixAt(i, m));
     im.receiveShadow = true;
     this.group.add(im);
+  }
+
+  /** the traffic lights at every junction: poles at the corners, lamps lit from the shared cycle */
+  private lampMats: Record<string, THREE.MeshStandardMaterial> = {};
+  private signals(city: City) {
+    const corners: { x: number; z: number }[] = [];
+    for (const j of city.junctions) for (const [sx, sz] of [[-1, -1], [1, 1]]) corners.push({ x: j.x + sx * 6.0, z: j.z + sz * 6.0 });
+    const put = (geo: THREE.BufferGeometry, mat: THREE.Material, dx: number, dy: number, dz: number) => {
+      const im = new THREE.InstancedMesh(geo, mat, corners.length);
+      const m = new THREE.Matrix4();
+      corners.forEach((c, i) => { m.makeTranslation(c.x + dx, dy, c.z + dz); im.setMatrixAt(i, m); });
+      im.frustumCulled = false;
+      this.group.add(im);
+      return im;
+    };
+    const dark = new THREE.MeshStandardMaterial({ color: '#23272b', roughness: 0.6, metalness: 0.3 });
+    put(new THREE.CylinderGeometry(0.07, 0.08, 3.4, 8), dark, 0, 1.7, 0).castShadow = true;
+    put(new THREE.BoxGeometry(0.3, 0.9, 0.3), dark, 0.22, 3.0, 0);
+    put(new THREE.BoxGeometry(0.3, 0.9, 0.3), dark, -0.22, 3.0, 0);
+    const ball = new THREE.OctahedronGeometry(0.11);
+    for (const [axis, dx] of [['x', 0.22], ['z', -0.22]] as const) for (const [lamp, y, col] of [['r', 3.28, '#ff2a1a'], ['a', 3.0, '#ffb300'], ['g', 2.72, '#25e05a']] as const) {
+      const mat = new THREE.MeshStandardMaterial({ color: '#202020', emissive: new THREE.Color(col), emissiveIntensity: 0, roughness: 0.4 });
+      this.lampMats[`${axis}${lamp}`] = mat;
+      for (const s of [-1, 1]) put(ball, mat, dx, y, s * 0.16);
+    }
+  }
+  /** light the lamps for this moment of the cycle */
+  setSignals(t: number) {
+    for (const axis of ['x', 'z'] as const) {
+      const on = lampFor(axis, t);
+      for (const l of ['r', 'a', 'g'] as const) { const m = this.lampMats[`${axis}${l}`]; if (m) m.emissiveIntensity = l === on ? 2.6 : 0; }
+    }
   }
 
   private props(props: CityProp[]) {

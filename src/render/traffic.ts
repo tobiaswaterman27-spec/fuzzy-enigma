@@ -7,6 +7,7 @@ import type { GameState } from '../sim/types';
 import { getWorld } from '../sim/world/layout';
 import type { Lane } from '../sim/world/city';
 import { buildCar, driverFigure } from './world';
+import { greenFor } from './signals';
 
 interface Car { obj: THREE.Object3D; lane: number; t: number; speed: number; cruise: number; color: string; body: string; waited?: number; hornAt?: number }
 const BODIES = ['car', 'saloon', 'suv', 'car', 'sports', 'saloon', 'suv'];
@@ -91,7 +92,10 @@ export class Traffic {
     }
   }
 
+  /** the traffic lights' clock (seconds) */
+  clock = 0;
   update(state: GameState, dt: number) {
+    this.clock += dt;
     const me = state.people[state.playerId];
     const p = { x: me.pos.x, z: me.pos.z };
     // a replacement for a taken car joins the traffic after a while
@@ -126,6 +130,8 @@ export class Traffic {
         const along = dx * dir.x + dz * dir.y;
         if (along < 6 || along > 18 || Math.abs(-dx * dir.y + dz * dir.x) > 6) continue;
         if (this.cars.some((o) => o !== c && Math.abs(this.dir[o.lane].dot(dir)) < 0.5 && inBox(o.obj.position.x, o.obj.position.z, j))) gap = Math.min(gap, along - 1);
+        // red (or amber, if there is room to stop): wait at the line
+        if (along > 8.5 && greenFor(this.clock) !== (Math.abs(dir.x) > 0.7 ? 'x' : 'z')) gap = Math.min(gap, along - 8);
       }
       const want = gap < 6 ? 0 : gap < 14 ? c.cruise * ((gap - 6) / 8) : c.cruise;
       c.speed += Math.max(-9 * dt, Math.min(3 * dt, want - c.speed));
