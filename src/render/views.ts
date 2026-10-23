@@ -1403,6 +1403,9 @@ export class Views {
       obj.rotation.set(v.pitch ?? 0, v.heading, 0);
       // dents, smoke from a hurt engine, fire, and the moment it goes up
       if (v.dmg || v.wrecked) applyCarDamage(obj, v.dmg ?? [0, 0, 0, 0], !!v.wrecked);
+      // lamps on only with someone at the wheel (and never on a burnt-out shell)
+      const lampsG = obj.getObjectByName('lamps');
+      if (lampsG) lampsG.visible = !!v.driverId && !v.wrecked && (v.dmg?.[0] ?? 0) < 0.35;
       if (v.wrecked && !obj.userData.boomed) { obj.userData.boomed = true; if (state.minute - (v.burning ?? 0) < 3) { this.fx.explode(v.pos.x, v.pos.z); this.onBoom(v.pos.x, v.pos.z); } }
       const bonnet = { x: v.pos.x + Math.sin(v.heading) * 1.6, z: v.pos.z + Math.cos(v.heading) * 1.6 };
       const smoky = v.wrecked ? 'black' : v.burning != null ? 'fire' : v.condition < 22 ? 'black' : v.condition < 50 ? 'smoke' : null;

@@ -186,7 +186,7 @@ export function buildWorld(scene: THREE.Scene): WorldView {
 
   // ---------------- parked cars
   // kept apart from the baked scenery: any of them can be stolen
-  const parkedCars = w.parked.map((p, i) => { const c = buildCar(p.color, p.pos.x, p.pos.z, p.rot, false, ['car', 'saloon', 'suv', 'car', 'sports'][i % 5]); c.traverse((o) => (o.userData.dynamic = true)); g.add(c); return c; });
+  const parkedCars = w.parked.map((p, i) => { const c = buildCar(p.color, p.pos.x, p.pos.z, p.rot, false, ['car', 'saloon', 'suv', 'car', 'sports'][i % 5]); c.getObjectByName('lamps')?.removeFromParent(); c.traverse((o) => (o.userData.dynamic = true)); g.add(c); return c; });
 
   // ---------------- hedges and paths in front of houses
   const hedge = M('#3f6b37', 1);
@@ -1758,7 +1758,46 @@ export function driverFigure(seed: number, shirt?: string, hat?: string): THREE.
   return m;
 }
 
+/** Lamps that glow after dark on every car: white headlights with a pool of light on the road ahead,
+ * red tail-lights. One set of shared materials, faded in and out together (setCarLights). */
+let lampMats: { head: THREE.SpriteMaterial; tail: THREE.SpriteMaterial; pool: THREE.MeshBasicMaterial } | null = null;
+function glowTex(inner: string, outer: string) {
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const g = c.getContext('2d')!;
+  const r = g.createRadialGradient(32, 32, 1, 32, 32, 32); r.addColorStop(0, inner); r.addColorStop(1, outer);
+  g.fillStyle = r; g.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(c);
+}
+function lamps(len: number): THREE.Group {
+  if (!lampMats) lampMats = {
+    head: new THREE.SpriteMaterial({ map: glowTex('rgba(255,250,225,1)', 'rgba(255,240,200,0)'), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0 }),
+    tail: new THREE.SpriteMaterial({ map: glowTex('rgba(255,40,30,1)', 'rgba(255,0,0,0)'), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0 }),
+    pool: new THREE.MeshBasicMaterial({ map: glowTex('rgba(255,245,215,0.55)', 'rgba(255,245,215,0)'), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0 }),
+  };
+  const g = new THREE.Group();
+  g.name = 'lamps';
+  for (const s of [-1, 1]) {
+    const h = new THREE.Sprite(lampMats.head); h.scale.setScalar(0.7); h.position.set(s * 0.68, 0.72, len / 2 + 0.08); g.add(h);
+    const t = new THREE.Sprite(lampMats.tail); t.scale.setScalar(0.45); t.position.set(s * 0.68, 0.8, -len / 2 - 0.06); g.add(t);
+  }
+  const pool = new THREE.Mesh(new THREE.PlaneGeometry(4.5, 9), lampMats.pool);
+  pool.rotation.x = -Math.PI / 2; pool.position.set(0, 0.06, len / 2 + 4.8);
+  g.add(pool);
+  return g;
+}
+/** after dark the lamps come on (night: 0 by day, 1 at night) */
+export function setCarLights(night: number) {
+  if (!lampMats) return;
+  const on = night > 0.05;
+  for (const m of [lampMats.head, lampMats.tail, lampMats.pool]) { m.visible = on; m.opacity = Math.min(1, night * 1.2); }
+}
+
 export function buildCar(color: string, x: number, z: number, rot: number, van = false, style = 'car'): THREE.Group {
+  const out = buildCarBody(color, x, z, rot, van, style);
+  out.add(lamps(van ? 5 : 4.3));
+  return out;
+}
+function buildCarBody(color: string, x: number, z: number, rot: number, van = false, style = 'car'): THREE.Group {
   const name = van ? 'van' : style;
   const model = modelInstance(name, color) ?? (van ? null : modelInstance('car', color));
   if (model) {

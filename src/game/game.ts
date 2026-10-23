@@ -32,7 +32,7 @@ import { LEVEL_DX, levelOf, planX, sceneOf , LEVEL_H } from '../sim/world/levels
 import { houseOpen } from '../sim/houses';
 import { capability } from '../sim/needs';
 import { daylight, hourOfDay } from '../sim/clock';
-import { buildWorld, type WorldView } from '../render/world';
+import { buildWorld, setCarLights, type WorldView } from '../render/world';
 import { Views } from '../render/views';
 import { CityView } from '../render/city';
 import { dogDies } from '../sim/rescue';
@@ -292,7 +292,8 @@ export class Game {
     this.camera = new THREE.PerspectiveCamera(55, 1, 0.12, 2200);
     this.hemi = new THREE.HemisphereLight('#cfe6ff', '#5d6b4a', 0.9);
     this.scene.add(this.hemi);
-    this.scene.add(new THREE.AmbientLight('#fff6ea', 0.35));
+    this.ambient = new THREE.AmbientLight('#fff6ea', 0.35);
+    this.scene.add(this.ambient);
     this.sun = new THREE.DirectionalLight('#fff3dd', 2.2);
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
@@ -308,6 +309,7 @@ export class Game {
     const su = this.sky.material.uniforms;
     su.turbidity.value = 4; su.rayleigh.value = 1.2; su.mieCoefficient.value = 0.004; su.mieDirectionalG.value = 0.8;
     this.scene.add(this.sky);
+    if (this.stars) this.scene.add(this.stars);
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     this.renderer.toneMappingExposure = 0.95;
@@ -592,7 +594,18 @@ export class Game {
   }
 
   private radioOn = false;
+  private ambient!: THREE.AmbientLight;
   private boltAt = 0;
+  /** stars in the night sky: a shell of points round the camera */
+  private stars: THREE.Points | null = (() => {
+    const n = 1800, pos = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) {
+      const u = Math.random() * 2 - 1, a = Math.random() * Math.PI * 2, y = Math.abs(u) * 0.95 + 0.05, r = Math.sqrt(1 - y * y);
+      pos[i * 3] = Math.cos(a) * r * 900; pos[i * 3 + 1] = y * 900; pos[i * 3 + 2] = Math.sin(a) * r * 900;
+    }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    return new THREE.Points(g, new THREE.PointsMaterial({ color: '#ffffff', size: 2.2, sizeAttenuation: false, transparent: true, opacity: 0, depthWrite: false, fog: false }));
+  })();
   private jumpY = 0;
   private jumpV = 0;
   private boltDist = 800;
@@ -699,6 +712,8 @@ export class Game {
     this.audio.siren(this.emergency.sirenAt);
     this.world.cull(this.camera.position.x, this.camera.position.z);
     this.city.update(this.camera, this.nightLevel);
+    setCarLights(this.nightLevel);
+    if (this.stars) { this.stars.position.copy(this.camera.position); (this.stars.material as THREE.PointsMaterial).opacity = this.nightLevel * (1 - raining(s)); this.stars.visible = this.nightLevel > 0.05 && !this.insideId; }
     if (!this.freeCam) this.updateCamera(dt);
     this.updateLighting();
     // the sun's shadow map is redrawn every other frame: half the shadow work, and nothing visibly lags
@@ -1229,8 +1244,10 @@ export class Game {
     const overcast = r > 0.25;
     this.scene.background = d < 0.05 ? night : overcast ? horizon.clone() : null;
     this.sky.visible = d >= 0.05 && !overcast;
-    this.scene.environmentIntensity = (this.insideId ? 0.25 : 0.15 + 0.55 * d) * (1 - 0.45 * r);
-    this.hemi.intensity = (0.25 + 0.75 * d) * (this.insideId ? 0.45 : 1) * (1 - 0.25 * r);
+    // after dark the street is lit by the lamps and windows, not by the sky: the fill light falls away
+    this.scene.environmentIntensity = (this.insideId ? 0.25 : 0.04 + 0.66 * d) * (1 - 0.45 * r);
+    this.ambient.intensity = this.insideId ? 0.35 : 0.1 + 0.25 * d;
+    this.hemi.intensity = (0.12 + 0.88 * d) * (this.insideId ? 0.45 : 1) * (1 - 0.25 * r);
     // a storm: in heavy rain, lightning now and then (a double flash over everything, the sky lit white),
     // and the thunder a second or two later, the further off the longer it takes
     if (r > 0.65 && !snowing(s) && !this.paused) {
