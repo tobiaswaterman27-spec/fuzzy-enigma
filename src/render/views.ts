@@ -92,6 +92,9 @@ function weaponMesh(kind: 'bat' | 'knife' | 'golf' | 'crowbar'): THREE.Group {
   return g;
 }
 
+/** how high the cushion is, for each kind of seat */
+const SEAT_H: Record<string, number> = { chair: 0.47, iv_chair: 0.47, iv_host: 0.47, sofa: 0.42, bench: 0.45 };
+
 /** turn a bone so the way it runs (towards its child) points at a world position */
 const _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3(), _q = new THREE.Quaternion();
 function aimBone(bone: THREE.Object3D, child: THREE.Object3D, target: THREE.Vector3) {
@@ -269,6 +272,7 @@ class PersonView {
       } else dress(this.rig, p.appearance);
       this.outfitKey = key;
     }
+    this.seatAt = null;
     const stage = this.staging(state, p, dt);
     const target = stage ? new THREE.Vector3(stage.pos.x, 0, stage.pos.z) : new THREE.Vector3(p.pos.x + this.nudge.x, stairY(p.pos), p.pos.z + this.nudge.z);
     // on the stairs: partway up (or down) the flight to the next storey
@@ -352,6 +356,10 @@ class PersonView {
         root.position.set(it.obj.x + (dx / l) * (it.kind === 'sofa' ? 0.12 : 0.02), 0, it.obj.z + (dz / l) * (it.kind === 'sofa' ? 0.12 : 0.02));
         root.rotation.y = Math.atan2(dx, dz);
         yaw = root.rotation.y;
+        // where the hips go: on the cushion, a little back from its front edge
+        const back = it.kind === 'sofa' ? -0.04 : it.kind === 'bench' ? -0.36 : -0.03;
+        this.seatH = SEAT_H[it.kind] ?? 0.47;
+        this.seatAt = { x: it.obj.x + (dx / l) * back, z: it.obj.z + (dz / l) * back, y: target.y + this.seatH };
       }
     }
     void diff;
@@ -452,6 +460,7 @@ class PersonView {
     // site work looks like the job in hand: digging and shovelling, laying bricks, fixing and painting
     const siteClip = a?.type === 'site_work' ? (p.equipment === 'tool_spade' || p.equipment === 'tool_shovel' ? 'clean' : 'stock_shelf') : null;
     const floored = p.down != null || !!p.dead;
+    if (!this.seatAt && !a && !p.move && p.gesture?.clip === 'sit' && state.minute < p.gesture.until) this.seatH = SEAT_H.bench, this.seatAt = { x: p.pos.x - Math.sin(p.facing) * 0.42, z: p.pos.z - Math.cos(p.facing) * 0.42, y: target.y + SEAT_H.bench };
     const gest = p.gesture && state.minute < p.gesture.until && !p.move ? `g:${p.gesture.clip}` : null;
     const kick = a?.type === 'attack' && a.arg === 'kick' ? 'g:kick' : null;
     // a hold-up, beat by beat: the robber threatens, waits, takes the cash and pockets it; the clerk
@@ -486,7 +495,7 @@ class PersonView {
     this.anim.walkStyle = walkStyleFor(p);
     this.anim.update(dt, realSpeed, !!item, clipAction);
     // keep the feet on the floor: whatever the animation does, the lower foot rests on the ground
-    if (!this.bedIt && !floored && this.rig.joints) {
+    if (!this.bedIt && !floored && this.rig.joints && !this.seatAt) {
       this.rig.root.updateMatrixWorld(true);
       this.toLocal(this.rig.bones.footL.getWorldPosition(FOOT_A));
       this.toLocal(this.rig.bones.footR.getWorldPosition(FOOT_B));
@@ -497,6 +506,26 @@ class PersonView {
     }
     // a two-handed swing with a bat, a club or a bar: wind up over the right shoulder, sweep across
     if (!floored && a?.type === 'attack' && !kick && !flurry && (p.weapon === 'bat' || p.weapon === 'golf' || p.weapon === 'crowbar')) this.swing(Math.min(1, prog), root.rotation.y);
+    // sat down: put the hips on the seat itself, wherever the clip has them
+    if (this.seatAt && root.parent) {
+      this.rig.body.position.y = 0; this.ground = 0;
+      root.updateMatrixWorld(true);
+      const h = root.parent.worldToLocal(this.rig.bones.hips.getWorldPosition(new THREE.Vector3()));
+      root.position.x += this.seatAt.x - h.x; root.position.y += this.seatAt.y - h.y; root.position.z += this.seatAt.z - h.z;
+      // legs as people really sit: thighs out along the seat, shins straight down, feet flat on the floor
+      root.updateMatrixWorld(true);
+      const B = this.rig.bones, yaw0 = root.rotation.y;
+      const fwd = new THREE.Vector3(Math.sin(yaw0), 0, Math.cos(yaw0));
+      const floorY = root.parent.localToWorld(new THREE.Vector3(0, this.seatAt.y - this.seatH, 0)).y;
+      for (const [thigh, shin, foot, splay] of [[B.thighL, B.shinL, B.footL, 1], [B.thighR, B.shinR, B.footR, -1]] as const) {
+        const hip = thigh.getWorldPosition(new THREE.Vector3());
+        const side = new THREE.Vector3(fwd.z, 0, -fwd.x).multiplyScalar(splay * 0.04);
+        const knee = hip.clone().addScaledVector(fwd, 0.44).add(side).setY(hip.y + 0.04);
+        aimBone(thigh, shin, knee);
+        const ankle = knee.clone().addScaledVector(fwd, 0.06).setY(floorY + 0.09);
+        aimBone(shin, foot, ankle);
+      }
+    }
     // knocked down or dead: the body goes limp and falls the way the blow sent it
     if (floored && this.rig.joints) {
       if (!this.ragdoll) {
@@ -615,6 +644,8 @@ class PersonView {
     }
   }
   private pedal = 0;
+  private seatAt: { x: number; z: number; y: number } | null = null;
+  private seatH = 0.45;
   private ragdoll: Ragdoll | null = null;
   private getUpUntil = 0;
   private lastHit = -1;

@@ -60,6 +60,9 @@ const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&l
 
 type Tab = 'jobs' | 'work' | 'bank' | 'status' | 'news' | 'map' | 'shop' | 'biz' | 'home' | 'people' | 'car' | 'life';
 
+/** a reply that has stepped out of the story into real-world advice */
+const OUT_OF_CHARACTER = /samaritans|helpline|crisis (line|team)|116 ?123|\b(999|111|911)\b|reach out to|mental health (professional|services)|talk to (a|someone) (professional|you trust)|as an ai|language model|i can['’]?t (help|assist) with|i['’]?m (not able|unable) to (help|assist)|please (seek|get) help|emergency services/i;
+
 export class UI {
   phoneOpen = false;
   tab: Tab = 'jobs';
@@ -845,7 +848,11 @@ export class UI {
     const ask = async (content: string) => {
       history.push({ role: 'user', content });
       busy = true; render();
-      const r = await aiJson(history);
+      let r = await aiJson(history);
+      // stepped out of the story (helplines, advice, "as an AI"): ask once more, in character
+      if ('data' in r && OUT_OF_CHARACTER.test(parseTurn(r.data, this.s.minute).reply)) {
+        r = await aiJson([...history, { role: 'assistant', content: JSON.stringify(r.data) }, { role: 'user', content: `[That stepped out of the story. Stay as ${first}, in the scene: say what ${first} would actually say right now, in their own words, with no advice, helplines, numbers or disclaimers. Same JSON format.]` }]);
+      }
       busy = false;
       if (ended) return;
       if ('error' in r) { say('fact', r.error); this.toast(r.error); render(); return; }
@@ -916,7 +923,7 @@ export class UI {
     void aiJson([{ role: 'system', content: characterBrief(s, o.id, true) }, { role: 'user', content: `[You decide to text ${me.name.split(' ')[0]} out of the blue. Write the text message you send, in character: maybe about something going on in your life, some gossip, asking how they are or to meet up, or about something that happened between you. Keep it short, like a real text.]` }], 120).then((r) => {
       if (!('data' in r)) return;
       const t = parseTurn(r.data, this.s.minute);
-      if (!t.reply) return;
+      if (!t.reply || OUT_OF_CHARACTER.test(t.reply)) return;
       (s.inbox ??= []).push({ from: o.id, text: t.reply, at: s.minute, read: false });
       if (s.inbox.length > 40) s.inbox.splice(0, s.inbox.length - 40);
       this.toast(`Message from ${o.name.split(' ')[0]}: "${t.reply.slice(0, 80)}${t.reply.length > 80 ? '…' : ''}" (Phone > People)`);
@@ -970,7 +977,7 @@ export class UI {
     void aiJson([{ role: 'system', content: characterBrief(this.s, id) }, { role: 'user', content: `[${me} knocked on your front door and you have just opened it. ${c.letIn ? 'You are happy to let them in.' : 'You are NOT letting them in, and are about to close the door.'} Say what you say at the door.]` }]).then((r) => {
       if (!('data' in r)) return;
       const t = parseTurn(r.data, this.s.minute);
-      if (t.reply) this.game.say(id, t.reply, 5);
+      if (t.reply && !OUT_OF_CHARACTER.test(t.reply)) this.game.say(id, t.reply, 5);
     });
   }
 
@@ -983,7 +990,7 @@ export class UI {
     const r = await aiJson([{ role: 'system', content: characterBrief(s, npcId) }, { role: 'user', content: `[You have stopped ${this.p.name.split(' ')[0]} in the street because you want to talk to them. Say your opening line.]` }]);
     if (!('data' in r)) return;
     const t = parseTurn(r.data, this.s.minute);
-    if (!t.reply) return;
+    if (!t.reply || OUT_OF_CHARACTER.test(t.reply)) return;
     this.openers.set(npcId, t.reply);
     this.game.say(npcId, t.reply, 6);
     this.toast(`${o.name}: "${t.reply}" (E to talk)`);
