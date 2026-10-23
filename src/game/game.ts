@@ -18,6 +18,7 @@ import { shopLocked } from '../sim/breakins';
 import { onPcsoShift } from '../sim/station';
 import { finishRace, RACES } from '../sim/races';
 import { missionGoal } from '../sim/missions';
+import { CarSeq } from '../render/carseq';
 import { walletSpots } from '../sim/collect';
 import { planRoute } from '../sim/world/nav';
 import { LEVEL_DX, levelOf, planX, sceneOf , LEVEL_H } from '../sim/world/levels';
@@ -41,9 +42,9 @@ import { MarketStalls } from '../render/marketStalls';
 import { raining, seasonOf, snowCover, snowing } from '../sim/weather';
 import { safeWrite, loadSlot, type KV } from '../sim/save';
 import { news } from '../sim/events';
-import { CAR_MODELS, exitCar, stealCar, stealOwnedCar, stealParked } from '../sim/cars';
+import { CAR_MODELS, enterCar, exitCar, stealCar, stealOwnedCar, stealParked } from '../sim/cars';
 import { forkliftAction } from '../sim/forklift';
-import { attack, attackTarget, crime, hitByVehicle, nextWeapon } from '../sim/health';
+import { attack, attackTarget, crime, flee, hitByVehicle, nextWeapon } from '../sim/health';
 import { fitnessFactor, trainRun } from '../sim/leisure';
 import { taxiBump, taxiTarget } from '../sim/taxi';
 import { castFromBoat, fishingBlocker, strike } from '../sim/fishing';
@@ -241,6 +242,17 @@ export class Game {
   private cutawayOn = false;
   /** a car break-in under way: the window goes at `at` (sim minutes) */
   private theft: { at: number; kerb: number | null; car: string | null } | null = null;
+  private carSeq!: CarSeq;
+  /** the driver of a car you have taken: out on the road and running */
+  private ejectDriver(at: { x: number; z: number }) {
+    const s = this.state;
+    const o = Object.values(s.people).find((q) => q.id.startsWith('crowd_') && !q.visible && !q.dead && !q.away);
+    if (!o) return;
+    o.pos = { ...at }; o.visible = true; o.where = 'outside'; o.move = null; o.action = null;
+    o.gesture = { clip: 'scared', until: s.minute + 0.6 };
+    o.relations[this.player.id] = 0;
+    flee(s, o, this.player.pos);
+  }
   frameMs = 0;
 
   constructor(public canvas: HTMLCanvasElement, public state: GameState) {
@@ -287,6 +299,7 @@ export class Game {
     this.city = new CityView(this.scene, getWorld().city);
     this.views = new Views(this.scene);
     this.traffic = new Traffic(this.scene);
+    this.carSeq = new CarSeq(this.scene);
     this.police = new PoliceCar(this.scene);
     this.gatheringProps = new GatheringProps(this.scene);
     this.harbour = new Harbour(this.scene);
@@ -430,7 +443,11 @@ export class Game {
       }
       if (e.code === 'KeyE' && this.drivingVan()?.kind === 'car') {
         if (Math.abs(this.vanSpeed) > 1.5) { this.onToast('Slow down to park.'); return; }
-        this.onToast(exitCar(this.state, this.player.id).msg);
+        const v = this.drivingVan()!;
+        this.carSeq.start('out', v.color ?? '#888', v.pos.x, v.pos.z, v.heading, this.player.pos, () => this.onToast(exitCar(this.state, this.player.id).msg));
+        // out of the other side (the driver's door was against something): no door to act out
+        const d = this.carSeq.doorSpot(v.pos.x, v.pos.z, v.heading);
+        if (Math.hypot(d.x - this.player.pos.x, d.z - this.player.pos.z) > 0.8) this.carSeq.stop();
         return;
       }
       if (e.code === 'KeyF' && !this.drivingVan()) {
@@ -452,15 +469,23 @@ export class Game {
         const kerb = w.parked.map((c, i) => ({ i, c })).filter(({ i, c }) => !(this.state.takenParked ?? []).includes(i) && near(c.pos.x, c.pos.z) < 3.4).sort((a, b) => near(a.c.pos.x, a.c.pos.z) - near(b.c.pos.x, b.c.pos.z))[0];
         const owned = Object.values(this.state.vehicles).filter((v) => v.kind === 'car' && v.state === 'parked' && v.ownerId !== p.id && near(v.pos.x, v.pos.z) < 3.4)[0];
         if (kerb || owned) {
-          const at = kerb ? { x: kerb.c.pos.x, z: kerb.c.pos.z } : owned!.pos;
-          p.facing = Math.atan2(at.x - p.pos.x, at.z - p.pos.z);
-          p.gesture = { clip: 'fight', until: this.state.minute + 0.45 };
-          this.theft = { at: this.state.minute + 0.4, kerb: kerb?.i ?? null, car: owned?.id ?? null };
+          // round to the driver's door, put the window in, open up and get in
+          const at = kerb ? { x: kerb.c.pos.x, z: kerb.c.pos.z, h: kerb.c.rot, col: kerb.c.color } : { x: owned!.pos.x, z: owned!.pos.z, h: owned!.heading, col: owned!.color ?? '#888' };
+          this.carSeq.start('in', at.col, at.x, at.z, at.h, p.pos, () => {
+            if (p.down != null || p.dead || p.where === 'vehicle') return;
+            this.onToast(kerb ? stealParked(this.state, p.id, kerb.i) : stealOwnedCar(this.state, p.id, owned!.id));
+          }, true);
+          setTimeout(() => this.audio.smash(), 750);
           return;
         }
         const c = this.traffic.take(p.pos.x, p.pos.z);
         if (!c) { this.onToast('No car close enough (walk up to a car and press G).'); return; }
-        this.onToast(stealCar(this.state, p.id, { x: c.x, z: c.z }, c.heading, c.color, c.body));
+        // the car-jack: the door is yanked open and the driver dragged out before you get in
+        this.carSeq.start('in', c.color, c.x, c.z, c.heading, p.pos, () => {
+          this.scene.remove(c.obj);
+          this.ejectDriver(this.carSeq.doorSpot(c.x, c.z, c.heading));
+          this.onToast(stealCar(this.state, p.id, { x: c.x, z: c.z }, c.heading, c.color, c.body));
+        });
         return;
       }
       if (e.code === 'KeyQ' && !this.drivingVan()) { this.onToast(nextWeapon(this.state, this.player.id)); return; }
@@ -515,6 +540,10 @@ export class Game {
     if (!o) return null;
     if (!o.enabled) { this.onToast(o.reason ?? 'Not possible'); return { ok: false, msg: o.reason ?? '' }; }
     if (o.type === 'ui') { this.onUi(o.ui!, o.arg); return { ok: true, msg: '' }; }
+    if (o.type === 'drive_car') {
+      const v = this.state.vehicles[f.id.slice(4)];
+      if (v) { this.carSeq.start('in', v.color ?? '#888', v.pos.x, v.pos.z, v.heading, p.pos, () => this.onToast(enterCar(this.state, p.id, v.id))); return { ok: true, msg: '' }; }
+    }
     const r = startAction(this.state, p.id, f.id, o.type, o.arg);
     if (!r.ok) this.onToast(r.msg);
     return r;
@@ -827,6 +856,7 @@ export class Game {
       }
     }
     if (this.theft) { this.vel.x = this.vel.z = 0; return; }
+    if (this.carSeq.active) { this.vel.x = this.vel.z = 0; this.carSeq.update(dt, p, this.state.minute); return; }
     if (this.drivingVan()) { this.updateDriving(dt); return; }
     this.vanSpeed = 0;
     if (this.uiOpen || p.sleeping || p.down != null || p.away || p.dead) { this.vel.x = this.vel.z = 0; return; }

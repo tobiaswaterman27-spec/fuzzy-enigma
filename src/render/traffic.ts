@@ -33,7 +33,8 @@ export class Traffic {
   }
   private taken = 0;
   /** a slow or stopped car within reach, pulled out of the traffic (for carjacking) */
-  take(x: number, z: number, reach = 3.4): { x: number; z: number; heading: number; color: string; body: string } | null {
+  /** stop and hand over the car nearest a point (its mesh is the caller's to remove) */
+  take(x: number, z: number, reach = 3.4): { x: number; z: number; heading: number; color: string; body: string; obj: THREE.Object3D } | null {
     let best: Car | null = null, bd = reach;
     for (const c of this.cars) {
       const d = Math.hypot(c.obj.position.x - x, c.obj.position.z - z);
@@ -42,9 +43,8 @@ export class Traffic {
     }
     if (!best) return null;
     this.cars.splice(this.cars.indexOf(best), 1);
-    this.scene.remove(best.obj);
     this.taken++;
-    return { x: best.obj.position.x, z: best.obj.position.z, heading: best.obj.rotation.y, color: best.color, body: best.body };
+    return { x: best.obj.position.x, z: best.obj.position.z, heading: best.obj.rotation.y, color: best.color, body: best.body, obj: best.obj };
   }
   private respawnAt = 0;
 
