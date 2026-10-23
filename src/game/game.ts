@@ -18,6 +18,7 @@ import { shopLocked } from '../sim/breakins';
 import { onPcsoShift } from '../sim/station';
 import { finishRace, RACES } from '../sim/races';
 import { walletSpots } from '../sim/collect';
+import { planRoute } from '../sim/world/nav';
 import { LEVEL_DX, levelOf, planX, sceneOf } from '../sim/world/levels';
 import { houseOpen } from '../sim/houses';
 import { capability } from '../sim/needs';
@@ -97,6 +98,33 @@ export class Game {
   private raceRing: THREE.Mesh | null = null;
   private startRings: THREE.Mesh[] = [];
   private walletMeshes = new Map<number, THREE.Object3D>();
+  /** where you are heading (set on the phone map): a beam of light there, and a line along the streets */
+  waypoint: { x: number; z: number } | null = null;
+  private wpBeam: THREE.Mesh | null = null;
+  private wpLine: THREE.Line | null = null;
+  private wpAt = 0;
+  setWaypoint(p: { x: number; z: number } | null) { this.waypoint = p; this.wpAt = 0; }
+  private updateWaypoint() {
+    const wp = this.waypoint, p = this.player;
+    if (!this.wpBeam) {
+      this.wpBeam = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 120, 12, 1, true), new THREE.MeshBasicMaterial({ color: '#ffd400', transparent: true, opacity: 0.35, depthWrite: false, side: THREE.DoubleSide }));
+      this.wpBeam.position.y = 60; this.scene.add(this.wpBeam);
+      this.wpLine = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: '#ffd400' }));
+      this.scene.add(this.wpLine);
+    }
+    this.wpBeam.visible = this.wpLine!.visible = !!wp;
+    if (!wp) return;
+    this.wpBeam.position.set(wp.x, 60, wp.z);
+    const here = { x: planX(p.pos.x), z: p.pos.z };
+    if (Math.hypot(wp.x - here.x, wp.z - here.z) < 8) { this.onToast('You have arrived.'); this.waypoint = null; return; }
+    // re-plan the route now and then (along the pavements, which follow every road)
+    if (performance.now() - this.wpAt > 2500) {
+      this.wpAt = performance.now();
+      const route = planRoute(here, wp) ?? [wp];
+      const pts = [here, ...route].map((q) => new THREE.Vector3(q.x, 0.35, q.z));
+      (this.wpLine!.geometry as THREE.BufferGeometry).setFromPoints(pts);
+    }
+  }
   private seasonKey = '';
   private seasonTick = 0;
   private snowLayer: THREE.Mesh | null = null;
@@ -526,6 +554,7 @@ export class Game {
       this.cabMarker.position.set(cab.pos.x, 0.15 + Math.sin(performance.now() / 300) * 0.05, cab.pos.z);
     } else if (this.cabMarker) this.cabMarker.visible = false;
     this.updateRace();
+    this.updateWaypoint();
     this.updateWallets();
     // a PCSO's beat: a yellow ring at each point still to check in at
     const beat = this.state.beat && this.state.beat.by === this.player.id && onPcsoShift(this.state, this.player.id) ? this.state.beat.points.filter((q) => !q.done) : [];
@@ -600,13 +629,13 @@ export class Game {
     const base = taken.size ? near.filter((r) => !taken.has(r)) : near;
     // parked private cars, the delivery van and the forklift when nobody is driving them, and traffic
     const cars = Object.values(this.state.vehicles).filter((v) => v.id !== except && (v.state === 'parked' || v.state === 'loaded' || (v.driverId && v.driverId !== this.player.id)));
-    const pc = noPolice ? null : this.police?.rect();
+    const pc = noPolice ? [] : this.police?.rects() ?? [];
     // locked front doors on Harbour Road (open once you are let in or force them)
     const locked = DWELLING_IDS.filter((h) => !houseOpen(this.state, h)).map((h) => dwellingDoor(h)?.lock).filter((r): r is NonNullable<typeof r> => !!r);
     // shops shut for the night: their doors are locked from outside (you can always let yourself out)
     const here = shellAt(this.player.pos)?.id;
     for (const id of SHOP_IDS) if (id !== here && shopLocked(this.state, id)) { const b = getWorld().buildings.find((x) => x.id === id); if (b) for (const d of publicDoors(b)) locked.push(d.lock); }
-    return [...base, ...locked, ...this.traffic.rects(), ...(pc ? [pc] : []), ...cars.map((v) => {
+    return [...base, ...locked, ...this.traffic.rects(), ...pc, ...cars.map((v) => {
       const ew = Math.abs(Math.sin(v.heading)) > 0.7;
       const hx = ew ? 2.1 : 0.95, hz = ew ? 0.95 : 2.1;
       return { x0: v.pos.x - hx, z0: v.pos.z - hz, x1: v.pos.x + hx, z1: v.pos.z + hz };

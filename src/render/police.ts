@@ -1,37 +1,30 @@
-// The police car: when you are wanted and driving, a patrol car comes after you with its lights
-// going. It follows the roads where it can and cuts across where it must; if it pins you while you
-// are stopped or crawling, you are arrested. Lose it (out of sight long enough) and the stars fade.
+// The police on the roads. When you are wanted and driving, patrol cars come after you with their
+// lights going: one for a star or two, up to four at five stars. They drive the street grid (making
+// for the junction that gets them closer, and straight at you once they can see you); if one pins you
+// while you are stopped or crawling, you are arrested. At four stars the helicopter comes up too,
+// circling over you with its searchlight: you cannot lose it in the open, only by getting indoors.
 import * as THREE from 'three';
 import type { GameState } from '../sim/types';
 import { buildCar } from './world';
-import { resolveCircle } from '../sim/world/nav';
-import { getWorld } from '../sim/world/layout';
+import { clearLine, resolveCircle } from '../sim/world/nav';
+import { collidersIn, getWorld, shellAt } from '../sim/world/layout';
 import { arrest } from '../sim/health';
+import { planX } from '../sim/world/levels';
 
-const SPAWNS = [{ x: -95, z: 2 }, { x: 95, z: -2 }, { x: 2.5, z: 74 }, { x: -2.5, z: -46 }];
+type R = { x0: number; z0: number; x1: number; z1: number };
 
-export class PoliceCar {
-  private obj: THREE.Group | null = null;
-  private lights: THREE.Mesh[] = [];
-  private pos = new THREE.Vector2();
-  private heading = 0;
-  private speed = 0;
-  private pinned = 0;
-  private leaving = 0;
-  constructor(private scene: THREE.Scene) {}
-  get active() { return !!this.obj; }
-
-  /** where the car is, for collisions */
-  rect(): { x0: number; z0: number; x1: number; z1: number } | null {
-    if (!this.obj) return null;
-    const ew = Math.abs(Math.sin(this.heading)) > 0.7;
-    const hx = ew ? 2.1 : 0.95, hz = ew ? 0.95 : 2.1;
-    return { x0: this.pos.x - hx, z0: this.pos.y - hz, x1: this.pos.x + hx, z1: this.pos.y + hz };
-  }
-
-  private spawn(px: number, pz: number) {
-    const s = SPAWNS.slice().sort((a, b) => Math.hypot(a.x - px, a.z - pz) - Math.hypot(b.x - px, b.z - pz))[1];
-    const g = buildCar('#f4f6f7', s.x, s.z, 0, false, 'saloon');
+class PatrolCar {
+  obj: THREE.Group;
+  lights: THREE.Mesh[] = [];
+  pos = new THREE.Vector2();
+  heading = 0;
+  speed = 0;
+  pinned = 0;
+  /** where it is making for, re-chosen twice a second */
+  aim: { x: number; z: number } | null = null;
+  aimAt = 0;
+  constructor(private scene: THREE.Scene, x: number, z: number, heading: number) {
+    const g = buildCar('#f4f6f7', 0, 0, 0, false, 'saloon');
     // battenburg livery stripe, light bar on the roof
     const stripeMat = new THREE.MeshStandardMaterial({ color: '#1f5fd1', roughness: 0.4 });
     const yellow = new THREE.MeshStandardMaterial({ color: '#e8e010', roughness: 0.4 });
@@ -49,62 +42,147 @@ export class PoliceCar {
       g.add(m);
       return m;
     });
-    this.scene.add(g);
+    scene.add(g);
     this.obj = g;
-    this.pos.set(s.x, s.z);
-    this.speed = 0;
-    this.pinned = 0;
-    this.leaving = 0;
+    this.pos.set(x, z);
+    this.heading = heading;
+    g.position.set(x, 0, z);
+  }
+  remove() { this.scene.remove(this.obj); }
+  rect(): R {
+    const ew = Math.abs(Math.sin(this.heading)) > 0.7;
+    const hx = ew ? 2.1 : 0.95, hz = ew ? 0.95 : 2.1;
+    return { x0: this.pos.x - hx, z0: this.pos.y - hz, x1: this.pos.x + hx, z1: this.pos.y + hz };
+  }
+}
+
+export class PoliceCar {
+  private cars: PatrolCar[] = [];
+  private heli: THREE.Group | null = null;
+  private rotor: THREE.Object3D | null = null;
+  private beam: THREE.SpotLight | null = null;
+  private heliAngle = 0;
+  private leaving = 0;
+  constructor(private scene: THREE.Scene) {}
+  get active() { return this.cars.length > 0 || !!this.heli; }
+
+  /** where the cars are, for collisions */
+  rects(): R[] { return this.cars.map((c) => c.rect()); }
+
+  /** a junction out of sight, some way off, to come from */
+  private spawnPoint(px: number, pz: number): { x: number; z: number; h: number } {
+    const js = getWorld().city.junctions.map((j) => ({ j, d: Math.hypot(j.x - px, j.z - pz) })).filter((c) => c.d > 90 && c.d < 220).sort((a, b) => a.d - b.d);
+    const j = js[Math.floor(Math.random() * Math.min(6, js.length))]?.j ?? { x: px + 150, z: pz };
+    return { x: j.x + 2, z: j.z, h: Math.atan2(px - j.x, pz - j.z) };
   }
 
-  private despawn() {
-    if (this.obj) this.scene.remove(this.obj);
-    this.obj = null;
-  }
-
-  update(state: GameState, dt: number, playerSpeed: number, colliders = getWorld().colliders) {
+  update(state: GameState, dt: number, playerSpeed: number, colliders: R[]) {
     const me = state.people[state.playerId];
-    const wanted = state.wanted && state.wanted.level > 0 && !me.away && !me.dead;
+    const w = state.wanted;
+    const wanted = !!w && w.level > 0 && !me.away && !me.dead;
     const driving = me.where === 'vehicle';
-    if (!this.obj) {
-      if (wanted && driving) this.spawn(me.pos.x, me.pos.z);
+    const px = planX(me.pos.x), pz = me.pos.z;
+    // how many cars the stars bring
+    const want = wanted && driving ? Math.min(4, Math.ceil(w!.level * 0.8)) : 0;
+    while (this.cars.length < want) { const s = this.spawnPoint(px, pz); this.cars.push(new PatrolCar(this.scene, s.x, s.z, s.h)); }
+    if (!wanted) {
+      // they drive off and disappear once well away
+      this.leaving += dt;
+      if (this.leaving > 8) { for (const c of this.cars) c.remove(); this.cars = []; }
+    } else this.leaving = 0;
+    const t = performance.now() / 1000;
+    for (const c of this.cars) c.lights.forEach((l, i) => { (l.material as THREE.MeshStandardMaterial).emissiveIntensity = Math.sin(t * 9 + i * Math.PI) > 0 ? 3 : 0.1; });
+    this.updateHeli(state, dt, wanted && w!.level >= 4, px, pz);
+    if (dt <= 0) return;
+    const junctions = getWorld().city.junctions;
+    for (const c of this.cars) {
+      let tx = wanted ? px : c.pos.x + Math.sin(c.heading) * 40, tz = wanted ? pz : c.pos.y + Math.cos(c.heading) * 40;
+      // no clear run at you: go by the junction nearest you that it can see
+      if (wanted && t - c.aimAt > 0.5) {
+        c.aimAt = t;
+        const here = { x: c.pos.x, z: c.pos.y };
+        if (clearLine(here, { x: px, z: pz }, 1.0)) c.aim = null;
+        else {
+          const cands = junctions.map((j) => ({ j, d: Math.hypot(j.x - here.x, j.z - here.z) })).filter((q) => q.d > 6 && q.d < 280).sort((a, b) => Math.hypot(a.j.x - px, a.j.z - pz) - Math.hypot(b.j.x - px, b.j.z - pz));
+          c.aim = cands.slice(0, 8).find((q) => clearLine(here, q.j, 1.0))?.j ?? c.aim;
+        }
+      }
+      if (wanted && c.aim) { tx = c.aim.x; tz = c.aim.z; if (Math.hypot(tx - c.pos.x, tz - c.pos.y) < 5) c.aimAt = 0; }
+      const dx = tx - c.pos.x, dz = tz - c.pos.y, d = Math.hypot(dx, dz);
+      const want2 = Math.atan2(dx, dz);
+      const turn = ((want2 - c.heading + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+      c.heading += Math.max(-2.0 * dt, Math.min(2.0 * dt, turn));
+      const dMe = Math.hypot(px - c.pos.x, pz - c.pos.y);
+      const target = dMe < 4 ? 0 : dMe < 12 ? 7 : Math.abs(turn) > 1 ? 8 : 19;
+      c.speed += Math.max(-12 * dt, Math.min(6 * dt, target - c.speed));
+      const nx = c.pos.x + Math.sin(c.heading) * c.speed * dt, nz = c.pos.y + Math.cos(c.heading) * c.speed * dt;
+      const others = this.cars.filter((o) => o !== c).map((o) => o.rect());
+      // the buildings round this car (it may be well away from you), the other cars, and yours
+      const r = resolveCircle({ x: nx, z: nz }, 1.1, [...collidersIn(nx - 4, nz - 4, nx + 4, nz + 4), ...others, ...colliders.filter((q) => Math.abs((q.x0 + q.x1) / 2 - nx) < 8 && Math.abs((q.z0 + q.z1) / 2 - nz) < 8)]);
+      if (Math.hypot(r.x - nx, r.z - nz) > 0.01) c.speed *= 0.6;
+      c.pos.set(r.x, r.z);
+      c.obj.position.set(r.x, 0, r.z);
+      c.obj.rotation.y = c.heading;
+      void d;
+      if (!wanted) continue;
+      // close by: they can see you
+      if (dMe < 30) w!.unseen = 0;
+      // pinned: you are stopped next to a patrol car for a couple of seconds
+      if (dMe < 4.5 && Math.abs(playerSpeed) < 1.5) c.pinned += dt; else c.pinned = Math.max(0, c.pinned - dt);
+      if (c.pinned > 2) {
+        const cop = Object.values(state.people).find((o) => o.police) ?? me;
+        if (driving) {
+          // out of the car and into the back of theirs
+          for (const v of Object.values(state.vehicles)) if (v.driverId === me.id) { v.driverId = null; v.state = v.kind === 'van' ? v.state : 'parked'; }
+          me.where = 'outside'; me.visible = true;
+        }
+        arrest(state, cop);
+        c.pinned = 0;
+        return;
+      }
+    }
+  }
+
+  /** the helicopter: circles over you with its searchlight; indoors it loses you */
+  private updateHeli(state: GameState, dt: number, on: boolean, px: number, pz: number) {
+    if (on && !this.heli) {
+      const g = new THREE.Group();
+      const body = new THREE.MeshStandardMaterial({ color: '#1f2a44', roughness: 0.4, metalness: 0.3 });
+      const yellow = new THREE.MeshStandardMaterial({ color: '#e8e010', roughness: 0.4 });
+      const cab = new THREE.Mesh(new THREE.SphereGeometry(1.4, 16, 12), body); cab.scale.set(1, 0.85, 1.5); g.add(cab);
+      const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.35, 5, 8), body); tail.rotation.x = Math.PI / 2; tail.position.set(0, 0.2, -3.6); g.add(tail);
+      const fin = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.1, 0.7), yellow); fin.position.set(0, 0.7, -6); g.add(fin);
+      for (const s of [-1, 1]) { const skid = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 2.6), body); skid.position.set(s * 0.8, -1.3, 0); g.add(skid); }
+      const rotor = new THREE.Group();
+      for (let k = 0; k < 4; k++) { const blade = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.04, 9), body); blade.rotation.y = (k * Math.PI) / 2; rotor.add(blade); }
+      rotor.position.y = 1.4; g.add(rotor);
+      const beam = new THREE.SpotLight('#fff8e0', 0, 120, 0.22, 0.4, 1.2);
+      beam.position.set(0, -1.2, 1); g.add(beam); g.add(beam.target);
+      // it comes in high from the side
+      g.position.set(px + 120, 60, pz + 40);
+      this.scene.add(g);
+      this.heli = g; this.rotor = rotor; this.beam = beam;
+    }
+    if (!this.heli) return;
+    // up and away when you are no longer wanted
+    if (!on) {
+      this.heli.position.y += dt * 8;
+      if (this.heli.position.y > 120) { this.scene.remove(this.heli); this.heli = null; }
       return;
     }
-    const t = performance.now() / 1000;
-    this.lights.forEach((l, i) => { (l.material as THREE.MeshStandardMaterial).emissiveIntensity = Math.sin(t * 9 + i * Math.PI) > 0 ? 3 : 0.1; });
-    if (!wanted) {
-      // drive off and disappear once well away
-      this.leaving += dt;
-      if (this.leaving > 8) { this.despawn(); return; }
+    this.heliAngle += dt * 0.25;
+    const cx = px + Math.cos(this.heliAngle) * 30, cz = pz + Math.sin(this.heliAngle) * 30;
+    this.heli.position.lerp(new THREE.Vector3(cx, 34, cz), Math.min(1, dt * 0.8));
+    this.heli.lookAt(px, 34, pz);
+    this.heli.rotateY(Math.PI / 2);
+    if (this.rotor) this.rotor.rotation.y += dt * 30;
+    if (this.beam) {
+      this.beam.target.position.copy(this.heli.worldToLocal(new THREE.Vector3(px, 0, pz)));
+      const m = state.minute % 1440;
+      this.beam.intensity = m < 6 * 60 || m > 19 * 60 ? 4000 : 0;
     }
-    if (dt <= 0) return;
-    const tx = wanted ? me.pos.x : this.pos.x + Math.sin(this.heading) * 40, tz = wanted ? me.pos.z : this.pos.y + Math.cos(this.heading) * 40;
-    const dx = tx - this.pos.x, dz = tz - this.pos.y, d = Math.hypot(dx, dz);
-    const want = Math.atan2(dx, dz);
-    let turn = ((want - this.heading + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
-    this.heading += Math.max(-1.6 * dt, Math.min(1.6 * dt, turn));
-    const target = d < 4 ? 0 : d < 12 ? 6 : 15;
-    this.speed += Math.max(-10 * dt, Math.min(5 * dt, target - this.speed));
-    const nx = this.pos.x + Math.sin(this.heading) * this.speed * dt, nz = this.pos.y + Math.cos(this.heading) * this.speed * dt;
-    const r = resolveCircle({ x: nx, z: nz }, 1.1, colliders);
-    if (Math.hypot(r.x - nx, r.z - nz) > 0.01) this.speed *= 0.6;
-    this.pos.set(r.x, r.z);
-    this.obj.position.set(r.x, 0, r.z);
-    this.obj.rotation.y = this.heading;
-    if (!wanted) return;
-    // close by: they can see you
-    if (d < 30) state.wanted!.unseen = 0;
-    // pinned: you are stopped next to the patrol car for a couple of seconds
-    if (d < 4.5 && Math.abs(playerSpeed) < 1.5) this.pinned += dt; else this.pinned = Math.max(0, this.pinned - dt);
-    if (this.pinned > 2) {
-      const cop = Object.values(state.people).find((o) => o.police) ?? me;
-      if (driving) {
-        // out of the car and into the back of theirs
-        for (const v of Object.values(state.vehicles)) if (v.driverId === me.id) { v.driverId = null; v.state = v.kind === 'van' ? v.state : 'parked'; }
-        me.where = 'outside'; me.visible = true;
-      }
-      arrest(state, cop);
-      this.pinned = 0;
-    }
+    // the helicopter sees you anywhere in the open
+    const me = state.people[state.playerId];
+    if (state.wanted && !shellAt(me.pos)) state.wanted.unseen = 0;
   }
 }

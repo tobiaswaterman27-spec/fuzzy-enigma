@@ -447,7 +447,9 @@ export class UI {
     svg += `<circle cx="${px}" cy="${pz}" r="${this.mapZoom ? 2.6 : 12}" fill="#ff3b30" stroke="#fff" stroke-width="${this.mapZoom ? 0.8 : 3}"/></svg>`;
     const where = `${DISTRICT_NAMES[districtAt(px, pz)]} · ${streetAt(px, pz)}`;
     const legend = w.buildings.filter((b) => b.category !== 'decorative' && !b.id.startsWith('house_') && !b.unit && !b.level).map((b) => `<div class="line"><span><i class="sw" style="background:${cat[b.category]}"></i>${esc(b.name)}</span><span class="muted">${esc(b.role)}</span></div>`).join('');
-    return `<div class="row"><b>${esc(where)}</b><button data-mapzoom="1">${this.mapZoom ? 'Whole city' : 'Close up'}</button></div>${svg}<p class="muted"><i class="sw" style="background:#2e8b57"></i>usable &nbsp; <i class="sw" style="background:#c48a2c"></i>simulated, limited access &nbsp; <i class="sw" style="background:#6d7f99"></i>landmark</p>${legend}`;
+    const wp = this.game.waypoint;
+    if (wp) svg = svg.replace('</svg>', `<circle cx="${wp.x}" cy="${wp.z}" r="${this.mapZoom ? 3 : 14}" fill="#ffd400" stroke="#000" stroke-width="${this.mapZoom ? 0.6 : 3}"/></svg>`);
+    return `<div class="row"><b>${esc(where)}</b><button data-mapzoom="1">${this.mapZoom ? 'Whole city' : 'Close up'}</button>${wp ? '<button data-clearwp="1">Clear waypoint</button>' : ''}</div><p class="muted">Tap the map to set a waypoint.</p>${svg}<p class="muted"><i class="sw" style="background:#2e8b57"></i>usable &nbsp; <i class="sw" style="background:#c48a2c"></i>simulated, limited access &nbsp; <i class="sw" style="background:#6d7f99"></i>landmark</p>${legend}`;
   }
 
   tab_shop(): string {
@@ -589,6 +591,16 @@ export class UI {
 
   onPhoneClick(e: Event) {
     const t = e.target as HTMLElement;
+    // a tap on the map sets a waypoint (or clears it)
+    const map = t.closest('svg.map') as SVGSVGElement | null;
+    if (map && e instanceof MouseEvent) {
+      const pt = map.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
+      const m = pt.matrixTransform(map.getScreenCTM()!.inverse());
+      this.game.setWaypoint({ x: m.x, z: m.y });
+      this.toast('Waypoint set: follow the line.');
+      this.lastBody = ''; this.renderPhone();
+      return;
+    }
     const btn = t.closest('button');
     if (!btn) return;
     const d = btn.dataset;
@@ -617,6 +629,7 @@ export class UI {
       else if (d.cab === 'talk' && s.taxi?.job) { this.closePhone(); this.openChat(s.taxi.job.passenger, true, `sitting in the back of ${this.p.name.split(' ')[0]}'s car, who is your HarbourCabs driver, on the way to ${s.taxi.job.to}`); return; }
       this.lastBody = ''; this.renderPhone(); return;
     }
+    if (d.clearwp) { this.game.setWaypoint(null); this.lastBody = ''; this.renderPhone(); return; }
     if (d.mapzoom) { this.mapZoom = !this.mapZoom; this.lastBody = ''; this.renderPhone(); return; }
     if (d['999']) { this.toast(call999(s, this.p.id, d['999'] as 'ambulance' | 'police')); this.closePhone(); return; }
     if (d.reply) {
