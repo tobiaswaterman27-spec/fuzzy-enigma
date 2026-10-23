@@ -3,7 +3,7 @@
 import type { Vec2 } from '../types';
 import { ESPLANADE_Z, ROAD_HALF, WALK_W } from './city';
 
-type CityLike = { buildings: { style: string; rect: { x0: number; z0: number; x1: number; z1: number } }[]; props: { kind: string; x: number; z: number }[] };
+type CityLike = { buildings: { style: string; rect: { x0: number; z0: number; x1: number; z1: number } }[]; props: { kind: string; x: number; z: number }[]; nodes?: { x: number; z: number }[] };
 
 export interface TrainStop { id: string; name: string; pos: Vec2 }
 const C = ROAD_HALF + WALK_W / 2;
@@ -39,3 +39,9 @@ export const RAMPS: Ramp[] = [
   { id: 6, x: 320, z: ESPLANADE_Z, dir: 1, len: 8, h: 2.0 },
   { id: 7, x: -720, z: ESPLANADE_Z, dir: -1, len: 7, h: 1.6 },
 ];
+
+/** ice cream vans: pulled up on the park lawn and along the seafront, just in from the corner (the van, and
+ * which way it faces) */
+export function iceCreamVansOf(_city: CityLike): { x: number; z: number; rot: number }[] {
+  return [{ x: 16, z: -664, rot: Math.PI / 2 }, { x: -505, z: 30, rot: Math.PI / 2 }, { x: 401, z: 45, rot: Math.PI / 2 }];
+}

@@ -1412,6 +1412,20 @@ function buildObstacle(o: Obstacle): THREE.Object3D {
       for (const s of [-1, 1]) grp.add(box(L, 0.1, 0.1, frameM, cx, 0.05, cz + s * (D / 2 - 0.1)));
       break;
     }
+    case 'ice_cream_van': {
+      // a white van with a pink skirt, a serving hatch on the side and a giant cone on the roof
+      const van = buildCar('#f7f3ec', cx, cz, o.rot ?? 0, true);
+      van.getObjectByName('lamps')?.removeFromParent();
+      grp.add(van);
+      const pink = M('#f48fb1', 0.5), cream = M('#fff3d6', 0.6), wafer = M('#d9a35a', 0.7);
+      const skirt = box(1.94, 0.35, 4.6, pink, 0, 0.55, -0.3); van.add(skirt);
+      const hatch = box(0.05, 0.75, 1.6, M('#3a2a1e', 0.6), -0.98, 1.55, -0.6, false); van.add(hatch);
+      const awn = box(0.5, 0.06, 1.8, pink, -1.2, 2.0, -0.6, false); awn.rotation.z = -0.35; van.add(awn);
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(0.35, 0.9, 12), wafer); cone.rotation.x = Math.PI; cone.position.set(0, 2.45, 0.2); van.add(cone);
+      const scoop = new THREE.Mesh(new THREE.SphereGeometry(0.4, 12, 10), cream); scoop.position.set(0, 2.95, 0.2); van.add(scoop);
+      const flake = box(0.08, 0.4, 0.08, M('#5d3a1a', 0.7), 0.15, 3.25, 0.2); flake.rotation.z = 0.4; van.add(flake);
+      break;
+    }
     case 'bike_rack': {
       // a row of steel hoops, a blue totem with the scheme's sign, and a couple of docked bikes
       const steel = metal('#8d949a', 0.35), blue = M('#1f6fd1', 0.4);

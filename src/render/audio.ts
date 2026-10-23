@@ -80,6 +80,14 @@ export class Audio {
     const v = Math.min(0.9, 0.2 + speed / 18);
     this.thud(160, 0.35, v); this.thud(1200, 0.25, v * 0.6); this.thud(3200, 0.15, v * 0.35);
   }
+  /** the ice cream van's chime: the opening of Greensleeves on a tinny music box */
+  chime(dist: number) {
+    if (!this.ctx || this.muted) return;
+    const v = Math.min(0.08, 3 / Math.max(5, dist));
+    const notes: [number, number][] = [[57, 0.5], [60, 1], [62, 0.5], [64, 0.75], [65, 0.25], [64, 0.5], [62, 1], [59, 0.5], [55, 0.75], [57, 0.25], [59, 0.5], [60, 1], [57, 0.5]];
+    let t = 0;
+    for (const [m, d] of notes) { const f = 440 * Math.pow(2, (m + 12 - 69) / 12); this.blip(f, d * 0.42, 'triangle', v, t); this.blip(f * 2, d * 0.3, 'sine', v * 0.4, t); t += d * 0.42; }
+  }
   /** a car horn, a short double beep (two notes a third apart, like most cars) */
   horn(dist: number) {
     if (!this.ctx || this.muted) return;

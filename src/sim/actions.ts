@@ -475,6 +475,10 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
       out.push(opt('chop', car ? `Sell the stolen ${car.name} for parts · ${fmtMoney(chopPrice(state, car.id))}` : 'Sell a stolen car for parts', car ? undefined : 'Bring a stolen car round to the yard gate'));
       break;
     }
+    case 'ice_cream':
+      out.push(opt('ice_cream', `A 99 with a flake · ${fmtMoney(250)}`, (state.ledger.accounts[p.accountId]?.balance ?? 0) < 250 ? 'Not enough money' : undefined, '99'));
+      out.push(opt('ice_cream', `An ice lolly · ${fmtMoney(150)}`, (state.ledger.accounts[p.accountId]?.balance ?? 0) < 150 ? 'Not enough money' : undefined, 'lolly'));
+      break;
     case 'bike_dock':
       out.push(opt('hire_bike', `Hire a bike · ${fmtMoney(BIKE_FARE)}`, Object.values(state.vehicles).some((v) => v.kind === 'bike' && v.ownerId === actorId) ? 'You already have a hire bike out' : undefined));
       break;
@@ -812,6 +816,15 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
       begin(p, type, itId, { duration: 0.8 }, now); break;
     // a call from the box: lift the receiver, talk, hang up (the job is given at the end)
     case 'vince': begin(p, type, itId, { duration: 0.8, arg }, now); break;
+    case 'ice_cream': {
+      const price = arg === '99' ? 250 : 150;
+      const r = transfer(state, { from: p.accountId, to: state.externalId, amount: price, reason: 'purchase', memo: arg === '99' ? 'A 99 with a flake' : 'An ice lolly', key: `ice:${p.id}:${Math.floor(state.minute * 10)}` });
+      if (!r.ok) return { ok: false, msg: 'Not enough money.' };
+      p.needs.mood = clamp(p.needs.mood + (arg === '99' ? 8 : 5), 0, 100);
+      p.needs.satiety = clamp(p.needs.satiety + (arg === '99' ? 12 : 5), 0, 100);
+      p.gesture = { clip: 'eat', until: state.minute + 2.5 };
+      return { ok: true, msg: arg === '99' ? 'A 99 with a flake. Perfect.' : 'An ice lolly. Brain freeze.' };
+    }
     case 'hire_bike': return { ok: true, msg: hireBike(state, p.id) };
     case 'ride_bike': { const v = state.vehicles[itId.slice(5)]; return { ok: !!v, msg: v ? mountBike(state, p.id, v) : '' }; }
     case 'garage': { const v = state.vehicles[arg ?? '']; return { ok: !!v, msg: v ? garageJob(state, p.id, v) : '' }; }

@@ -478,6 +478,7 @@ export class UI {
     for (const it of Object.values(w.interactables)) {
       if (it.kind === 'bike_dock') svg += dot(it.pos.x, it.pos.z, '#1f6fd1', 'Harbour Bikes dock');
       else if (it.kind === 'payphone') svg += dot(it.pos.x, it.pos.z, '#c8102e', 'Phone box (Vince)', 0.8);
+      else if (it.kind === 'ice_cream') svg += dot(it.pos.x, it.pos.z, '#f48fb1', 'Ice cream van', 1.1);
       else if (it.kind === 'platform' && it.id.startsWith('halt_')) svg += dot(it.pos.x, it.pos.z, '#2e7d32', it.label, 1.2);
     }
     svg += `<circle cx="${px}" cy="${pz}" r="${this.mapZoom ? 2.6 : 12}" fill="#ff3b30" stroke="#fff" stroke-width="${this.mapZoom ? 0.8 : 3}"/></svg>`;
@@ -485,7 +486,7 @@ export class UI {
     const legend = w.buildings.filter((b) => b.category !== 'decorative' && !b.id.startsWith('house_') && !b.unit && !b.level).map((b) => `<div class="line"><span><i class="sw" style="background:${cat[b.category]}"></i>${esc(b.name)}</span><span class="muted">${esc(b.role)}</span></div>`).join('');
     const wp = this.game.waypoint;
     if (wp) svg = svg.replace('</svg>', `<circle cx="${wp.x}" cy="${wp.z}" r="${this.mapZoom ? 3 : 14}" fill="#ffd400" stroke="#000" stroke-width="${this.mapZoom ? 0.6 : 3}"/></svg>`);
-    return `<div class="row"><b>${esc(where)}</b><button data-mapzoom="1">${this.mapZoom ? 'Whole city' : 'Close up'}</button>${wp ? '<button data-clearwp="1">Clear waypoint</button>' : ''}</div><p class="muted">Tap the map to set a waypoint.</p>${svg}<p class="muted"><i class="sw" style="background:#2e8b57"></i>usable &nbsp; <i class="sw" style="background:#c48a2c"></i>simulated, limited access &nbsp; <i class="sw" style="background:#6d7f99"></i>landmark &nbsp; <i class="sw" style="background:#ff8f00"></i>stunt ramp &nbsp; <i class="sw" style="background:#1f6fd1"></i>bike dock &nbsp; <i class="sw" style="background:#c8102e"></i>phone box &nbsp; <i class="sw" style="background:#2e7d32"></i>rail halt &nbsp; <i class="sw" style="background:#b71c1c"></i><i class="sw" style="background:#1565c0"></i>gang corners</p>${legend}`;
+    return `<div class="row"><b>${esc(where)}</b><button data-mapzoom="1">${this.mapZoom ? 'Whole city' : 'Close up'}</button>${wp ? '<button data-clearwp="1">Clear waypoint</button>' : ''}</div><p class="muted">Tap the map to set a waypoint.</p>${svg}<p class="muted"><i class="sw" style="background:#2e8b57"></i>usable &nbsp; <i class="sw" style="background:#c48a2c"></i>simulated, limited access &nbsp; <i class="sw" style="background:#6d7f99"></i>landmark &nbsp; <i class="sw" style="background:#ff8f00"></i>stunt ramp &nbsp; <i class="sw" style="background:#1f6fd1"></i>bike dock &nbsp; <i class="sw" style="background:#c8102e"></i>phone box &nbsp; <i class="sw" style="background:#f48fb1"></i>ice cream &nbsp; <i class="sw" style="background:#2e7d32"></i>rail halt &nbsp; <i class="sw" style="background:#b71c1c"></i><i class="sw" style="background:#1565c0"></i>gang corners</p>${legend}`;
   }
 
   tab_shop(): string {

@@ -1,5 +1,5 @@
 // Static world definition for the Harbourside starting district.
-import { bikeDocksOf, HALTS, phoneBoxesOf, RAMPS, turnstilesOf } from './spots';
+import { bikeDocksOf, HALTS, iceCreamVansOf, phoneBoxesOf, RAMPS, turnstilesOf } from './spots';
 import { STALLS } from '../streetmarket';
 import { defaultDesign, furnish, type HomeDesign, type PlacedItem } from './homes';
 import { PLOTS } from './plots';
@@ -87,6 +87,7 @@ export type ObstacleKind =
   | 'halt_sign'
   | 'phonebox'
   | 'bike_rack'
+  | 'ice_cream_van'
   | 'ramp'
   | 'cellbars'
   | 'reception'
@@ -217,6 +218,7 @@ export type InteractKind =
   | 'prison_bunk'
   | 'payphone'
   | 'bike_dock'
+  | 'ice_cream'
   | 'chop_shop'
   | 'bus_stop'
   | 'hospital_door'
@@ -848,6 +850,11 @@ function buildWorldData(homeDesign: HomeDesign): World {
   });
   // ---- stunt ramps across the road (drawn only; cars ride up them)
   for (const r of RAMPS) obstacles.push({ kind: 'ramp', rect: { x0: Math.min(r.x, r.x + r.dir * r.len), x1: Math.max(r.x, r.x + r.dir * r.len), z0: r.z - 2.2, z1: r.z + 2.2 }, height: r.h, solid: false, rot: r.dir });
+  // ---- ice cream vans
+  iceCreamVansOf(buildCity(B.filter((b) => !b.unit && !b.level).map((b) => b.rect))).forEach((v, i) => {
+    obstacles.push({ kind: 'ice_cream_van', rect: { x0: v.x - 2.5, z0: v.z - 1.0, x1: v.x + 2.5, z1: v.z + 1.0 }, height: 2.6, solid: true, rot: v.rot });
+    add({ id: `icecream_${i}`, kind: 'ice_cream', label: "Mr Whippy's (ice creams)", pos: { x: v.x - 0.6, z: v.z + 1.9 }, facing: Math.PI, obj: { x: v.x - 0.6, z: v.z + 1.0 }, locationId: 'outside', range: 1.8 });
+  });
   // ---- Harbour Bikes docks
   bikeDocksOf(buildCity(B.filter((b) => !b.unit && !b.level).map((b) => b.rect))).forEach((d, i) => {
     obstacles.push({ kind: 'bike_rack', rect: { x0: d.x - 1.6, z0: d.z - 0.9, x1: d.x + 1.6, z1: d.z - 0.3 }, height: 1.0, solid: false });

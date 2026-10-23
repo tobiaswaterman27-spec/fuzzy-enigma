@@ -185,6 +185,7 @@ export type ActionType =
   | 'vince'
   | 'garage'
   | 'hire_bike'
+  | 'ice_cream'
   | 'ride_bike'
   | 'prison_meal'
   | 'prison_work'

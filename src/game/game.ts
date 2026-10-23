@@ -598,6 +598,7 @@ export class Game {
   private ambient!: THREE.AmbientLight;
   private wetness = 0;
   private boltAt = 0;
+  private chimeAt = 0;
   /** stars in the night sky: a shell of points round the camera */
   private stars: THREE.Points | null = (() => {
     const n = 1800, pos = new Float32Array(n * 3);
@@ -696,6 +697,11 @@ export class Game {
     this.updateRace();
     this.updateMission();
     this.updateThief();
+    // the ice cream van's chime as you come near (now and then)
+    if (performance.now() > this.chimeAt) {
+      const iv = Object.values(getWorld().interactables).filter((i) => i.kind === 'ice_cream').map((i) => Math.hypot(i.pos.x - this.player.pos.x, i.pos.z - this.player.pos.z)).sort((a, b) => a - b)[0] ?? Infinity;
+      if (iv < 45) { this.audio.chime(iv); this.chimeAt = performance.now() + 40000; } else this.chimeAt = performance.now() + 2000;
+    }
     this.updateWaypoint();
     this.updateWallets();
     // a PCSO's beat: a yellow ring at each point still to check in at
