@@ -8,6 +8,7 @@ import { BUS_FARE, busMinutes, busStops } from '../sim/bus';
 import { dealBlackjack, finishBlackjack, type Hand, handValue, hitBlackjack, roulette } from '../sim/venues';
 import { AVENUE_NAMES, CITY, DISTRICT_NAMES, districtAt, STREET_NAMES, streetAt } from '../sim/world/city';
 import { planX } from '../sim/world/levels';
+import { Radar } from './radar';
 import type { Game } from '../game/game';
 import type { Business, GameState, Person } from '../sim/types';
 import { fmtClock, fmtDate, fmtDuration, dayIndex } from '../sim/clock';
@@ -66,7 +67,9 @@ export class UI {
   private lastBody = '';
   private toastTimer = 0;
 
+  private radar: Radar;
   constructor(private game: Game) {
+    this.radar = new Radar(document.getElementById('hud')!);
     game.onToast = (m) => this.toast(m);
     game.onApproach = (id) => void this.approached(id);
     game.onAmbientChat = (a, b) => void this.ambientChat(a, b);
@@ -137,6 +140,7 @@ export class UI {
 
   // ------------------------------------------------------------ HUD
   frame() {
+    this.radar.update(this.s, this.game.camYaw, !!this.game.drivingVan(), this.game.waypoint);
     const s = this.s, p = this.p;
     $('#clock').textContent = fmtClock(s.minute);
     $('#date').textContent = `${fmtDate(s.minute)} · ${seasonOf(s.minute)} · ${weatherLabel(s)}`;

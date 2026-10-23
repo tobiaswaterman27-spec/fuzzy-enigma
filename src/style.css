@@ -32,6 +32,8 @@ button.primary { background: var(--accent); color: #07150d; border-color: transp
 #prompt .busy { display: grid; gap: 6px; padding: 4px 8px; } .prog { height: 6px; background: #333d38; border-radius: 3px; overflow: hidden; } .prog i { display: block; height: 100%; background: var(--accent); }
 #toasts { position: absolute; right: 10px; bottom: 24px; display: grid; gap: 6px; width: min(340px, 80vw); pointer-events: none; }
 .toast { background: var(--panel); padding: 8px 12px; border-radius: 8px; border-left: 3px solid var(--accent); transition: opacity .8s; } .toast.fade { opacity: 0; }
+#radar { position: absolute; left: 14px; bottom: 22px; width: 190px; height: 190px; pointer-events: none; filter: drop-shadow(0 3px 8px rgba(0,0,0,.6)); }
+@media (max-width: 700px) { #radar { width: 130px; height: 130px; } }
 #perf { position: absolute; left: 10px; bottom: 6px; font-family: var(--mono); font-size: 10px; color: rgba(255,255,255,.35); pointer-events: none; }
 #phone { position: fixed; right: max(16px, env(safe-area-inset-right)); top: 64px; bottom: 16px; width: min(440px, calc(100vw - 32px)); background: #121915; border: 1px solid var(--line); border-radius: 18px; display: grid; grid-template-rows: auto auto 1fr; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
 .phone-head { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--line); }
