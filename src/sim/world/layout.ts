@@ -1,5 +1,6 @@
 // Static world definition for the Harbourside starting district.
 import { HALTS } from '../train';
+import { turnstiles } from '../stadium';
 import { STALLS } from '../streetmarket';
 import { defaultDesign, furnish, type HomeDesign, type PlacedItem } from './homes';
 import { PLOTS } from './plots';
@@ -207,6 +208,7 @@ export type InteractKind =
   | 'washer'
   | 'housedoor'
   | 'shopdoor'
+  | 'turnstile'
   | 'chop_shop'
   | 'bus_stop'
   | 'hospital_door'
@@ -831,6 +833,8 @@ function buildWorldData(homeDesign: HomeDesign): World {
     add({ id: h.id, kind: 'platform', label: `${h.name} (rail halt)`, pos: h.pos, facing: Math.PI, obj: { x: h.pos.x, z: h.pos.z - 0.9 }, locationId: 'outside', range: 2.2 });
     obstacles.push({ kind: 'halt_sign', rect: { x0: h.pos.x - 1.4, z0: h.pos.z - 1.5, x1: h.pos.x + 1.4, z1: h.pos.z - 1.2 }, height: 3.0, solid: false });
   }
+  // ---- the stadium's turnstiles
+  { const t = turnstiles(buildCity(B.filter((b) => !b.unit && !b.level).map((b) => b.rect))); add({ id: 'turnstile', kind: 'turnstile', label: 'Harbour City Stadium turnstiles', pos: t, facing: Math.PI, obj: { x: t.x, z: t.z - 1.2 }, locationId: 'outside', range: 2.5 }); for (const dx of [-2.2, 1.4]) obstacles.push({ kind: 'kiosk', rect: { x0: t.x + dx, z0: t.z - 1.4, x1: t.x + dx + 0.8, z1: t.z - 0.7 }, height: 1.2, solid: true }); }
   // ---- Eastgate Motors' yard gate: stolen cars sold for parts
   add({ id: 'chop_shop', kind: 'chop_shop', label: 'Eastgate Motors (yard gate)', pos: { x: 84, z: -10.4 }, facing: Math.PI, obj: { x: 84, z: -12 }, locationId: 'outside', range: 1.6 });
   // ---- the city's venues, fitted out

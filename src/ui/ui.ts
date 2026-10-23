@@ -152,7 +152,7 @@ export class UI {
     if (p.weapon) $('#weapon-ind').textContent = `Holding: ${WEAPONS[p.weapon].label} (F to use, Q to put away)`;
     const away = p.away;
     $('#away').hidden = !away && p.down == null;
-    if (away) $('#away').innerHTML = `<h2>${away.place === 'bus' ? 'On the bus' : away.place === 'train' ? 'On the train' : away.place === 'hospital' ? HOSPITAL : away.place === 'prison' ? 'HMP Harbourside' : 'Harbourside Police Station'}</h2><div class="muted">${esc(away.reason)}</div><div>Out ${fmtDate(away.until)} ${fmtClock(away.until)}</div><div class="muted">Time passes quickly…</div>`;
+    if (away) $('#away').innerHTML = `<h2>${away.place === 'bus' ? 'On the bus' : away.place === 'train' ? 'On the train' : away.place === 'stadium' ? 'Harbour City Stadium' : away.place === 'hospital' ? HOSPITAL : away.place === 'prison' ? 'HMP Harbourside' : 'Harbourside Police Station'}</h2><div class="muted">${esc(away.reason)}</div><div>Out ${fmtDate(away.until)} ${fmtClock(away.until)}</div><div class="muted">Time passes quickly…</div>`;
     else if (p.down != null) $('#away').innerHTML = '<h2>You are on the ground</h2><div class="muted">An ambulance is on its way.</div>';
     $('#cond').textContent = conditionLabel(p).join(' · ');
     // a time-critical reminder (only shown when it is nearly time to set off) outranks the general goal
@@ -387,7 +387,7 @@ export class UI {
         <div class="line"><span>Distance driven</span><span>${(car.odometer / 1000).toFixed(1)} km</span></div>
         <div class="line"><span>Insurance & road tax</span><span>${fmtMoney(CAR_WEEKLY)} a week${car.nextCharge ? `, next ${fmtDate(car.nextCharge)}` : ''}</span></div>
         ${car.uninsured ? '<p class="warn">Uninsured: the car stays parked until the insurance is paid.</p>' : ''}
-        <p class="muted">Walk up to the driver's door and press E to get in. While driving: W/S to drive, A/D to steer, E to park and get out. Fuel is paid when you park (${fmtMoney(FUEL_PER_KM)} per km).</p>
+        <p class="muted">Walk up to the driver's door and press E to get in. While driving: W/S to drive, A/D to steer, E to park and get out, R to change radio station. Fuel is paid when you park (${fmtMoney(FUEL_PER_KM)} per km).</p>
         <div class="row"><button data-carsell="1" ${car.state === 'parked' ? '' : 'disabled'}>Sell to Harbour Motors (${fmtMoney(back)})</button></div></div>`;
     }
     return `${p.quals?.includes('driving') ? '' : '<p class="warn">You need a driving licence to drive (course and test at the Job Centre: Phone &gt; Jobs). You can still buy a car now.</p>'}<p class="muted">Harbour Motors delivers to the kerb outside Marlow Court. Running costs: insurance and road tax ${fmtMoney(CAR_WEEKLY)} a week, fuel ${fmtMoney(FUEL_PER_KM)} per km. You have ${fmtMoney(bal)}.</p>

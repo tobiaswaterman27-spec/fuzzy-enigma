@@ -67,3 +67,30 @@ describe('Landmarks', () => {
     expect(auditLedger(s)).toEqual([]);
   });
 });
+
+import { fixture, goToMatch, gateOpen, turnstiles } from '../src/sim/stadium';
+describe('Match day', () => {
+  it('lets you in on match days, and settles the bet at full time', () => {
+    const s = createNewGame(7, setup);
+    const me = s.people.player;
+    transfer(s, { from: s.externalId, to: me.accountId, amount: 100000, reason: 'transfer', memo: 't' });
+    // find a Saturday
+    let d = Math.floor(s.minute / 1440) + 1; while (d % 7 !== 5) d++;
+    s.minute = d * 1440 + 10 * 60;
+    expect(gateOpen(s.minute).open).toBe(false);
+    for (let i = 0; i < 4 * 60 + 30; i += 30) step(s, 30);
+    expect(gateOpen(s.minute).open).toBe(true);
+    me.pos = { ...turnstiles() }; me.where = 'outside'; me.visible = true;
+    const opts = optionsFor(s, me.id, 'turnstile');
+    expect(opts.filter((o) => o.enabled).length).toBe(4);
+    const f = fixture(d);
+    const bal = s.ledger.accounts[me.accountId].balance;
+    expect(goToMatch(s, me.id, f.result).ok).toBe(true);
+    for (let i = 0; i < 20 && me.away; i++) step(s, 10);
+    expect(me.away).toBeFalsy();
+    void bal;
+    expect(s.ledger.txns.some((t) => t.memo === 'Winning bet' && t.to === me.accountId)).toBe(true);
+    expect(Math.hypot(me.pos.x - turnstiles().x, me.pos.z - turnstiles().z)).toBeLessThan(1);
+    expect(auditLedger(s)).toEqual([]);
+  });
+});

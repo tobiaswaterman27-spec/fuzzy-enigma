@@ -380,6 +380,7 @@ export class Game {
       if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
       this.keys.add(e.code);
       if (this.uiOpen) return;
+      if (e.code === 'KeyR' && this.drivingVan()) { this.onToast(this.audio.radio.cycle()); return; }
       if (e.code === 'KeyE' && this.drivingVan()?.kind === 'forklift') {
         if (Math.abs(this.vanSpeed) > 1) { this.onToast('Stop first.'); return; }
         this.onToast(forkliftAction(this.state, this.player.id).msg);
@@ -487,12 +488,13 @@ export class Game {
     return r;
   }
 
+  private radioOn = false;
   onUi: (which: 'jobs' | 'advisor' | 'interview' | 'laptop' | 'homestore' | 'invite' | 'chat' | 'darts' | 'bus' | 'train' | 'roulette' | 'blackjack', arg?: string) => void = () => {};
 
   /** game minutes per real second right now */
   get rate() {
     const away = this.player.away;
-    if (away) return away.place === 'prison' ? 900 : away.place === 'custody' ? 150 : away.place === 'bus' || away.place === 'train' ? 40 : 120;
+    if (away) return away.place === 'prison' ? 900 : away.place === 'custody' ? 150 : away.place === 'bus' || away.place === 'train' ? 40 : away.place === 'stadium' ? 60 : 120;
     if (this.player.down != null) return 1;
     if (this.player.sleeping) return 45;
     return BASE_TIME_SCALE * this.speedMult;
@@ -565,6 +567,8 @@ export class Game {
     }
     this.beatMarkers.forEach((m, i) => { const q = beat[i]; m.visible = !!q; if (q) m.position.set(q.x, 0.15 + Math.sin(performance.now() / 350 + i) * 0.05, q.z); });
     this.market.update(s, this.paused ? 0 : dt, this.player.pos);
+    // the first time you get behind the wheel the radio comes on
+    if (!this.radioOn && this.drivingVan()?.kind === 'car') { this.radioOn = true; if (this.audio.radio.station < 0) this.onToast(`${this.audio.radio.cycle()} · R to change station`); }
     this.audio.update(s, this.paused ? 0 : dt, Math.hypot(this.vel.x, this.vel.z), this.drivingVan() ? this.vanSpeed : null);
     this.watchFrameRate(dt);
     this.world.update(s, dt);

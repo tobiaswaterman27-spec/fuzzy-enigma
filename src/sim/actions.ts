@@ -7,6 +7,7 @@ import { bargeIn, breakIn, houseOf, houseOpen, knock, searchValuables } from './
 import { breakUp, handIn, onPcsoShift, readBeat } from './station';
 import { BUS_FARE } from './bus';
 import { TRAIN_FARE } from './train';
+import { fixture, gateOpen, goToMatch, ODDS, STAKE, TICKET, type Pick } from './stadium';
 import { arcadeGo, buyAt, clearRecord, crackVault, RECORD_FEE, smashCases, watchFilm, wedding, WEDDING_FEE, haircut, hasGymPass, newOutfit, offersAt, PAWN, pawnSell, robVenue, shoplift, slots, staffOf, venueOfSpot, workout } from './venues';
 import { venueOpen } from './world/venues';
 import { attack, crime, goToAandE } from './health';
@@ -38,7 +39,7 @@ import { getWorld, locationOf, SHOPS, type Interactable } from './world/layout';
 import { clearLine } from './world/nav';
 import { transfer } from './ledger';
 import { news } from './events';
-import { fmtClock, minuteOfDay } from './clock';
+import { dayIndex, fmtClock, minuteOfDay } from './clock';
 import { completeHomeOrder, storeStaffed } from './homestore';
 import { FRIEND_AT, plannedMeetup, relationLabel } from './social';
 import { cafeQueueSlot, serveMeal, takePortion } from './cafe';
@@ -453,6 +454,13 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
       out.push(opt('chop', car ? `Sell the stolen ${car.name} for parts · ${fmtMoney(chopPrice(state, car.id))}` : 'Sell a stolen car for parts', car ? undefined : 'Bring a stolen car round to the yard gate'));
       break;
     }
+    case 'turnstile': {
+      const g = gateOpen(state.minute);
+      const f = fixture(dayIndex(state.minute));
+      out.push(opt('match', g.ko != null ? `Watch Harbour City v ${f.rival} · ${fmtMoney(TICKET)}` : 'Watch a match', g.reason, 'watch'));
+      if (g.open) for (const k of ['H', 'D', 'A'] as const) out.push(opt('match', `…and put ${fmtMoney(STAKE)} on ${k === 'H' ? 'a home win' : k === 'D' ? 'a draw' : `${f.rival}`} (pays ${ODDS[k]}×)`, undefined, k));
+      break;
+    }
     case 'shopdoor': {
       const id = shopOf(it.id);
       if (!shopLocked(state, id)) break;
@@ -761,6 +769,7 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
     }
     case 'chop':
       begin(p, type, itId, { duration: 0.8 }, now); break;
+    case 'match': return goToMatch(state, p.id, arg === 'watch' ? undefined : (arg as Pick));
     case 'ae': {
       const r = goToAandE(state, p.id);
       return r;

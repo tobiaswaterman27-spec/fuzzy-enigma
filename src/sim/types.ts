@@ -181,6 +181,7 @@ export type ActionType =
   | 'crack_vault'
   | 'dance'
   | 'pray'
+  | 'match'
   | 'film'
   | 'smash_case'
   | 'workout'
@@ -338,7 +339,7 @@ export interface Person {
   /** weapon in hand, if any */
   weapon?: 'bat' | 'knife' | null;
   /** in hospital or in a police cell until a time */
-  away?: { until: number; reason: string; place: 'hospital' | 'custody' | 'prison' | 'bus' | 'train'; to?: Vec2 } | null;
+  away?: { until: number; reason: string; place: 'hospital' | 'custody' | 'prison' | 'bus' | 'train' | 'stadium'; to?: Vec2 } | null;
   /** fighting someone: hits back while they are close, until a time */
   combat?: { target: Id; until: number; next: number } | null;
   /** running away until a time */
@@ -745,6 +746,8 @@ export interface GameState {
   /** a hold-up in progress */
   robbery?: { robber: Id; clerk: Id; business: Id } | null;
   /** today's PCSO beat: the points to check in at */
+  /** at the match: which day's game, and what you bet on */
+  matchBet?: { day: number; pick: 'H' | 'D' | 'A' | null } | null;
   beat?: { day: number; by: Id; points: { x: number; z: number; label: string; done: boolean }[] } | null;
   /** the city's venues: what is in the till today, and what has been robbed */
   venueState?: Record<string, { till: number; day: number; robbedDay?: number; vaultDay?: number; casesDay?: number }>;

@@ -5,6 +5,7 @@ import type { GameState } from '../sim/types';
 import { buildingAt, getWorld } from '../sim/world/layout';
 import { raining } from '../sim/weather';
 import { daylight } from '../sim/clock';
+import { Radio } from './radio';
 
 export class Audio {
   private ctx: AudioContext | null = null;
@@ -18,6 +19,7 @@ export class Audio {
   private lastWhere = '';
   private birdAt = 0;
   volume = 0.6;
+  readonly radio = new Radio();
   muted = false;
 
   /** browsers only allow sound after a user gesture */
@@ -43,6 +45,7 @@ export class Audio {
     };
     this.rainGain = loopNoise('highpass', 900, 0.4);
     this.trafficGain = loopNoise('lowpass', 220, 0.7);
+    this.radio.attach(c, this.master, this.noise);
   }
 
   private blip(freq: number, dur: number, type: OscillatorType, vol: number, when = 0) {
@@ -103,6 +106,7 @@ export class Audio {
         if (inside) this.thud(1400, 0.07, 0.12); else this.thud(700 + Math.random() * 200, 0.09, 0.14);
       }
     } else this.stepPhase = 0.6;
+    this.radio.update(drivingSpeed !== null);
     // the van's engine, pitch with road speed
     if (drivingSpeed !== null) {
       if (!this.engine) {

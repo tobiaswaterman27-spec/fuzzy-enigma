@@ -2,6 +2,7 @@
 // work, illness), bleed, collapse, be taken by ambulance to St Mary's and recover, or die. Attacks
 // that are seen bring the police: officers come for you, and if they catch you it is a fine, a night
 // in the cells or prison, and a criminal record. Everything uses the state's random stream.
+import { settleMatch } from './stadium';
 import { cellSpot } from './station';
 import type { GameState, Id, Person, Vec2 } from './types';
 import { clamp, dist, fmtMoney, nextId, rand, randInt } from './core';
@@ -206,6 +207,7 @@ function release(state: GameState, p: Person) {
   const a = p.away!;
   p.away = null;
   if (a.place === 'hospital') { p.health = Math.max(healthOf(p), p.isPlayer ? 85 : 90); p.injured = null; }
+  if (a.place === 'stadium') { p.pos = { ...(a.to ?? p.pos) }; p.visible = true; p.where = 'outside'; settleMatch(state, p.id); return; }
   if (a.place === 'bus' || a.place === 'train') { p.pos = { ...(a.to ?? p.pos) }; p.visible = true; p.where = 'outside'; return; }
   if (p.isPlayer) {
     const n = getWorld().nodes[a.place === 'custody' ? 'pol_out' : RELEASE_NODE];
