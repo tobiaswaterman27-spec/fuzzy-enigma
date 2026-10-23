@@ -97,6 +97,23 @@ export class Audio {
     const v = Math.min(0.12, 4 / Math.max(6, dist));
     for (const [w, d] of [[0, 0.22], [0.3, 0.4]]) { this.blip(392, d, 'sawtooth', v, w); this.blip(494, d, 'sawtooth', v * 0.8, w); }
   }
+  private screechNode: { g: GainNode; f: BiquadFilterNode } | null = null;
+  /** tyres howling in a slide or a locked-wheel stop (0..1) */
+  screech(level: number) {
+    const c = this.ctx;
+    if (!c) return;
+    if (!this.screechNode && level > 0) {
+      const src = c.createBufferSource(); src.buffer = this.noise; src.loop = true;
+      const f = c.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 2200; f.Q.value = 6;
+      const g = c.createGain(); g.gain.value = 0;
+      src.connect(f).connect(g).connect(this.master); src.start();
+      this.screechNode = { g, f };
+    }
+    if (!this.screechNode) return;
+    const t = c.currentTime;
+    this.screechNode.g.gain.setTargetAtTime(this.muted ? 0 : level * 0.5, t, level > 0 ? 0.03 : 0.12);
+    this.screechNode.f.frequency.setTargetAtTime(1900 + level * 900 + Math.sin(t * 23) * 120, t, 0.05);
+  }
   private sirenOsc: { o: OscillatorNode; g: GainNode } | null = null;
   /** the two-tone siren of an emergency vehicle on its way, louder the closer it is (Infinity: none) */
   siren(dist: number) {

@@ -23,6 +23,7 @@ import { RAMPS, type Ramp } from '../sim/world/spots';
 import { landedJump } from '../sim/stunts';
 import { Emergency } from '../render/emergency';
 import { Pigeons } from '../render/pigeons';
+import { Skids } from '../render/skids';
 import { leaveBike } from '../sim/bikes';
 import { BusSeq } from '../render/busseq';
 import { STREETS } from '../sim/world/city';
@@ -254,6 +255,7 @@ export class Game {
   private carSeq!: CarSeq;
   private emergency!: Emergency;
   private pigeons!: Pigeons;
+  private skids!: Skids;
   /** where the player is throwing crumbs: the ground in front of the bench */
   private crumbsAt() {
     const it = getWorld().interactables[this.player.action?.target ?? ''];
@@ -342,6 +344,7 @@ export class Game {
     this.traffic.onHorn = (x, z) => this.audio.horn(Math.hypot(x - this.player.pos.x, z - this.player.pos.z));
     this.emergency = new Emergency(this.scene, this.views.fx);
     this.pigeons = new Pigeons(this.scene);
+    this.skids = new Skids(this.scene);
     this.busSeq = new BusSeq(this.scene);
     this.police = new PoliceCar(this.scene);
     this.gatheringProps = new GatheringProps(this.scene);
@@ -730,6 +733,7 @@ export class Game {
     this.world.update(s, dt);
     this.emergency.update(s, this.paused ? 0 : dt, { x: planX(this.player.pos.x), z: this.player.pos.z });
     this.audio.siren(this.emergency.sirenAt);
+    this.audio.screech(this.paused ? 0 : this.skid);
     if (!this.insideId) {
       // the pigeons mind the player, anyone walking past, and the traffic
       const px = planX(this.player.pos.x), pz = this.player.pos.z;
@@ -831,6 +835,10 @@ export class Game {
     return Object.values(this.state.vehicles).find((v) => v.driverId === p.id) ?? null;
   }
   private vanSpeed = 0;
+  /** the direction the car is moving (differs from where it points in a slide), how far out, how hard the tyres are scrubbing */
+  private travel = 0;
+  private slip = 0;
+  skid = 0;
   private bumpCooldown = 0;
   private diveCooldown = new Map<string, number>();
   private fireWarned = false;
@@ -853,15 +861,26 @@ export class Game {
     if (v.burning != null && !this.fireWarned) { this.fireWarned = true; this.onToast('The engine is on fire! Get out (E) before it goes up!'); }
     if (v.burning == null) this.fireWarned = false;
     if (boat && this.player.action?.type === 'fish' && thr !== 0) cancelAction(this.state, this.player, 'moved');
-    if (thr > 0) this.vanSpeed += (this.vanSpeed < 0 ? 9 : 3.5) * dt;
+    // the handbrake (Space): the back steps out and the car slides round, tyres howling
+    const handbrake = canDrive && k.has('Space') && (v.kind === 'car' || v.kind === 'van') && !this.air;
+    if (handbrake) this.vanSpeed -= Math.sign(this.vanSpeed) * Math.min(Math.abs(this.vanSpeed), 2.6 * dt);
+    else if (thr > 0) this.vanSpeed += (this.vanSpeed < 0 ? 9 : 3.5) * dt;
     else if (thr < 0) this.vanSpeed -= (this.vanSpeed > 0 ? 9 : 2.5) * dt;
     else this.vanSpeed -= Math.sign(this.vanSpeed) * Math.min(Math.abs(this.vanSpeed), 2.2 * dt);
     this.vanSpeed = Math.max(-REV, Math.min(MAX, this.vanSpeed));
     // steering: tighter at low speed, the turn rate scales with how fast the wheels roll
     // no steering in the air
-    if (!this.air) v.heading += steer * Math.sign(this.vanSpeed) * Math.min(Math.abs(this.vanSpeed), 3.5) * dt * 0.22;
+    const sliding = handbrake && Math.abs(this.vanSpeed) > 4;
+    if (!this.air) v.heading += steer * Math.sign(this.vanSpeed) * Math.min(Math.abs(this.vanSpeed), 3.5) * dt * (sliding ? 0.55 : 0.22);
     else this.vanSpeed = Math.max(this.vanSpeed, this.air.speed * 0.98);
-    const nx = v.pos.x + Math.sin(v.heading) * this.vanSpeed * dt, nz = v.pos.z + Math.cos(v.heading) * this.vanSpeed * dt;
+    // which way the car is actually going: it lags the way it points while the back is loose
+    const lag = ((v.heading - this.travel + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+    if (Math.abs(lag) > 1.4 || this.vanSpeed < 0.5) this.travel = v.heading;
+    else this.travel += lag * Math.min(1, dt * (sliding ? 1.4 : 7));
+    this.slip = Math.abs(((v.heading - this.travel + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+    // hard braking from speed locks the wheels too
+    this.skid = !this.air && Math.abs(this.vanSpeed) > 3.5 && (this.slip > 0.18 || (thr < 0 && this.vanSpeed > 7) || (handbrake && this.vanSpeed > 4)) ? Math.min(1, this.slip * 2 + (thr < 0 || handbrake ? 0.5 : 0)) : 0;
+    const nx = v.pos.x + Math.sin(this.travel) * this.vanSpeed * dt, nz = v.pos.z + Math.cos(this.travel) * this.vanSpeed * dt;
     // a boat keeps to the water: the quay wall on one side, open sea (within reason) on the other
     const res = boat ? { x: Math.max(WATER.x0, Math.min(WATER.x1, nx)), z: Math.max(WATER.z0, Math.min(WATER.z1, nz)) } : resolveCircle({ x: nx, z: nz }, fork ? 0.8 : bike ? 0.45 : 1.15, this.collidersWithCars(v.id, false, { x: nx, z: nz }, 16));
     if (boat) for (const [mx, mz] of MOORED) {
@@ -1076,7 +1095,13 @@ export class Game {
     if (this.wasOnBus && !onBus && !p.away) this.busSeq.start('alight', { ...p.pos }, this.roadSide(p.pos.z), () => {});
     this.wasOnBus = onBus;
     if (this.busSeq.active) { this.vel.x = this.vel.z = 0; this.busSeq.update(dt, p); return; }
-    if (this.drivingVan()) { this.updateDriving(dt); return; }
+    if (this.drivingVan()) {
+      this.updateDriving(dt);
+      const v = this.drivingVan();
+      if (v) this.skids.lay(v.pos.x, v.pos.z, v.heading, this.skid);
+      return;
+    }
+    this.skid = 0;
     this.vanSpeed = 0;
     const jailed = p.away?.place === 'prison' && p.visible;
     // hands up until the police arrive, unless you make a run for it after all

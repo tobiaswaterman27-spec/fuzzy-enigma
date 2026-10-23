@@ -64,7 +64,7 @@ export function agenda(state: GameState): Reminder | null {
     return { text: load ? `Forklift: take the ${itemName(load[0])} pallet to its bay in the racking and press E.` : waiting ? `Forklift: ${waiting} pallet(s) at goods-in (east wall). Drive up and press E to lift one.` : 'Forklift: all put away. Park it and press E to get off.', urgent: false, leaveAt: now, startsAt: now };
   }
   const car = Object.values(state.vehicles).find((v) => v.kind === 'car' && v.driverId === p.id);
-  if (car) return { text: 'Driving your car: W/S drive, A/D steer, E to park and get out.', urgent: false, leaveAt: now, startsAt: now };
+  if (car) return { text: 'Driving your car: W/S drive, A/D steer, Space handbrake, E to park and get out.', urgent: false, leaveAt: now, startsAt: now };
   const van = Object.values(state.vehicles).find((v) => v.kind === 'van' && v.driverId === p.id);
   if (van) {
     const sh = van.shipmentId ? state.shipments[van.shipmentId] : null;
