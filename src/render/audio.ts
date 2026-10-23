@@ -80,6 +80,32 @@ export class Audio {
     const v = Math.min(0.9, 0.2 + speed / 18);
     this.thud(160, 0.35, v); this.thud(1200, 0.25, v * 0.6); this.thud(3200, 0.15, v * 0.35);
   }
+  private sirenOsc: { o: OscillatorNode; g: GainNode } | null = null;
+  /** the two-tone siren of an emergency vehicle on its way, louder the closer it is (Infinity: none) */
+  siren(dist: number) {
+    const c = this.ctx;
+    if (!c) return;
+    const on = isFinite(dist) && !this.muted;
+    if (on && !this.sirenOsc) {
+      const o = c.createOscillator(); o.type = 'triangle';
+      const g = c.createGain(); g.gain.value = 0;
+      o.connect(g).connect(this.master); o.start();
+      this.sirenOsc = { o, g };
+    }
+    if (!this.sirenOsc) return;
+    const t = c.currentTime;
+    // nee-naw: two notes, half a second each
+    this.sirenOsc.o.frequency.setTargetAtTime(Math.floor(t * 2) % 2 ? 610 : 460, t, 0.01);
+    this.sirenOsc.g.gain.setTargetAtTime(on ? Math.min(0.12, 4 / Math.max(10, dist)) : 0, t, 0.3);
+  }
+  /** thunder: a crack close by, a long low roll further off */
+  thunder(dist: number) {
+    if (!this.ctx || this.muted) return;
+    const near = dist < 600;
+    if (near) this.thud(1800, 0.25, 0.5);
+    this.thud(70, 2.5 + dist / 600, Math.min(0.9, 500 / dist));
+    this.thud(140, 1.8, Math.min(0.6, 300 / dist));
+  }
   /** a car going up */
   boom(dist: number) {
     if (!this.ctx || this.muted) return;

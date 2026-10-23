@@ -19,6 +19,7 @@ import { onPcsoShift } from '../sim/station';
 import { finishRace, RACES } from '../sim/races';
 import { missionGoal } from '../sim/missions';
 import { CarSeq } from '../render/carseq';
+import { Emergency } from '../render/emergency';
 import { leaveBike } from '../sim/bikes';
 import { BusSeq } from '../render/busseq';
 import { STREETS } from '../sim/world/city';
@@ -247,6 +248,7 @@ export class Game {
   /** a car break-in under way: the window goes at `at` (sim minutes) */
   private theft: { at: number; kerb: number | null; car: string | null } | null = null;
   private carSeq!: CarSeq;
+  private emergency!: Emergency;
   private busSeq!: BusSeq;
   private wasOnBus = false;
   /** which way the road is from a pavement spot: +1 towards +z, -1 towards -z */
@@ -322,6 +324,7 @@ export class Game {
     this.views.onBoom = (x, z) => this.audio.boom(Math.hypot(x - this.player.pos.x, z - this.player.pos.z));
     this.traffic = new Traffic(this.scene);
     this.carSeq = new CarSeq(this.scene);
+    this.emergency = new Emergency(this.scene, this.views.fx);
     this.busSeq = new BusSeq(this.scene);
     this.police = new PoliceCar(this.scene);
     this.gatheringProps = new GatheringProps(this.scene);
@@ -585,6 +588,8 @@ export class Game {
   }
 
   private radioOn = false;
+  private boltAt = 0;
+  private boltDist = 800;
   onUi: (which: 'jobs' | 'advisor' | 'interview' | 'laptop' | 'homestore' | 'invite' | 'chat' | 'darts' | 'bus' | 'train' | 'roulette' | 'blackjack', arg?: string) => void = () => {};
 
   /** game minutes per real second right now */
@@ -671,6 +676,8 @@ export class Game {
     this.audio.update(s, this.paused ? 0 : dt, Math.hypot(this.vel.x, this.vel.z), this.drivingVan() ? this.vanSpeed : null);
     this.watchFrameRate(dt);
     this.world.update(s, dt);
+    this.emergency.update(s, this.paused ? 0 : dt, { x: planX(this.player.pos.x), z: this.player.pos.z });
+    this.audio.siren(this.emergency.sirenAt);
     this.world.cull(this.camera.position.x, this.camera.position.z);
     this.city.update(this.camera, this.nightLevel);
     if (!this.freeCam) this.updateCamera(dt);
@@ -1133,6 +1140,18 @@ export class Game {
     this.sky.visible = d >= 0.05 && !overcast;
     this.scene.environmentIntensity = (this.insideId ? 0.25 : 0.15 + 0.55 * d) * (1 - 0.45 * r);
     this.hemi.intensity = (0.25 + 0.75 * d) * (this.insideId ? 0.45 : 1) * (1 - 0.25 * r);
+    // a storm: in heavy rain, lightning now and then (a double flash over everything, the sky lit white),
+    // and the thunder a second or two later, the further off the longer it takes
+    if (r > 0.65 && !snowing(s) && !this.paused) {
+      if (this.boltAt <= 0 && Math.random() < this.lastDt * 0.06 * r) { this.boltAt = 0.35; this.boltDist = 300 + Math.random() * 1500; setTimeout(() => this.audio.thunder(this.boltDist), this.boltDist / 0.343 * 0.25); }
+    }
+    if (this.boltAt > 0) {
+      this.boltAt -= this.lastDt;
+      const f = this.boltAt > 0.25 || (this.boltAt < 0.15 && this.boltAt > 0.08) ? 1 : 0;
+      const k = f * Math.min(1, 900 / this.boltDist) * (this.insideId ? 0.35 : 1);
+      this.hemi.intensity += 3.5 * k;
+      if (f && !this.insideId) this.scene.background = new THREE.Color('#c9d3e8').lerp(horizon, 1 - k);
+    }
     const lit = d < 0.45;
     this.nightLevel = Math.max(0, Math.min(1, (0.5 - d) / 0.35));
     this.world.lampBulbs.emissiveIntensity = lit ? 1.6 : 0;
