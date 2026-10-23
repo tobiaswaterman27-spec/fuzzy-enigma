@@ -9,6 +9,7 @@ import { snowing } from './weather';
 export interface Achievement { id: string; title: string; how: string; check: (s: GameState) => boolean }
 const me = (s: GameState) => s.people[s.playerId];
 const hist = (s: GameState, re: RegExp) => me(s).history.some((e) => re.test(e.text));
+const paid = (s: GameState, re: RegExp) => s.ledger.txns.some((t) => t.from === me(s).accountId && re.test(t.memo ?? ''));
 
 export const ACHIEVEMENTS: Achievement[] = [
   { id: 'payday', title: 'Payday', how: 'Get your first wages', check: (s) => Object.values(s.ledger.accounts).length > 0 && s.ledger.txns.some((t) => t.to === me(s).accountId && t.reason === 'wage') },
@@ -34,7 +35,23 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'wedding', title: 'Plus one', how: 'Go to a wedding, funeral or party', check: (s) => hist(s, /^Went to /) },
   { id: 'wanted', title: 'Most wanted', how: 'Get five stars', check: (s) => (s.wanted?.level ?? 0) >= 5 },
   { id: 'nicked', title: 'Nicked', how: 'Get arrested', check: (s) => (me(s).record?.length ?? 0) >= 1 },
-  { id: 'hospital', title: 'Patched up', how: 'Spend time in St Mary\'s', check: (s) => hist(s, /Admitted to St Mary/) },
+  { id: 'hospital', title: 'Patched up', how: 'Spend time in hospital', check: (s) => hist(s, /^Admitted to /) },
+  { id: 'stunt', title: 'Air time', how: 'Land a unique stunt jump', check: (s) => (s.stunts?.length ?? 0) >= 1 },
+  { id: 'stunts', title: 'Evel Knievel', how: 'Land every stunt jump in the city', check: (s) => (s.stunts?.length ?? 0) >= 8 },
+  { id: 'bike', title: 'On your bike', how: 'Hire a Harbour Bike', check: (s) => paid(s, /^Harbour Bikes/) },
+  { id: 'bus', title: 'All aboard', how: 'Ride a bus', check: (s) => paid(s, /^Bus fare/) },
+  { id: 'train', title: 'Mind the gap', how: 'Take the train', check: (s) => paid(s, /^Train ticket/) },
+  { id: 'film', title: 'Movie night', how: 'Watch a film at Harbourgate', check: (s) => paid(s, /^Cinema ticket/) },
+  { id: 'match', title: 'Up the Harbour!', how: 'Watch Harbour City play', check: (s) => hist(s, /^Watched Harbour City/) },
+  { id: 'vince', title: 'No questions asked', how: 'Do a job for Vince', check: (s) => (s.vinceRep ?? 0) >= 1 },
+  { id: 'vince5', title: "Vince's favourite", how: 'Do five jobs for Vince', check: (s) => (s.vinceRep ?? 0) >= 5 },
+  { id: 'turf', title: 'Not round here', how: 'Run a gang off their corner', check: (s) => hist(s, /off their corner/) },
+  { id: 'cash', title: 'Finders keepers', how: 'Pick up cash someone dropped', check: (s) => s.ledger.txns.some((t) => t.to === me(s).accountId && t.memo === 'Cash off the pavement') },
+  { id: 'boom', title: 'Total loss', how: 'Blow up a car', check: (s) => Object.values(s.vehicles).some((v) => v.wrecked) },
+  { id: 'grab', title: 'Smash and grab', how: 'Clear out the jeweller', check: (s) => hist(s, /^Smash-and-grab/) },
+  { id: 'jail', title: 'Jailbird', how: 'Do time in HMP Harbourside', check: (s) => hist(s, /^Sent to prison/) },
+  { id: 'escape', title: 'The great escape', how: 'Break out of prison', check: (s) => hist(s, /^Escaped from HMP/) },
+  { id: 'clean', title: 'Clean slate', how: 'Have your record wiped at City Hall', check: (s) => hist(s, /record expunged/) },
   { id: 'grand', title: 'Comfortable', how: 'Net worth over Cr 10,000', check: (s) => netWorth(s, s.playerId).total >= 1000000 },
   { id: 'bigshot', title: 'THE BIGSHOT', how: 'Net worth over Cr 1,000,000', check: (s) => netWorth(s, s.playerId).total >= 100000000 },
 ];
