@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createNewGame, coffeeSlot, currentShift, minuteOfDay, dayIndex, parseTurn } from '../src/sim/index';
+import { createNewGame, coffeeSlot, currentShift, minuteOfDay, dayIndex, parseTurn, inviteForCoffee, step, MEET_PLACES, meetupNote } from '../src/sim/index';
 
 const setup = { name: 'Tester', appearance: { skin: '#e3b48f', hair: 'short' as const, hairColor: '#3b2416', build: 'average' as const } };
 
@@ -26,5 +26,20 @@ describe('Meet-ups', () => {
     if (dayIndex(tomorrow2pm) % 7 !== 2) expect(t).toBe(tomorrow2pm);
     const turn = parseTurn({ reply: 'Go on then', decision: { type: 'meet', accept: true, when: 'tomorrow 14:00' } }, s.minute);
     expect(turn.decision?.at).toBe(tomorrow2pm);
+  });
+  it('a drink at the pub happens when you are both near the table, and who was late is remembered', () => {
+    const s = createNewGame(7, setup);
+    const f = Object.values(s.people).find((p) => p.npc && !p.npc.ambient && !p.police && !p.contractId)!;
+    expect(inviteForCoffee(s, 'player', f.id, true, undefined, 'pub').ok).toBe(true);
+    const m = s.meetups!.slice(-1)[0];
+    expect(m.place).toBe('pub');
+    expect(minuteOfDay(m.at)).toBeGreaterThanOrEqual(12 * 60);
+    const me = s.people.player;
+    while (s.minute < m.at + 6) step(s, 1);
+    me.pos = { x: MEET_PLACES.pub.spot.x + 3, z: MEET_PLACES.pub.spot.z + 2 }; me.where = 'outside'; me.visible = true;
+    for (let i = 0; i < 40 && m.status === 'planned'; i++) step(s, 1);
+    expect(m.status).toBe('met');
+    expect(m.youArrived).toBeGreaterThan(m.at);
+    expect(meetupNote(s, f.id)).toMatch(/minutes late/);
   });
 });

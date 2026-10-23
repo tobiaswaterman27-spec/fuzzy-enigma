@@ -21,7 +21,7 @@ import { acceptOffer, acceptPromotion, applyForJob, attendInterview, canApply, c
 import { conditionLabel, skillLevel } from '../sim/needs';
 import { choreStatus } from '../sim/home';
 import { seasonOf, weatherLabel } from '../sim/weather';
-import { FRIEND_AT, inviteForCoffee, plannedMeetup, relationLabel } from '../sim/social';
+import { FRIEND_AT, inviteForCoffee, MEET_PLACES, plannedMeetup, relationLabel } from '../sim/social';
 import { buyProperty as buyHomeProperty, canBuyHome, mortgageTerms, ownedHome, ownershipLines, redemption, sellHome, SELL_SHARE, SERVICE_CHARGE } from '../sim/property';
 import { blockPrice, BLOCK, buyOut, buyOutPrice, holdings, TAKEOVER_AT, buyStake, canInvestIn, dividendsReceived, MAX_STAKE, sellStake, stakeOf, valuation, weeklyProfit } from '../sim/invest';
 import { hygieneOf, RATING_LABEL } from '../sim/inspections';
@@ -498,7 +498,7 @@ export class UI {
     let h = `<p class="muted">Chat to people to get to know them. Friends lift your mood; invite them for a coffee to keep in touch, or friendships fade.</p>`;
     const inbox = (s.inbox ?? []).slice(-6).reverse();
     if (inbox.length) h += `<h3>Messages</h3>${inbox.map((x) => `<div class="card"><b>${esc(s.people[x.from]?.name ?? '?')}</b> <span class="muted">${fmtClock(x.at)}${dayIndex(x.at) < dayIndex(s.minute) ? `, day ${dayIndex(x.at) + 1}` : ''}</span>${x.read ? '' : ' <span class="pos">new</span>'}<br>${esc(x.text)}<div class="row"><button data-reply="${x.from}" data-at="${x.at}">Reply</button></div></div>`).join('')}`;
-    if (m) h += `<div class="card">Coffee with <b>${esc(s.people[m.friendId].name)}</b> at ${fmtClock(m.at)}${dayIndex(m.at) > dayIndex(s.minute) ? ' tomorrow' : ''} - Tidewater Cafe, corner table.</div>`;
+    if (m) { const P = MEET_PLACES[m.place ?? 'cafe']; h += `<div class="card">${P.what[0].toUpperCase()}${P.what.slice(1)} with <b>${esc(s.people[m.friendId].name)}</b> at ${fmtClock(m.at)}${dayIndex(m.at) > dayIndex(s.minute) ? (dayIndex(m.at) === dayIndex(s.minute) + 1 ? ' tomorrow' : `, day ${dayIndex(m.at) + 1}`) : ''} - ${P.name}.</div>`; }
     if (!known.length) return h + '<p class="muted">You do not know anyone yet. Say hello to your colleagues and neighbours.</p>';
     for (const [id, v] of known) {
       const o = s.people[id];

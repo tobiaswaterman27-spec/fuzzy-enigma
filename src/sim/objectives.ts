@@ -1,4 +1,5 @@
 // Early-game guidance. Each objective is checked against authoritative state.
+import { MEET_PLACES } from './social';
 import { palletsWaiting } from './forklift';
 import type { GameState, Objective, Vec2 } from './types';
 import { activeLease } from './housing';
@@ -86,7 +87,8 @@ export function agenda(state: GameState): Reminder | null {
   }
   for (const m of state.meetups ?? []) {
     if (m.status !== 'planned') continue;
-    items.push({ what: `coffee with ${state.people[m.friendId].name.split(' ')[0]}`, at: m.at, where: getWorld().interactables.meet_chair.pos, place: 'Tidewater Cafe (corner table)', strict: false });
+    const P = MEET_PLACES[m.place ?? 'cafe'];
+    items.push({ what: `${P.what} with ${state.people[m.friendId].name.split(' ')[0]}`, at: m.at, where: P.spot, place: P.name, strict: false });
   }
   if (p.contractId && !openAttendance(state, p.id)) {
     const c = state.contracts[p.contractId];

@@ -5,6 +5,7 @@
 import { GOODS_IN_SPOT } from './forklift';
 import { pubDrink } from './pub';
 import { marketOn, STALLS } from './streetmarket';
+import { MEET_PLACES } from './social';
 import type { GameState, Id, NpcGoal, Person, PlanStep, Task, Vec2 } from './types';
 import { dayIndex, minuteOfDay } from './clock';
 import { clamp, dist, pick, rand, randInt } from './core';
@@ -345,16 +346,21 @@ function goToMeetup(state: GameState, p: Person): boolean {
   const now = state.minute;
   const meet = state.meetups?.find((m) => m.status === 'planned' && m.friendId === p.id);
   if (!meet) return false;
-  const seat = getWorld().interactables.meet_host;
-  if (now < meet.at - travelMinutes(p, seat.pos) - 8 || now >= meet.at + 30) return false;
-  const already = (p.action?.type === 'sit' && p.action.target === 'meet_host') || n.plan.some((s) => s.kind === 'act' && s.it === 'meet_host');
-  if (already) return false;
+  const P = MEET_PLACES[meet.place ?? 'cafe'];
+  // the disorganised run late now and then (the same way every time for the same meet-up)
+  const h = ((meet.at * 2654435761) ^ p.id.length * 97) >>> 0;
+  const lateBy = p.traits.conscientiousness < 0.4 && h % 3 !== 0 ? 6 + (h % 18) : 0;
+  if (now < meet.at + lateBy - travelMinutes(p, P.spot) - 8 || now >= meet.at + 40) return false;
+  const going = n.why === 'meeting a friend' || (P.seat && p.action?.type === 'sit' && p.action.target === P.seat);
+  if (going) return false;
   if (p.action) cancelAction(state, p);
   if (!p.visible) { p.pos = homeDoor(p.homeId); show(p); }
+  p.sleeping = false;
+  n.why = 'meeting a friend';
   setGoal(state, p, 'leisure', [
-    { kind: 'move', to: seat.pos, label: 'meeting a friend' },
-    { kind: 'act', it: 'meet_host', type: 'sit' },
-    { kind: 'wait', until: meet.at + 45 },
+    { kind: 'move', to: P.spot, label: P.name },
+    ...(P.seat ? [{ kind: 'act' as const, it: P.seat, type: 'sit' as const }] : []),
+    { kind: 'wait', until: meet.at + 60 },
     { kind: 'move', to: homeDoor(p.homeId), label: 'home' }, { kind: 'call', fn: 'arriveHome' },
   ]);
   p.move = null;

@@ -21,7 +21,7 @@ import { buildingAt } from './world/layout';
 import { DISTRICT_NAMES, districtAt, streetAt } from './world/city';
 import { planX } from './world/levels';
 import { currentShift, nextShift } from './employment';
-import { coffeeSlot } from './social';
+import { MEET_PLACES, meetSlot, meetupNote, type MeetPlace } from './social';
 import { dayIndex, minuteOfDay } from './clock';
 
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -66,7 +66,7 @@ function dayOf(state: GameState, p: Person): string {
 
 export type Emotion = 'neutral' | 'happy' | 'laugh' | 'sad' | 'cry' | 'angry' | 'scared' | 'confused' | 'bored' | 'flirty' | 'shocked';
 export type DecisionType = 'date' | 'marry' | 'break_up' | 'lend' | 'gift' | 'meet' | 'move_in' | 'follow' | 'number' | 'let_in';
-export interface Decision { type: DecisionType; accept: boolean; amount?: number; /** for meet: the time agreed */ at?: number }
+export interface Decision { type: DecisionType; accept: boolean; amount?: number; /** for meet: the time agreed, and where */ at?: number; where?: MeetPlace }
 export interface Turn { reply: string; emotion: Emotion; attitude: number; decision: Decision | null; action: 'none' | 'leave' | 'attack' | 'call_police' }
 
 /** the clip a feeling is acted out with, and for how many real seconds */
@@ -140,7 +140,11 @@ export function characterBrief(state: GameState, id: Id, remote = false, situati
     `Personality (0 to 1): sociability ${t.sociability.toFixed(2)}, conscientiousness ${t.conscientiousness.toFixed(2)}, ambition ${t.ambition.toFixed(2)}, patience ${t.patience.toFixed(2)}, thriftiness ${t.thrift.toFixed(2)}. In words: ${q.personality.join('; ')}.`,
     `Right now: ${q.mood}; ${situation || q.doing}. It is ${q.time}, ${q.weather}.${remote && !situation ? ' This conversation is by text message on your phone.' : ''}`,
     `Where you are: ${whereNow(p)}. Your day: ${dayOf(state, p) || 'nothing planned'}.`,
-    (() => { const t = coffeeSlot(state, p); return t != null ? `If a coffee at Tidewater Cafe comes up: you are free ${when(state, t)} at the earliest (it opens 09:00-16:30, shut Wednesdays; you will not go while you are at work). Only ever suggest that time or later, never earlier, and say the day.` : 'You have no free time for a coffee this week.'; })(),
+    (() => {
+      const opts = (['cafe', 'pub', 'park'] as const).map((w) => { const t = meetSlot(state, p, w); return t != null ? `${MEET_PLACES[w].what} at ${MEET_PLACES[w].name} ${when(state, t)} at the earliest` : null; }).filter(Boolean);
+      return opts.length ? `If meeting up comes up, you could do: ${opts.join('; ')}. You will not go while you are at work or past your bedtime. Only suggest those times or later, say the day, and if you agree you MUST record it as decision "meet" with "when" and "where" (cafe, pub or park), or it will not happen.` : 'You have no free time to meet up this week.';
+    })(),
+    meetupNote(state, id),
     q.recent.length ? `Recent things in your life: ${q.recent.join('; ')}.` : '',
     town.length ? `Talk of the town: ${town.join('; ')}.` : '',
     `The person talking to you: ${you.name.split(' ')[0]}${(p.knowsYou?.talks ?? 0) > 0 ? ` (${you.name})` : ''}.`,
@@ -150,7 +154,7 @@ export function characterBrief(state: GameState, id: Id, remote = false, situati
     'Big questions are YOUR decision, made from your personality, how well and how long you have known them, what you have seen of them, and your own situation: going out together (date), marriage (marry; almost never with someone you have not been seeing for a while), breaking up (break_up), lending them money (lend, amount in pounds: only what you could spare and only if you trust them), accepting money they offer (gift, amount in pounds), meeting for coffee at Tidewater Cafe (meet), moving in together (move_in, only if together), coming along with them now for a while (follow), giving them your phone number (number), letting them into your home when they are at your door (let_in: think hard about who they are and what they want; strangers, and anyone at night, usually not). Say yes or no in your reply and record it in "decision". If they did not ask anything like that, decision is null.',
     (p.knowsYou?.number ? 'You have already swapped phone numbers with them.' : 'You have not swapped phone numbers. If you have got on well a couple of times you might offer yours or ask for theirs (that is decision "number", accept true); with a stranger, only if there is a reason.'),
     'Your "action": "leave" if you walk away now, "attack" if you are so angry or threatened you hit them, "call_police" if you call the police on them, otherwise "none".',
-    'Reply ONLY as JSON: {"reply": "<what you say>", "emotion": "neutral|happy|laugh|sad|cry|angry|scared|confused|bored|flirty|shocked", "attitude": <integer -3..3, how this exchange changed how you feel about them>, "decision": null or {"type": "date|marry|break_up|lend|gift|meet|move_in|follow|number|let_in", "accept": true|false, "amount": <pounds, for lend/gift>, "when": "<for meet: the day and time you agreed, e.g. tomorrow 14:00>"}, "action": "none|leave|attack|call_police"}',
+    'Reply ONLY as JSON: {"reply": "<what you say>", "emotion": "neutral|happy|laugh|sad|cry|angry|scared|confused|bored|flirty|shocked", "attitude": <integer -3..3, how this exchange changed how you feel about them>, "decision": null or {"type": "date|marry|break_up|lend|gift|meet|move_in|follow|number|let_in", "accept": true|false, "amount": <pounds, for lend/gift>, "when": "<for meet: the day and time you agreed, e.g. tomorrow 14:00>", "where": "<for meet: cafe, pub or park>"}, "action": "none|leave|attack|call_police"}',
   ].filter(Boolean).join('\n');
 }
 
@@ -198,7 +202,7 @@ export function parseTurn(raw: unknown, now = nowRef): Turn {
   const o = (raw ?? {}) as Record<string, any>;
   const emotions: Emotion[] = ['neutral', 'happy', 'laugh', 'sad', 'cry', 'angry', 'scared', 'confused', 'bored', 'flirty', 'shocked'];
   const types: DecisionType[] = ['date', 'marry', 'break_up', 'lend', 'gift', 'meet', 'move_in', 'follow', 'number', 'let_in'];
-  const d = o.decision && types.includes(o.decision.type) ? { type: o.decision.type as DecisionType, accept: !!o.decision.accept, amount: Math.max(0, Math.round(Number(o.decision.amount) || 0)), at: parseWhen(o.decision.when) } : null;
+  const d = o.decision && types.includes(o.decision.type) ? { type: o.decision.type as DecisionType, accept: !!o.decision.accept, amount: Math.max(0, Math.round(Number(o.decision.amount) || 0)), at: parseWhen(o.decision.when), where: (['cafe', 'pub', 'park'] as const).find((w) => String(o.decision.where ?? '').toLowerCase().includes(w === 'pub' ? 'pub' : w) || (w === 'pub' && /anchor/i.test(String(o.decision.where ?? '')))) } : null;
   return {
     reply: String(o.reply ?? '').slice(0, 500),
     emotion: emotions.includes(o.emotion) ? o.emotion : 'neutral',
@@ -276,8 +280,9 @@ export function applyTurn(state: GameState, id: Id, turn: Turn, remote = false):
         break;
       }
       case 'meet': {
-        const r = inviteForCoffee(state, you.id, p.id, true, d.at);
-        fact = r.ok ? (state.meetups?.slice(-1)[0] ? `Coffee at Tidewater Cafe at ${fmtClock(state.meetups!.slice(-1)[0].at)}.` : null) : r.msg;
+        const r = inviteForCoffee(state, you.id, p.id, true, d.at, d.where);
+        const mm = state.meetups?.slice(-1)[0];
+        fact = r.ok && mm ? `${MEET_PLACES[mm.place ?? 'cafe'].what[0].toUpperCase()}${MEET_PLACES[mm.place ?? 'cafe'].what.slice(1)} at ${MEET_PLACES[mm.place ?? 'cafe'].name}, ${when(state, mm.at)}.` : r.ok ? null : r.msg;
         break;
       }
       case 'move_in':
