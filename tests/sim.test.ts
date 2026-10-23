@@ -1,3 +1,4 @@
+import { prisonVenue } from '../src/sim/prison';
 import { levelOf } from '../src/sim/world/levels';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -51,14 +52,22 @@ describe('world layout & navigation', () => {
     }
     expect(bad).toEqual([]);
   });
-  it('the pedestrian graph is fully connected', () => {
+  it('the pedestrian graph is fully connected (the prison is connected inside, and locked off)', () => {
+    const jail = prisonVenue()!.id;
+    const inJail = (id: string) => id === `door_${jail}` || id === `in_${jail}` || id.startsWith(`${jail}_`);
     const ids = Object.keys(w.nodes);
-    for (const id of ids) expect(astar('fl_in', id), id).not.toBeNull();
+    for (const id of ids) {
+      if (inJail(id)) { if (id !== `door_${jail}`) expect(astar(`in_${jail}`, id), id).not.toBeNull(); continue; }
+      expect(astar('fl_in', id), id).not.toBeNull();
+    }
+    expect(astar('fl_in', `in_${jail}`)).toBeNull();
   });
   it('every interactable anchor is reachable from the player flat and not inside a collider', () => {
     for (const it of Object.values(w.interactables)) {
       const inside = w.colliders.some((r) => it.pos.x > r.x0 && it.pos.x < r.x1 && it.pos.z > r.z0 && it.pos.z < r.z1);
       expect(inside, it.id).toBe(false);
+      const jail = prisonVenue()!;
+      if (it.id.startsWith(`${jail.id}_`)) { expect(planRoute(jail.inside, it.pos), it.id).not.toBeNull(); continue; }
       expect(planRoute(w.playerSpawn, it.pos), it.id).not.toBeNull();
     }
   });

@@ -148,12 +148,17 @@ export class UI {
     setBar('#bar-health', p.health ?? 100);
     const w = s.wanted;
     $('#wanted').hidden = !w;
-    if (w) $('#wanted').innerHTML = `${'★'.repeat(w.level)}<span class="off">${'★'.repeat(5 - w.level)}</span>`;
+    // the stars flash while they are searching for you (out of sight), and stay solid when you are seen
+    if (w) {
+      $('#wanted').classList.toggle('searching', w.unseen > 0);
+      $('#wanted').innerHTML = `${'★'.repeat(w.level)}<span class="off">${'★'.repeat(5 - w.level)}</span><span class="wstate">${w.surrender ? 'HANDS UP' : w.unseen > 0 ? 'SEARCHING' : 'SPOTTED'}</span>`;
+    }
     $('#weapon-ind').hidden = !p.weapon;
     if (p.weapon) $('#weapon-ind').textContent = `Holding: ${WEAPONS[p.weapon].label} (F to use, Q to put away)`;
-    const away = p.away;
-    $('#away').hidden = !away && p.down == null;
-    if (away) $('#away').innerHTML = `<h2>${away.place === 'bus' ? 'On the bus' : away.place === 'train' ? 'On the train' : away.place === 'stadium' ? 'Harbour City Stadium' : away.place === 'hospital' ? HOSPITAL : away.place === 'prison' ? 'HMP Harbourside' : 'Harbourside Police Station'}</h2><div class="muted">${esc(away.reason)}</div><div>Out ${fmtDate(away.until)} ${fmtClock(away.until)}</div><div class="muted">Time passes quickly…</div>`;
+    // in prison you are on your feet on the wing: the card only shows while you lie on your bunk
+    const away = p.away && !(p.away.place === 'prison' && p.visible && !s.serving) ? p.away : null;
+    $('#away').hidden = !away && (p.down == null || p.downUntil != null);
+    if (away) $('#away').innerHTML = `<h2>${away.place === 'bus' ? 'On the bus' : away.place === 'train' ? 'On the train' : away.place === 'stadium' ? 'Harbour City Stadium' : away.place === 'hospital' ? HOSPITAL : away.place === 'prison' ? 'HMP Harbourside' : 'Harbourside Police Station'}</h2><div class="muted">${esc(away.reason)}</div><div>Out ${fmtDate(away.until)} ${fmtClock(away.until)}</div><div class="muted">${away.place === 'prison' && p.visible ? 'Doing your time on your bunk… move to get up.' : 'Time passes quickly…'}</div>`;
     else if (p.down != null) $('#away').innerHTML = '<h2>You are on the ground</h2><div class="muted">An ambulance is on its way.</div>';
     $('#cond').textContent = conditionLabel(p).join(' · ');
     // a time-critical reminder (only shown when it is nearly time to set off) outranks the general goal
@@ -162,7 +167,8 @@ export class UI {
     $('#objective').hidden = !obj && !rem;
     $('#objective').classList.toggle('urgent', !!rem?.urgent);
     const fav = (s.favours ?? []).find((f) => f.status === 'open');
-    const raceText = ((this.game as any).raceText as string) || missionText(s);
+    const jail = p.away?.place === 'prison' && p.visible ? `HMP Harbourside: out ${fmtDate(p.away.until)} ${fmtClock(p.away.until)} · laundry work cuts time · meals at the hatch` : '';
+    const raceText = ((this.game as any).raceText as string) || jail || missionText(s);
     const cabGoal = raceText ? { text: raceText } : taxiTarget(s) ?? (fav && !rem ? { text: `Favour: ${fav.text}` } : null);
     if (cabGoal) { $('#objective').hidden = false; $('#objective-text').textContent = cabGoal.text; }
     else if (rem) $('#objective-text').textContent = rem.text;

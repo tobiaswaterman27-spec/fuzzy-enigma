@@ -3,6 +3,7 @@
 // that are seen bring the police: officers come for you, and if they catch you it is a fine, a night
 // in the cells or prison, and a criminal record. Everything uses the state's random stream.
 import { settleMatch } from './stadium';
+import { lockUp, releaseFromPrison } from './prison';
 import { cellSpot } from './station';
 import type { GameState, Id, Person, Vec2 } from './types';
 import { clamp, dist, fmtMoney, nextId, rand, randInt } from './core';
@@ -243,6 +244,7 @@ function release(state: GameState, p: Person) {
     // out of the hospital's front doors
     const hosp = a.place === 'hospital' ? hospitalDoor() : null;
     if (hosp) p.pos = hosp;
+    if (a.place === 'prison') releaseFromPrison(state, p);
     p.visible = true; p.where = 'outside';
     p.needs.energy = Math.max(p.needs.energy, 60); p.needs.satiety = Math.max(p.needs.satiety, 45);
     if (a.place === 'hospital') {
@@ -306,16 +308,27 @@ function policeMinute(state: GameState) {
     o.pos = { x: spot.x, z: spot.z };
     o.visible = true; o.where = 'outside'; o.health = 100; if (o.npc) (o.npc as any).homing = false;
   }
+  // they see you only with a clear line of sight (or right on top of you)
   let sees = false;
   for (const o of officers) {
     if (!active(o) || o.down) continue;
     const d = dist(o.pos, me.pos);
-    // in sight, or close behind you and closing in
-    if ((d < 25 && me.visible && clearLine(o.pos, me.pos, 0.05)) || d < 40) sees = true;
-    if (!o.action && me.visible && me.where !== 'vehicle' && (!o.move || dist(o.move.dest, me.pos) > 3)) goTo(state, o, me.pos, 'the suspect');
+    if (me.visible && ((d < 32 && clearLine(o.pos, me.pos, 0.05)) || d < 8)) sees = true;
+  }
+  if (sees) w.last = { ...me.pos };
+  for (const o of officers) {
+    if (!active(o) || o.down || o.action) continue;
+    if (sees && me.visible && me.where !== 'vehicle') { if (!o.move || dist(o.move.dest, me.pos) > 3) goTo(state, o, me.pos, 'the suspect'); continue; }
+    // lost sight of you: to where you were last seen, then search the streets round it
+    const last = w.last ?? me.pos;
+    if (!o.move) {
+      const there = dist(o.pos, last) < 4;
+      const to = there ? { x: last.x + (rand(state) - 0.5) * 36, z: last.z + (rand(state) - 0.5) * 36 } : last;
+      goTo(state, o, to, there ? 'searching' : 'the last sighting');
+    }
   }
   if (sees) w.unseen = 0;
-  else if (++w.unseen >= 10 + w.level * 4) {
+  else if (++w.unseen >= 2 + w.level * 2) {
     w.level--; w.unseen = 0;
     if (w.level <= 0) { state.wanted = null; news(state, 'good', 'The police have lost you', 'For now. People round here remember, though.', true); }
   }
@@ -327,12 +340,26 @@ function policeCatch(state: GameState) {
   const w = state.wanted;
   if (!w || !me.visible || me.where === 'vehicle' || me.dead || me.away) return;
   const cop = Object.values(state.people).find((o) => o.police && active(o) && !o.down && dist(o.pos, me.pos) < 1.4);
-  if (cop) arrest(state, cop);
+  if (!cop) return;
+  // running: brought down by a flying tackle first, then cuffed on the ground
+  if (me.down == null && !w.surrender) {
+    me.hit = { at: state.minute, dir: Math.atan2(me.pos.x - cop.pos.x, me.pos.z - cop.pos.z), heavy: true, by: cop.id, force: 3.5 };
+    cop.gesture = { clip: 'fight', until: state.minute + 0.4 };
+    floor(state, me, 0.8);
+    news(state, 'bad', 'Tackled!', `${cop.name} brings you down.`, true);
+    return;
+  }
+  // a moment on the ground before the cuffs go on
+  if (me.down != null && state.minute - me.down < 0.4) return;
+  arrest(state, cop);
 }
 
 export function arrest(state: GameState, cop: Person) {
   const me = playerOf(state);
   const w = state.wanted!;
+  // coming quietly counts for something
+  if (w.surrender) w.level = Math.max(1, w.level - 1);
+  me.down = null; me.downUntil = null;
   const fine = w.level * 15000;
   const r = fine ? transfer(state, { from: me.accountId, to: state.businesses[state.governmentId].accountId, amount: fine, reason: 'fine', memo: `Court fine: ${w.crime}`, key: `fine:${Math.floor(state.minute)}` }) : { ok: true };
   const prison = w.level >= 4;
@@ -342,6 +369,8 @@ export function arrest(state: GameState, cop: Person) {
   me.weapon = null;
   news(state, 'bad', `Arrested by ${cop.name}`, `${w.crime[0].toUpperCase()}${w.crime.slice(1)}. ${fine ? `Fined ${fmtMoney(fine)}${r.ok ? '' : ' (you could not pay: longer in custody)'}. ` : ''}${prison ? `Sentenced to ${Math.round(minutes / 1440)} days in prison.` : `Held overnight in the cells.`} Your weapons were taken.`, true);
   sendAway(state, me, prison ? 'prison' : 'custody', minutes, w.crime);
+  // prison is served inside HMP Harbourside, on your feet
+  if (prison) lockUp(state, me);
   state.wanted = null;
   for (const o of Object.values(state.people)) if (o.police) { o.combat = null; o.move = null; }
 }

@@ -209,6 +209,10 @@ export type InteractKind =
   | 'housedoor'
   | 'shopdoor'
   | 'turnstile'
+  | 'prison_food'
+  | 'prison_laundry'
+  | 'prison_wall'
+  | 'prison_bunk'
   | 'payphone'
   | 'chop_shop'
   | 'bus_stop'
@@ -722,7 +726,7 @@ function buildWorldData(homeDesign: HomeDesign): World {
   let cached: World;
   // the city, and the buildings in it that open as shops, pubs, the bank...
   const venues = planVenues(buildCity(B.filter((b) => !b.unit && !b.level && !b.id.startsWith('v_')).map((b) => b.rect)));
-  if (!B.some((b) => b.id.startsWith('v_'))) for (const v of venues) { B.push(venueBuilding(v)); SHOP_IDS.push(v.id); }
+  if (!B.some((b) => b.id.startsWith('v_'))) for (const v of venues) { B.push(venueBuilding(v)); if (v.kind !== 'prison') SHOP_IDS.push(v.id); }
   const obstacles: Obstacle[] = [];
   const I: Record<string, Interactable> = {};
   const add = (it: Omit<Interactable, 'range'> & { range?: number }) => {
@@ -1188,7 +1192,8 @@ function buildWorldData(homeDesign: HomeDesign): World {
     const clearV = (a: Vec2, b: Vec2) => !near(Math.min(a.x, b.x) - 1, Math.min(a.z, b.z) - 1, Math.max(a.x, b.x) + 1, Math.max(a.z, b.z) + 1).some((r) => segIntersectsRect(a, b, r, 0.2));
     for (const v of venues) {
       N(`door_${v.id}`, v.outside.x, v.outside.z); N(`in_${v.id}`, v.inside.x, v.inside.z, v.id);
-      L(`door_${v.id}`, `in_${v.id}`);
+      // the prison gate is locked: no way in or out on foot
+      if (v.kind !== 'prison') L(`door_${v.id}`, `in_${v.id}`);
       // the pavement's corner nodes either side along this street
       const row = city.nodes.filter((n) => Math.abs(n.z - v.outside.z) < 1.2 && Math.abs(n.x - v.outside.x) < 135);
       const west = row.filter((n) => n.x < v.outside.x).sort((a, b) => b.x - a.x)[0], east = row.filter((n) => n.x > v.outside.x).sort((a, b) => a.x - b.x)[0];
@@ -1570,6 +1575,7 @@ const KIND_ROLE: Record<VenueKind, string> = {
   clothes: 'Clothes shop - a new look', barber: 'Barber - a new haircut', bank: 'Bank - and a vault full of cash', casino: 'Casino - roulette, blackjack, slots',
   nightclub: 'Nightclub - drinks and dancing, late', gym: 'Gym - get fit', arcade: 'Amusement arcade', pawn: 'Pawnbroker - sells and buys anything',
   station: 'Railway station - trains to Westbay and Northfield', mall: 'Shopping centre - food court, jeweller, cinema, clothes', hospital: 'Hospital - A&E', cityhall: 'City Hall - council services and weddings', church: 'Church',
+  prison: 'Prison',
 };
 function venueBuilding(v: Venue): BuildingDef {
   const side = v.front === 'n' ? 'zmin' : 'zmax';

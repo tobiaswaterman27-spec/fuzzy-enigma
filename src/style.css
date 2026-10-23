@@ -91,6 +91,9 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .bar.health i { background: linear-gradient(90deg, #b3261e, #e0574f); }
 #wanted { font-size: 18px; color: #f4c20d; letter-spacing: 2px; text-shadow: 0 0 6px #000; }
 #wanted .off { color: rgba(255,255,255,0.22); }
+#wanted .wstate { font-size: 10px; letter-spacing: 1px; margin-left: 6px; vertical-align: middle; color: #fff; opacity: 0.85; }
+#wanted.searching { animation: wantedFlash 0.9s steps(2, start) infinite; }
+@keyframes wantedFlash { to { opacity: 0.35; } }
 #weapon-ind { font-size: 12px; color: #f0d9b5; }
 #hurt-flash { position: fixed; inset: 0; pointer-events: none; opacity: 0; background: radial-gradient(ellipse at center, rgba(120,0,0,0) 45%, rgba(150,0,0,0.75) 100%); transition: opacity 0.6s ease-out; z-index: 20; }
 #hurt-flash.on { opacity: 1; transition: none; }

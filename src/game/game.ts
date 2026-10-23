@@ -489,6 +489,13 @@ export class Game {
         });
         return;
       }
+      // hands up: stand still and let them take you in (a lighter sentence)
+      if (e.code === 'KeyH' && !this.drivingVan() && this.state.wanted && !this.state.wanted.surrender) {
+        this.state.wanted.surrender = true;
+        this.player.gesture = { clip: 'scared', until: this.state.minute + 99 };
+        this.onToast('Hands up. You wait for the police to reach you (move to change your mind).');
+        return;
+      }
       if (e.code === 'KeyQ' && !this.drivingVan()) { this.onToast(nextWeapon(this.state, this.player.id)); return; }
       if (e.code === 'KeyE' && this.player.action?.type === 'fish') { const m = strike(this.state, this.player); if (m) this.onToast(m); return; }
       if (e.code === 'KeyE') this.interact(0);
@@ -556,6 +563,8 @@ export class Game {
   /** game minutes per real second right now */
   get rate() {
     const away = this.player.away;
+    // inside HMP Harbourside on your feet the days go by quickly; on your bunk, very quickly
+    if (away?.place === 'prison' && this.player.visible) return this.state.serving ? 900 : 12;
     if (away) return away.place === 'prison' ? 900 : away.place === 'custody' ? 150 : away.place === 'bus' || away.place === 'train' ? 40 : away.place === 'stadium' ? 60 : 120;
     if (this.player.down != null) return 1;
     if (this.player.sleeping) return 45;
@@ -875,7 +884,16 @@ export class Game {
     if (this.carSeq.active) { this.vel.x = this.vel.z = 0; this.carSeq.update(dt, p, this.state.minute); return; }
     if (this.drivingVan()) { this.updateDriving(dt); return; }
     this.vanSpeed = 0;
-    if (this.uiOpen || p.sleeping || p.down != null || p.away || p.dead) { this.vel.x = this.vel.z = 0; return; }
+    const jailed = p.away?.place === 'prison' && p.visible;
+    // hands up until the police arrive, unless you make a run for it after all
+    const w = this.state.wanted;
+    if (w?.surrender) {
+      if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].some((k) => this.keys.has(k))) { w.surrender = false; p.gesture = null; this.onToast('You run for it!'); }
+      else { this.vel.x = this.vel.z = 0; return; }
+    }
+    // getting up off the bunk
+    if (jailed && this.state.serving && ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].some((k) => this.keys.has(k))) this.state.serving = false;
+    if (this.uiOpen || p.sleeping || p.down != null || (p.away && !jailed) || p.dead || this.state.serving) { this.vel.x = this.vel.z = 0; return; }
     // like GTA: W/A/S/D move you relative to the camera (away from it, to its left and right, towards
     // it), and you turn to face the way you are going. The mouse turns the camera.
     const k = this.keys;

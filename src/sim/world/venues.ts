@@ -6,7 +6,7 @@ import type { Vec2 } from '../types';
 import type { City, CityBuilding, District } from './city';
 import { STREETS, ESPLANADE_Z, ROAD_HALF, WALK_W } from './city';
 
-export type VenueKind = 'shop' | 'cafe' | 'takeaway' | 'pub' | 'clothes' | 'barber' | 'bank' | 'casino' | 'nightclub' | 'gym' | 'arcade' | 'pawn' | 'station' | 'mall' | 'hospital' | 'cityhall' | 'church';
+export type VenueKind = 'shop' | 'cafe' | 'takeaway' | 'pub' | 'clothes' | 'barber' | 'bank' | 'casino' | 'nightclub' | 'gym' | 'arcade' | 'pawn' | 'station' | 'mall' | 'hospital' | 'cityhall' | 'church' | 'prison';
 export interface Rect { x0: number; z0: number; x1: number; z1: number }
 
 export interface VenueObstacle { kind: string; rect: Rect; height: number; solid: boolean; rot?: number; color?: string; ref?: string }
@@ -52,27 +52,28 @@ const NAMES: Record<VenueKind, string[]> = {
   arcade: ['Pier Amusements', 'Game Zone'],
   pawn: ['Cash 4 Gold', 'Harbour Pawnbrokers'],
   station: ['Central Station'], mall: ['Harbourgate Shopping Centre'], hospital: ['Harbourside General Hospital'], cityhall: ['City Hall'], church: ["St Mary's Church"],
+  prison: ['HMP Harbourside'],
 };
 const WANT: [VenueKind, number][] = [['shop', 8], ['cafe', 5], ['takeaway', 5], ['pub', 4], ['clothes', 3], ['barber', 3], ['bank', 1], ['casino', 1], ['nightclub', 2], ['gym', 2], ['arcade', 2], ['pawn', 2]];
 const HOURS: Record<VenueKind, [number, number]> = {
   shop: [7 * 60, 23 * 60], cafe: [7 * 60, 18 * 60], takeaway: [16 * 60, 24 * 60], pub: [11 * 60, 23 * 60], clothes: [9 * 60, 18 * 60], barber: [9 * 60, 18 * 60],
   bank: [9 * 60, 17 * 60], casino: [18 * 60, 28 * 60], nightclub: [22 * 60, 28 * 60], gym: [6 * 60, 22 * 60], arcade: [10 * 60, 22 * 60], pawn: [9 * 60, 18 * 60],
-  station: [5 * 60, 25 * 60], mall: [9 * 60, 21 * 60], hospital: [0, 24 * 60], cityhall: [9 * 60, 17 * 60], church: [7 * 60, 20 * 60],
+  station: [5 * 60, 25 * 60], mall: [9 * 60, 21 * 60], hospital: [0, 24 * 60], cityhall: [9 * 60, 17 * 60], church: [7 * 60, 20 * 60], prison: [0, 24 * 60],
 };
 const COLORS: Record<VenueKind, string> = {
-  station: '#7b2d26', mall: '#2c3e50', hospital: '#2f6fb0', cityhall: '#3d4d5c', church: '#5a4a3a',
+  station: '#7b2d26', mall: '#2c3e50', hospital: '#2f6fb0', cityhall: '#3d4d5c', church: '#5a4a3a', prison: '#3b4148',
   shop: '#2e7d4f', cafe: '#7b4a2d', takeaway: '#c0392b', pub: '#5b2a1e', clothes: '#2c3e50', barber: '#1f4e79', bank: '#0f3b5f', casino: '#7d1f1f', nightclub: '#4a148c', gym: '#212121', arcade: '#ff6f00', pawn: '#8d6e00',
 };
 const SIZE: Record<VenueKind, { w: number; d: number }> = {
   shop: { w: 9, d: 10 }, cafe: { w: 9, d: 10 }, takeaway: { w: 8, d: 9 }, pub: { w: 11, d: 11 }, clothes: { w: 10, d: 11 }, barber: { w: 7, d: 9 },
-  station: { w: 30, d: 20 }, mall: { w: 30, d: 20 }, hospital: { w: 30, d: 20 }, cityhall: { w: 30, d: 20 }, church: { w: 16, d: 30 },
+  station: { w: 30, d: 20 }, mall: { w: 30, d: 20 }, hospital: { w: 30, d: 20 }, cityhall: { w: 30, d: 20 }, church: { w: 16, d: 30 }, prison: { w: 30, d: 20 },
   bank: { w: 16, d: 16 }, casino: { w: 16, d: 16 }, nightclub: { w: 14, d: 14 }, gym: { w: 12, d: 12 }, arcade: { w: 10, d: 11 }, pawn: { w: 7, d: 9 },
 };
 /** where each kind belongs */
 const SUITS: Record<VenueKind, District[]> = {
   shop: ['oldtown', 'midtown', 'uptown', 'beach', 'centre', 'industrial'], cafe: ['centre', 'oldtown', 'beach', 'midtown'], takeaway: ['oldtown', 'midtown', 'uptown', 'beach'],
   pub: ['oldtown', 'midtown', 'beach'], clothes: ['centre', 'midtown'], barber: ['oldtown', 'midtown', 'uptown'], bank: ['centre'], casino: ['centre', 'midtown', 'beach'],
-  station: [], mall: [], hospital: [], cityhall: [], church: [],
+  station: [], mall: [], hospital: [], cityhall: [], church: [], prison: [],
   nightclub: ['midtown', 'centre', 'beach'], gym: ['midtown', 'uptown', 'industrial'], arcade: ['beach', 'midtown'], pawn: ['oldtown', 'industrial', 'midtown'],
 };
 
@@ -119,6 +120,12 @@ export function planVenues(city: City): Venue[] {
     v.path = { x: v.outside.x, z: sz };
     out.push(v);
   }
+  // and the prison, in a big brick block out among the works
+  // (works buildings stand back from the street a little; nobody walks in through its gate anyway)
+  const frontLoose = (b: CityBuilding): 'n' | 's' | null => streetRows.some((z) => Math.abs(b.rect.z0 - (z + W)) < 2.6) ? 'n' : streetRows.some((z) => Math.abs(b.rect.z1 - (z - W)) < 2.6) ? 's' : null;
+  const jailOk = (c: CityBuilding) => !taken.has(c) && !c.name && (c.district === 'industrial' || c.district === 'docks') && c.rect.x1 - c.rect.x0 >= SIZE.prison.w && c.rect.z1 - c.rect.z0 >= SIZE.prison.d && !!frontLoose(c) && spaced(c);
+  const jail = city.buildings.find((c) => jailOk(c) && c.style === 'brick_dark') ?? city.buildings.find(jailOk);
+  if (jail) { taken.add(jail); out.push(fitOut(`v_${out.length}`, 'prison', NAMES.prison[0], jail, frontLoose(jail)!)); }
   // the chosen buildings become proper buildings with insides: the generator's boxes go
   city.buildings = city.buildings.filter((b) => !taken.has(b));
   city.opened = [...taken];
@@ -307,6 +314,38 @@ function fitOut(id: string, kind: VenueKind, name: string, b: CityBuilding, fron
       spot('pew', 'pew', 'A pew', mid - 0.6, 9, mid - 2, 9);
       nodes.push(P(mid, D - 6));
       staffUV = [mid, D - 2.4];
+      break;
+    }
+    case 'prison': {
+      // a locked gate inside the front door, the officers' desk, and bars between that and the wing
+      ob('celldoor', mid - 1.8, 0.35, mid + 1.8, 0.55, 3.0, true);
+      ob('reception', mid - 3, 3, mid + 3, 3.8, 1.05, true, undefined, '#3b4148');
+      ob('cellbars', 0.4, 6, mid - 1.6, 6.12, 3.0, true);
+      ob('cellbars', mid + 1.6, 6, Wd - 0.4, 6.12, 3.0, true);
+      staffUV = [mid, 4.6];
+      // the canteen: a hatch to collect a tray from, tables with benches
+      ob('reception', 1.5, 7.0, 8.5, 7.8, 1.05, true, undefined, '#8d99a6');
+      spot('food', 'prison_food', 'The canteen hatch', 5, 8.9, 5, 7.4);
+      for (const u of [2.5, 6.5, 10.5]) { ob('table', u, 10.4, u + 1.4, 12.4, 0.75, true); ob('bench', u - 0.6, 10.4, u - 0.15, 12.4, 0.45, true, Math.PI / 2); ob('bench', u + 1.55, 10.4, u + 2.0, 12.4, 0.45, true, -Math.PI / 2); }
+      // the gym corner and the laundry
+      ob('bench', 2.5, D - 2.6, 5.5, D - 2.0, 0.5, true, 0);
+      spot('weights', 'weights', 'Weights bench', 4, D - 3.4, 4, D - 2.3);
+      for (let u = 9.5; u < 15; u += 0.9) ob('washer', u, D - 1.3, u + 0.7, D - 0.6, 0.9, true, backRot);
+      spot('laundry', 'prison_laundry', 'The prison laundry (work)', 12, D - 2.6, 12, D - 0.9);
+      // a loose vent cover low on the side wall: the way out, if nobody is looking
+      ob('board', 0.05, 15, 0.2, 16.2, 1.0, false);
+      spot('vent', 'prison_wall', 'A loose vent cover', 1.0, 15.6, 0.1, 15.6, 1.3);
+      // a row of cells along the back: bars and a doorway at the front of each, a bunk inside
+      let c = 0;
+      for (let u0 = 18; u0 + 3 <= Wd - 0.4; u0 += 3.2, c++) {
+        ob('cellbars', u0, D - 4.6, u0 + 1.8, D - 4.48, 3.0, true);
+        ob('cellbars', u0 - 0.06, D - 4.6, u0 + 0.06, D - 0.05, 3.0, true);
+        ob('bed', u0 + 0.3, D - 2.5, u0 + 1.25, D - 0.3, 0.6, true, backRot, '#5d6268');
+        if (c === 0) spot('bunk', 'prison_bunk', 'Your bunk', u0 + 2.2, D - 1.6, u0 + 0.8, D - 1.4, 1.4);
+        nodes.push(P(u0 + 2.4, D - 2.6), P(u0 + 2.4, D - 5.6));
+      }
+      ob('cellbars', Wd - 0.5, D - 4.6, Wd - 0.38, D - 0.05, 3.0, true);
+      nodes.push(P(5, 8.9), P(4, D - 3.4), P(12, D - 2.6), P(1.0, 15.6), P(mid, 7.5));
       break;
     }
     case 'pawn': {

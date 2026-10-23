@@ -2,6 +2,7 @@
 // Fine-grained movement/actions run in sub-steps; economic and scheduled
 // systems run once per whole game minute so nothing is skipped when the
 // clock is accelerated (sleeping, fast-forward).
+import { prisonTick } from './prison';
 import { carFireTick } from './cars';
 import { missionTick } from './missions';
 import { stationTick } from './station';
@@ -123,6 +124,7 @@ export function minuteTick(state: GameState) {
   boatTick(state);
   stolenTick(state);
   healthMinute(state);
+  prisonTick(state);
   gatheringsTick(state);
   incidentsTick(state);
   favoursTick(state);

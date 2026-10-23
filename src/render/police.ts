@@ -58,6 +58,9 @@ class PatrolCar {
 
 export class PoliceCar {
   private cars: PatrolCar[] = [];
+  /** cars parked across a junction ahead of you, lights going (three stars and up, when you are driving) */
+  private blocks: PatrolCar[] = [];
+  private blockAt = 0;
   private heli: THREE.Group | null = null;
   private rotor: THREE.Object3D | null = null;
   private beam: THREE.SpotLight | null = null;
@@ -67,7 +70,29 @@ export class PoliceCar {
   get active() { return this.cars.length > 0 || !!this.heli; }
 
   /** where the cars are, for collisions */
-  rects(): R[] { return this.cars.map((c) => c.rect()); }
+  rects(): R[] { return [...this.cars, ...this.blocks].map((c) => c.rect()); }
+
+  /** a roadblock at the next junction or two ahead of a speeding getaway */
+  private roadblocks(on: boolean, px: number, pz: number, heading: number) {
+    const t = performance.now() / 1000;
+    if (!on) { for (const b of this.blocks) b.remove(); this.blocks = []; return; }
+    // gone by, or far off: cleared away
+    this.blocks = this.blocks.filter((b) => { const far = Math.hypot(b.pos.x - px, b.pos.y - pz) > 220; if (far) b.remove(); return !far; });
+    if (this.blocks.length || t - this.blockAt < 8) return;
+    this.blockAt = t;
+    const fx = Math.sin(heading), fz = Math.cos(heading);
+    const j = getWorld().city.junctions
+      .map((q) => ({ q, d: Math.hypot(q.x - px, q.z - pz), ahead: ((q.x - px) * fx + (q.z - pz) * fz) / Math.max(1, Math.hypot(q.x - px, q.z - pz)) }))
+      .filter((c) => c.d > 60 && c.d < 150 && c.ahead > 0.85).sort((a, b) => a.d - b.d)[0]?.q;
+    if (!j) return;
+    // two cars nose to nose across the road you are on, leaving no gap
+    const across = Math.abs(fx) > Math.abs(fz) ? 0 : Math.PI / 2;
+    for (const s of [-1, 1]) {
+      const ox = across === 0 ? 0 : s * 2.3, oz = across === 0 ? s * 2.3 : 0;
+      const c = new PatrolCar(this.scene, j.x + ox - fx * 6, j.z + oz - fz * 6, across + (s > 0 ? Math.PI : 0));
+      this.blocks.push(c);
+    }
+  }
 
   /** a junction out of sight, some way off, to come from */
   private spawnPoint(px: number, pz: number): { x: number; z: number; h: number } {
@@ -91,7 +116,9 @@ export class PoliceCar {
       if (this.leaving > 8) { for (const c of this.cars) c.remove(); this.cars = []; }
     } else this.leaving = 0;
     const t = performance.now() / 1000;
-    for (const c of this.cars) c.lights.forEach((l, i) => { (l.material as THREE.MeshStandardMaterial).emissiveIntensity = Math.sin(t * 9 + i * Math.PI) > 0 ? 3 : 0.1; });
+    for (const c of [...this.cars, ...this.blocks]) c.lights.forEach((l, i) => { (l.material as THREE.MeshStandardMaterial).emissiveIntensity = Math.sin(t * 9 + i * Math.PI) > 0 ? 3 : 0.1; });
+    const myCar = driving ? Object.values(state.vehicles).find((v) => v.driverId === me.id) : null;
+    this.roadblocks(wanted && driving && w!.level >= 3, px, pz, myCar?.heading ?? 0);
     this.updateHeli(state, dt, wanted && w!.level >= 4, px, pz);
     if (dt <= 0) return;
     const junctions = getWorld().city.junctions;

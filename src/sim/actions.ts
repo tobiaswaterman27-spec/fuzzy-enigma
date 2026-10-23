@@ -7,6 +7,7 @@ import { bargeIn, breakIn, houseOf, houseOpen, knock, searchValuables } from './
 import { breakUp, handIn, onPcsoShift, readBeat } from './station';
 import { BUS_FARE } from './bus';
 import { TRAIN_FARE } from './train';
+import { laundryShift, mealNow, nextMeal, prisonMeal, tryEscape } from './prison';
 import { callVince, dropMission, missionText } from './missions';
 import { fixture, gateOpen, goToMatch, ODDS, STAKE, TICKET, type Pick } from './stadium';
 import { arcadeGo, buyAt, clearRecord, crackVault, RECORD_FEE, smashCases, watchFilm, wedding, WEDDING_FEE, haircut, hasGymPass, newOutfit, offersAt, PAWN, pawnSell, robVenue, shoplift, slots, staffOf, venueOfSpot, workout } from './venues';
@@ -467,6 +468,18 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
       if (state.mission) { out.push(opt('vince', `Ring Vince (on a job: ${missionText(state).replace('Vince: ', '')})`, undefined, 'call')); out.push(opt('vince', 'Tell Vince you are dropping the job', undefined, 'drop')); }
       else out.push(opt('vince', `Ring Vince for some work${(state.vinceRep ?? 0) ? ` (trust: ${state.vinceRep})` : ''}`, undefined, 'call'));
       break;
+    case 'prison_food':
+      out.push(opt('prison_meal', mealNow(state.minute) ? `Collect your ${mealNow(state.minute)}` : 'Collect a tray', mealNow(state.minute) ? undefined : `Shut. Next: ${nextMeal(state.minute)}`));
+      break;
+    case 'prison_laundry':
+      out.push(opt('prison_work', 'Work a shift in the laundry (1 hour, 4 hours off your sentence)', p.away?.place === 'prison' ? undefined : 'Only for prisoners'));
+      break;
+    case 'prison_wall':
+      out.push(opt('escape', 'Prise off the vent cover and crawl out (best at night, with no officer about)', p.away?.place === 'prison' ? undefined : 'Only for prisoners'));
+      break;
+    case 'prison_bunk':
+      out.push(opt('serve_time', p.away ? `Lie on your bunk and do your time (out ${fmtClock(p.away.until)})` : 'Lie on the bunk', p.away?.place === 'prison' ? undefined : 'Only for prisoners'));
+      break;
     case 'turnstile': {
       const g = gateOpen(state.minute);
       const f = fixture(dayIndex(state.minute));
@@ -784,6 +797,10 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
       begin(p, type, itId, { duration: 0.8 }, now); break;
     case 'vince': return { ok: true, msg: arg === 'drop' ? dropMission(state) : callVince(state, p.id) };
     case 'garage': { const v = state.vehicles[arg ?? '']; return { ok: !!v, msg: v ? garageJob(state, p.id, v) : '' }; }
+    case 'prison_meal': return { ok: true, msg: prisonMeal(state, p.id) };
+    case 'serve_time': state.serving = true; return { ok: true, msg: 'You lie back and stare at the ceiling. The days go by. (Move to get up.)' };
+    case 'prison_work': begin(p, type, itId, { duration: 60 }, now); break;
+    case 'escape': begin(p, type, itId, { duration: 2 }, now); break;
     case 'match': return goToMatch(state, p.id, arg === 'watch' ? undefined : (arg as Pick));
     case 'ae': {
       const r = goToAandE(state, p.id);
@@ -1113,6 +1130,8 @@ export function tickAction(state: GameState, p: Person, dt: number): string | nu
       msg = (p.drunk ?? 0) > 40 ? 'You throw some shapes. Some of them are even in time.' : 'You lose yourself in the music for a while.';
       break;
     case 'workout': msg = workout(state, p.id, a.arg === 'weights' ? 'weights' : 'treadmill'); break;
+    case 'prison_work': msg = laundryShift(state, p.id); break;
+    case 'escape': msg = tryEscape(state, p.id); break;
     case 'pray':
       p.needs.mood = clamp(p.needs.mood + 10, 0, 100); p.needs.energy = clamp(p.needs.energy + 4, 0, 100);
       msg = (p.record?.length ?? 0) ? 'You sit in the quiet for a while. It helps, a bit.' : 'Ten minutes of peace and quiet. You feel calmer.';

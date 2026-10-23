@@ -184,6 +184,10 @@ export type ActionType =
   | 'match'
   | 'vince'
   | 'garage'
+  | 'prison_meal'
+  | 'prison_work'
+  | 'escape'
+  | 'serve_time'
   | 'film'
   | 'smash_case'
   | 'workout'
@@ -338,6 +342,8 @@ export interface Person {
   down?: number | null;
   /** knocked off their feet for a moment (not collapsed): they get back up at this minute */
   downUntil?: number | null;
+  /** clothes kept by the prison while you serve your sentence */
+  ownOutfit?: string;
   /** the last blow taken: when, from which way, how hard, and who threw it (for the body's reaction) */
   hit?: { at: number; dir: number; heavy: boolean; by: Id; force?: number } | null;
   /** punches thrown in a row: a combination ends in a kick */
@@ -733,7 +739,8 @@ export interface GameState {
   /** blood on the ground (fades after a day) */
   blood?: { id: Id; pos: Vec2; at: number; size: number }[];
   /** how much the police want the player (0..5 stars) */
-  wanted?: { level: number; unseen: number; crime: string } | null;
+  /** wanted by the police: stars, minutes out of their sight, where they last saw you, hands up */
+  wanted?: { level: number; unseen: number; crime: string; last?: Vec2; surrender?: boolean } | null;
   /** house doors left open (let in, or forced) until a time, by house id */
   houseOpen?: Record<Id, number>;
   /** someone is answering a house door the player knocked on */
@@ -760,6 +767,8 @@ export interface GameState {
   /** a hold-up in progress */
   robbery?: { robber: Id; clerk: Id; business: Id } | null;
   /** today's PCSO beat: the points to check in at */
+  /** lying on your prison bunk letting the days pass */
+  serving?: boolean;
   /** the job you are doing for Vince, and how far he trusts you */
   mission?: import('./missions').Mission | null;
   vinceRep?: number;
