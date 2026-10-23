@@ -728,6 +728,10 @@ export class Game {
     this.market.update(s, this.paused ? 0 : dt, this.player.pos);
     // the first time you get behind the wheel the radio comes on
     if (!this.radioOn && this.drivingVan()?.kind === 'car') { this.radioOn = true; if (this.audio.radio.station < 0) this.onToast(`${this.audio.radio.cycle()} · R to change station`); }
+    // back behind the wheel: what's on the radio
+    const inCar = this.drivingVan()?.kind === 'car';
+    if (inCar && !this.wasInCar && this.audio.radio.station >= 0 && this.radioOn) this.onToast(this.audio.radio.nowPlaying());
+    this.wasInCar = inCar;
     this.audio.update(s, this.paused ? 0 : dt, Math.hypot(this.vel.x, this.vel.z), this.drivingVan() ? this.vanSpeed : null);
     this.watchFrameRate(dt);
     this.world.update(s, dt);
@@ -834,6 +838,7 @@ export class Game {
     if (p.where !== 'vehicle') return null;
     return Object.values(this.state.vehicles).find((v) => v.driverId === p.id) ?? null;
   }
+  private wasInCar = false;
   private vanSpeed = 0;
   /** the direction the car is moving (differs from where it points in a slide), how far out, how hard the tyres are scrubbing */
   private travel = 0;

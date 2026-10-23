@@ -110,6 +110,15 @@ export class UI {
 
   toast(msg: string) {
     if (!msg) return;
+    // the radio: the station's name across the top of the screen, GTA style
+    if (msg.startsWith('📻') || msg === 'Radio off' || msg.startsWith('Radio off')) {
+      const b = $('#radio-banner');
+      const [name, tag] = msg.replace('📻 ', '').split(' · ');
+      b.innerHTML = `<b>${esc(name)}</b>${tag && !tag.startsWith('R to') ? `<span>${esc(tag)}</span>` : ''}`;
+      b.hidden = false; b.classList.remove('show'); void b.offsetWidth; b.classList.add('show');
+      clearTimeout(this.radioTimer); this.radioTimer = window.setTimeout(() => { b.hidden = true; }, 2600);
+      return;
+    }
     const t = document.createElement('div');
     t.className = 'toast';
     t.textContent = msg;
@@ -254,6 +263,7 @@ export class UI {
     this.titleTimer = window.setTimeout(() => { el.hidden = true; document.body.classList.remove('fx-wasted', 'fx-busted'); }, 4200);
   }
   private titleTimer = 0;
+  private radioTimer = 0;
   closePhone() { this.phoneOpen = false; $('#phone').hidden = true; if (this.p.gesture?.clip === 'phone') this.p.gesture = null; this.syncModal(); }
 
   renderPhone() {

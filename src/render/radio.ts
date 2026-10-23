@@ -125,6 +125,8 @@ export class Radio {
     return this.station < 0 ? 'Radio off' : `📻 ${STATIONS[this.station].name} · ${STATIONS[this.station].tag}`;
   }
 
+  nowPlaying(): string { return this.station < 0 ? 'Radio off' : `📻 ${STATIONS[this.station].name} · ${STATIONS[this.station].tag}`; }
+
   update(on: boolean) {
     const v = this.v;
     if (!v || !this.gain) return;

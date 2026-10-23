@@ -14,6 +14,19 @@ const BODIES = ['car', 'saloon', 'suv', 'car', 'sports', 'saloon', 'suv'];
 const COLORS = ['#b8232a', '#2b4f8c', '#e8e8e8', '#1c1c1c', '#5f7f3f', '#c4a14a', '#7a7f86', '#3d6f8f', '#8e44ad', '#f0f0f0'];
 const KEEP = 230;
 
+let signMat: THREE.MeshStandardMaterial | null = null;
+function taxiSign() {
+  signMat ??= new THREE.MeshStandardMaterial({ map: (() => {
+    const c = document.createElement('canvas'); c.width = 128; c.height = 40;
+    const g = c.getContext('2d')!; g.fillStyle = '#f7c600'; g.fillRect(0, 0, 128, 40);
+    g.fillStyle = '#111'; g.font = 'bold 30px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('TAXI', 64, 22);
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+  })(), emissive: '#ffb000', emissiveIntensity: 0.6, roughness: 0.4 });
+  const m = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.15, 0.2), signMat);
+  m.position.set(0, 1.5, 0.1);
+  return m;
+}
+
 export class Traffic {
   cars: Car[] = [];
   private lanes: Lane[];
@@ -62,8 +75,11 @@ export class Traffic {
 
   private add(near: { x: number; z: number }) {
     const i = this.cars.length + this.taken;
-    const body = BODIES[i % BODIES.length], color = COLORS[(i * 3) % COLORS.length];
+    // every seventh car is a black cab, its TAXI sign lit
+    const cab = i % 7 === 3;
+    const body = cab ? 'saloon' : BODIES[i % BODIES.length], color = cab ? '#141414' : COLORS[(i * 3) % COLORS.length];
     const obj = buildCar(color, 0, 0, 0, false, body);
+    if (cab) obj.add(taxiSign());
     obj.add(driverFigure(i + 0.37));
     this.scene.add(obj);
     const cruise = 8 + ((i * 37) % 5) + (body === 'sports' ? 2 : 0);
