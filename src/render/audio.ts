@@ -7,6 +7,7 @@ import { raining } from '../sim/weather';
 import { daylight } from '../sim/clock';
 import { Radio } from './radio';
 import { Theme } from './theme';
+import { voice } from './voice';
 
 export class Audio {
   private ctx: AudioContext | null = null;
@@ -230,6 +231,7 @@ export class Audio {
       }
     } else this.stepPhase = 0.6;
     this.radio.update(drivingSpeed !== null && !this.theme.on);
+    if (drivingSpeed !== null && !this.theme.on) { const dj = this.radio.ident(c.currentTime); if (dj) voice.dj(dj.text, dj.female, this.muted); }
     this.theme.update();
     // the van's engine, pitch with road speed
     if (drivingSpeed !== null) {

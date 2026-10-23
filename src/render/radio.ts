@@ -98,7 +98,25 @@ export const STATIONS: Station[] = [
   },
 ];
 
+/** what the DJs say between tracks */
+const IDENTS: Record<string, { female: boolean; lines: string[] }> = {
+  'Harbour FM': { female: true, lines: ['You are listening to Harbour FM. All the hits, all day long!', 'Harbour FM. Traffic is slow on the Esplanade, so turn it up and enjoy the view.', 'That was a big one. More hits coming up on Harbour FM.', 'Harbour FM, where the weather is always better than outside.'] },
+  'Neon 88': { female: false, lines: ['Neon 88. The night is young, and so is the music. Well. It was in 1988.', 'Neon 88. Keep your foot down and your sunglasses on.', 'You are cruising with Neon 88. Synthwave after dark.'] },
+  'Chill Waves': { female: true, lines: ['Chill Waves. Breathe in, breathe out, mind the bus lane.', 'Lo-fi beats to drive to, on Chill Waves.', 'Chill Waves. Put the kettle on when you get home.'] },
+  'Classic Harbour': { female: false, lines: ['Classic Harbour. The great composers, and the occasional seagull.', 'This is Classic Harbour. Do take your time at the roundabout.', 'You are listening to Classic Harbour. Culture, for the commute.'] },
+};
+
 export class Radio {
+  private nextIdent = 0;
+  /** a DJ line now and then while a station plays (null when it is not time) */
+  ident(now: number): { text: string; female: boolean } | null {
+    if (this.station < 0) return null;
+    if (!this.nextIdent) { this.nextIdent = now + 12; return null; }
+    if (now < this.nextIdent) return null;
+    this.nextIdent = now + 70 + Math.random() * 60;
+    const id = IDENTS[STATIONS[this.station].name];
+    return id ? { text: id.lines[Math.floor(Math.random() * id.lines.length)], female: id.female } : null;
+  }
   private v: Voice | null = null;
   private gain: GainNode | null = null;
   station = -1;
@@ -120,7 +138,7 @@ export class Radio {
   /** next station (off is one of them) */
   cycle(): string {
     this.station = this.station + 1 >= STATIONS.length ? -1 : this.station + 1;
-    this.stepN = 0; this.bar = 0;
+    this.stepN = 0; this.bar = 0; this.nextIdent = 0;
     if (this.v) this.next = this.v.ctx.currentTime + 0.08;
     return this.station < 0 ? 'Radio off' : `📻 ${STATIONS[this.station].name} · ${STATIONS[this.station].tag}`;
   }

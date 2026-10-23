@@ -9,6 +9,7 @@ import { dealBlackjack, finishBlackjack, type Hand, handValue, hitBlackjack, rou
 import { AVENUE_NAMES, CITY, DISTRICT_NAMES, districtAt, STREET_NAMES, streetAt } from '../sim/world/city';
 import { planX } from '../sim/world/levels';
 import { Radar } from './radar';
+import { voice } from '../render/voice';
 import { typedCheat } from '../sim/cheats';
 import type { Game } from '../game/game';
 import type { Business, GameState, Person } from '../sim/types';
@@ -1135,6 +1136,7 @@ export class UI {
       <button data-m="loadauto">Load autosave <span class="muted">(${esc(sum(auto))})</span></button>
       <button data-m="new">New game</button>
       <button data-m="sound">Sound: ${this.game.audio.muted ? 'Off' : 'On'} - click to switch</button>
+      ${voice.available ? `<button data-m="voices">Voices (people speak their lines, radio DJs): ${voice.on ? 'On' : 'Off'}</button>` : ''}
       <button data-m="gfx">Graphics: ${this.game.quality === 'high' ? 'High (ambient occlusion, bloom, anti-aliasing)' : this.game.quality === 'medium' ? 'Medium (anti-aliasing, no ambient occlusion)' : 'Low (fastest)'} · resolution ${Math.round(this.game.resScale * 100)}% - click to switch</button>
       <h3>AI conversations</h3><p class="muted">${claudeAi() ? 'People are voiced by Claude on your own claude.ai account (allowed per page). ' : ''}With your own OpenAI API key, people answer anything you say, in character, from their job, family, money, mood and history (outside claude.ai, where the page can reach OpenAI). The key is kept only in this browser and sent only to OpenAI. Without either, people cannot talk.</p>
       ${hasAi() ? `<p>Key saved (…${esc((getApiKey() ?? '').slice(-4))}) · model ${esc(getModel())}</p><div class="row"><button data-m="aiclear">Remove key</button></div>` : `<input id="ai-key" type="password" placeholder="sk-…" autocomplete="off" style="font:inherit;padding:8px;border-radius:6px;border:1px solid var(--line);background:#1c2420;color:var(--ink)"><div class="row"><button data-m="aisave">Save key</button></div>`}
@@ -1148,6 +1150,7 @@ export class UI {
     if (m === 'resume') return this.toggleMenu();
     if (m === 'save') { const r = this.game.save(); this.renderMenu(r.ok ? 'Saved.' : r.error ?? 'Save failed'); }
     if (m === 'load' || m === 'loadauto') { const r = this.game.load(m === 'load' ? 'bigshot.slot1' : 'bigshot.auto'); this.renderMenu(r.ok ? 'Loaded.' : (r as any).error); }
+    if (m === 'voices') { voice.set(!voice.on); this.renderMenu(); return; }
     if (m === 'sound') { const a = this.game.audio; a.muted = !a.muted; try { localStorage.setItem('bigshot.sound', a.muted ? 'off' : 'on'); } catch { /* */ } a.start(); this.renderMenu(); return; }
     if (m === 'aisave') { const k = ($('#ai-key') as HTMLInputElement)?.value.trim(); if (k) setApiKey(k); this.renderMenu(k ? 'AI key saved. Talk to anyone to try it.' : 'Paste a key first.'); return; }
     if (m === 'aiclear') { setApiKey(null); this.renderMenu('AI key removed.'); return; }

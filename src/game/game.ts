@@ -24,6 +24,7 @@ import { landedJump } from '../sim/stunts';
 import { Emergency } from '../render/emergency';
 import { Pigeons } from '../render/pigeons';
 import { Skids } from '../render/skids';
+import { voice } from '../render/voice';
 import { leaveBike } from '../sim/bikes';
 import { BusSeq } from '../render/busseq';
 import { STREETS } from '../sim/world/city';
@@ -206,7 +207,12 @@ export class Game {
   camLocked = false;
   /** speech bubbles over people's heads: what they are saying and until when (real seconds) */
   speech = new Map<string, { text: string; until: number }>();
-  say(personId: string, text: string, seconds = 5) { this.speech.set(personId, { text, until: performance.now() + seconds * 1000 }); }
+  say(personId: string, text: string, seconds = 5) {
+    this.speech.set(personId, { text, until: performance.now() + seconds * 1000 });
+    // out loud, too (not your own lines: those are yours to say)
+    const o = this.state.people[personId];
+    if (o && personId !== this.player.id) voice.say(personId, text, o.appearance?.frame === 'f', Math.hypot(planX(o.pos.x) - planX(this.player.pos.x), o.pos.z - this.player.pos.z), this.audio.muted);
+  }
   private vel = { x: 0, z: 0 };
   private sunAnchor = new THREE.Vector3();
   /** mouse look: the automatic camera waits until this time (ms) */
