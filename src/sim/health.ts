@@ -8,7 +8,7 @@ import type { GameState, Id, Person, Vec2 } from './types';
 import { clamp, dist, fmtMoney, nextId, rand, randInt } from './core';
 import { lifeEvent, news } from './events';
 import { die } from './life';
-import { clearLine } from './world/nav';
+import { clearLine, resolveCircle } from './world/nav';
 import { getWorld } from './world/layout';
 import { goTo, homeDoor } from './npc';
 import { transfer } from './ledger';
@@ -57,7 +57,11 @@ export function attack(state: GameState, attackerId: Id, targetId: Id | null): s
   if (a.action) a.action = null;
   const w: WeaponId = a.weapon ?? 'fists';
   const W = WEAPONS[w];
-  a.action = { type: 'attack', target: targetId ? `person:${targetId}` : 'air', arg: w, started: state.minute, progress: 0, unitTime: 0, duration: w === 'bat' ? 0.32 : 0.25, units: 0 };
+  // bare-handed, quick blows run into a combination: a punch, a flurry, then a kick
+  const n = w === 'fists' && a.combo && state.minute - a.combo.at < 0.6 ? (a.combo.n + 1) % 3 : 0;
+  a.combo = { n, at: state.minute };
+  const swing = w !== 'fists' ? w : n === 2 ? 'kick' : n === 1 ? 'flurry' : 'fists';
+  a.action = { type: 'attack', target: targetId ? `person:${targetId}` : 'air', arg: swing, started: state.minute, progress: 0, unitTime: 0, duration: w === 'bat' || swing === 'kick' ? 0.32 : 0.25, units: 0 };
   a.move = null;
   const t = targetId ? state.people[targetId] : null;
   if (!t || t.dead || t.away) return null;
@@ -70,8 +74,18 @@ export function attack(state: GameState, attackerId: Id, targetId: Id | null): s
     if (!t.isPlayer) react(state, t, a, w);
     return a.isPlayer ? `${t.name.split(' ')[0]} dodged.` : null;
   }
-  const dmg = (W.min + rand(state) * (W.max - W.min)) * ((a.drunk ?? 0) > 50 ? 0.8 : 1) * (t.down ? 1.3 : 1) * (0.8 + (a.fitness ?? 40) / 250);
+  const heavy = swing === 'kick' || w === 'bat';
+  const dmg = (W.min + rand(state) * (W.max - W.min)) * ((a.drunk ?? 0) > 50 ? 0.8 : 1) * (t.down ? 1.3 : 1) * (0.8 + (a.fitness ?? 40) / 250) * (swing === 'kick' ? 1.35 : 1);
+  t.hit = { at: state.minute, dir: a.facing, heavy, by: a.id };
+  // the blow knocks them back a step (a kick or a bat, further)
+  if (!t.down) {
+    const push = heavy ? 0.55 : 0.22;
+    const to = resolveCircle({ x: t.pos.x + Math.sin(a.facing) * push, z: t.pos.z + Math.cos(a.facing) * push }, 0.3);
+    if (Math.hypot(to.x - t.pos.x, to.z - t.pos.z) < push + 0.05) t.pos = to;
+  }
   hurt(state, t, dmg, `${W.verb} by ${a.name}${w === 'fists' ? '' : ` with a ${W.label}`}`, a.id, W.bleed);
+  // and sometimes off their feet: down for a few seconds, then back up
+  if (!t.dead && !t.down && (heavy ? rand(state) < 0.4 : dmg >= 12 && rand(state) < 0.25)) floor(state, t, 1.1 + rand(state) * 0.7);
   if (!t.isPlayer && !t.dead) react(state, t, a, w);
   if (!a.police) witnessed(state, a, t, w);
   if (a.isPlayer) return t.dead ? `${t.name} is not moving.` : t.down ? `${t.name} goes down.` : null;
@@ -88,7 +102,7 @@ export function hurt(state: GameState, p: Person, dmg: number, cause: string, by
   p.needs.mood = clamp(p.needs.mood - dmg / 3, 0, 100);
   if (p.health <= 0) { kill(state, p, cause, byId); return; }
   if (p.health < 55) p.injured = { severity: Math.max(p.injured?.severity ?? 0, Math.round(100 - p.health)), cause, since: p.injured?.since ?? state.minute };
-  if (p.health <= 20 && !p.down) knockDown(state, p);
+  if (p.health <= 20 && (p.down == null || p.downUntil != null)) knockDown(state, p);
 }
 
 /** blood on the ground */
@@ -98,7 +112,17 @@ export function splash(state: GameState, pos: Vec2, size: number) {
   if (b.length > 60) b.splice(0, b.length - 60);
 }
 
+/** off their feet for a moment (a heavy blow, a car clipping them): they get up again by themselves */
+export function floor(state: GameState, p: Person, minutes: number) {
+  if (p.dead || p.down != null) return;
+  p.down = state.minute;
+  p.downUntil = state.minute + minutes;
+  p.action = null; p.move = null; p.combat = null; p.sleeping = false;
+  if (p.npc) { p.npc.plan = []; p.npc.nextDecision = p.downUntil + 0.2; }
+}
+
 export function knockDown(state: GameState, p: Person) {
+  p.downUntil = null;
   p.down = state.minute;
   p.action = null; p.move = null; p.combat = null; p.fleeing = 0; p.sleeping = false;
   if (p.npc) { p.npc.plan = []; p.npc.nextDecision = state.minute + 9999; }
@@ -323,6 +347,12 @@ export function arrest(state: GameState, cop: Person) {
 export function healthSubstep(state: GameState, dt: number) {
   for (const p of Object.values(state.people)) {
     if (p.dead || p.away) continue;
+    // back on their feet after being knocked over
+    if (p.downUntil != null && p.down != null && state.minute >= p.downUntil) {
+      p.down = null; p.downUntil = null;
+      const by = p.hit ? state.people[p.hit.by] : null;
+      if (p.npc) { p.npc.nextDecision = state.minute; if (by && !by.dead) react(state, p, by, by.weapon ?? 'fists'); }
+    }
     if ((p.bleeding ?? 0) > 0) {
       p.bleeding = Math.max(0, p.bleeding! - 0.025 * dt);
       p.health = healthOf(p) - p.bleeding! * dt;
@@ -362,7 +392,7 @@ export function healthMinute(state: GameState) {
       continue;
     }
     if (p.drunk) p.drunk = Math.max(0, p.drunk - 0.17);
-    if (p.down !== null && p.down !== undefined) {
+    if (p.down !== null && p.down !== undefined && p.downUntil == null) {
       // an ambulance: a few minutes for someone in the street, sooner for you
       if (state.minute - p.down >= (p.isPlayer ? 1.5 : 8)) {
         const sev = p.injured?.severity ?? 60;

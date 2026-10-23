@@ -4,6 +4,7 @@ import type { GameState, Person } from '../sim/types';
 import { AnimationController, buildRig, dress, type Rig } from './character';
 import { buildCar } from './world';
 import { DogView } from './dog';
+import { Ragdoll } from './ragdoll';
 import { stairY } from '../sim/world/layout';
 import { LEVEL_DX, LEVEL_H, levelOf, STAIR_RUN } from '../sim/world/levels';
 import { boat as harbourBoat } from './harbour';
@@ -398,7 +399,10 @@ class PersonView {
       : a?.type === 'buy_tackle' || a?.type === 'buy_weapon' || a?.type === 'sell_catch' || a?.type === 'hire_boat' ? (prog < 0.45 ? 'g:talk' : prog < 0.75 ? 'g:pickup' : 'g:place') : null;
     this.syncPint(a?.type === 'buy_pint' && prog > 0.19);
     this.syncCash(p, a?.type === 'rob' ? prog > 0.78 && prog < 0.96 : a?.type === 'hand_over_cash' ? prog > 0.5 && prog < 0.9 : false);
-    let clipAction = floored ? 'down' : beat ? beat : kick ? kick : gest ? gest : stage ? (stage.walking ? null : stage.clip) : this.bedIt ? this.bedPose : stepping ? null : siteClip ?? a?.type ?? null;
+    const flurry = a?.type === 'attack' && a.arg === 'flurry' ? 'g:fight' : null;
+    // just back on their feet after being knocked over
+    const gettingUp = !floored && performance.now() < this.getUpUntil ? 'g:stand_up' : null;
+    let clipAction = floored ? 'down' : gettingUp ? gettingUp : beat ? beat : kick ? kick : flurry ? flurry : gest ? gest : stage ? (stage.walking ? null : stage.clip) : this.bedIt ? this.bedPose : stepping ? null : siteClip ?? a?.type ?? null;
     // everyone dances their own way; on a treadmill you run
     if (clipAction === 'dance') { let h = 0; for (let i = 0; i < p.id.length; i++) h = (h * 31 + p.id.charCodeAt(i)) >>> 0; clipAction = `g:${['dance', 'dance_b', 'dance_c'][h % 3]}`; }
     if (clipAction === 'workout' && a?.arg === 'treadmill') clipAction = 'g:run';
@@ -426,8 +430,43 @@ class PersonView {
       this.ground += (target - this.ground) * Math.min(1, dt * 14);
       this.rig.body.position.y = this.ground;
     }
+    // knocked down or dead: the body goes limp and falls the way the blow sent it
+    if (floored && this.rig.joints) {
+      if (!this.ragdoll) {
+        const h = p.hit && state.minute - p.hit.at < 1 ? p.hit : null;
+        const dir = h ? new THREE.Vector3(Math.sin(h.dir), 0, Math.cos(h.dir)) : new THREE.Vector3(-Math.sin(p.facing), 0, -Math.cos(p.facing));
+        this.rig.root.updateMatrixWorld(true);
+        this.ragdoll = new Ragdoll(this.rig, this.rig.root.getWorldPosition(new THREE.Vector3()).y, dir, h?.heavy ? 4.2 : h ? 2.6 : 1.2);
+      }
+      this.ragdoll.step(dt);
+      this.ragdoll.apply();
+    } else if (this.ragdoll) {
+      this.ragdoll = null;
+      if (!p.dead) this.getUpUntil = performance.now() + 1100;
+    }
+    // a blow that does not floor them: the upper body snaps back from it
+    if (!floored && p.hit && p.hit.at !== this.lastHit) {
+      this.lastHit = p.hit.at;
+      if (state.minute - p.hit.at < 0.5) { this.flinch = p.hit.heavy ? 1 : 0.7; this.flinchFrom = p.hit.dir - root.rotation.y; }
+    }
+    if (this.flinch > 0 && !floored) {
+      const k = this.flinch;
+      // hit from the front: lean back; from the side: twist away
+      const fwd = Math.cos(this.flinchFrom), side = Math.sin(this.flinchFrom);
+      this.rig.bones.spine.rotateX(0.35 * k * fwd);
+      this.rig.bones.chest.rotateX(0.25 * k * fwd);
+      this.rig.bones.chest.rotateZ(-0.3 * k * side);
+      this.rig.bones.head.rotateX(0.45 * k * fwd);
+      this.rig.bones.head.rotateZ(-0.35 * k * side);
+      this.flinch = Math.max(0, this.flinch - dt * 4);
+    }
     this.placeProps(a?.type ?? null, p.facing);
   }
+  private ragdoll: Ragdoll | null = null;
+  private getUpUntil = 0;
+  private lastHit = -1;
+  private flinch = 0;
+  private flinchFrom = 0;
   private ground = 0;
   private idleFor = 0;
   private idleFidget: { clip: string; until: number } | null = null;
