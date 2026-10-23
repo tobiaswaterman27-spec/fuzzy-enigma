@@ -11,7 +11,7 @@ import { wettable } from './wet';
 import { lampFor } from './signals';
 import { boat } from './harbour';
 
-const CHUNK = 260;
+const CHUNK = 520;
 const VIEW = 820;
 
 // ---------------------------------------------------------------- facade textures

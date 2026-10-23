@@ -450,11 +450,22 @@ export class Game {
     if (this.dtAcc < 1) return;
     const avg = this.dtAcc / this.dtN;
     this.dtAcc = 0; this.dtN = 0;
+    // with hysteresis, so it settles instead of see-sawing (each change reallocates the render targets,
+    // a hitch of its own): two slow seconds running to step down, five quick ones to step back up, at
+    // least six seconds between changes, and never straight back up to a scale that has just been too slow
+    this.slowSecs = avg > 1 / 42 ? this.slowSecs + 1 : 0;
+    this.fastSecs = avg < 1 / 58 ? this.fastSecs + 1 : 0;
+    const now = performance.now();
+    if (now - this.resChangedAt < 6000) return;
     const was = this.resScale;
-    if (avg > 1 / 45) this.resScale = Math.max(0.6, this.resScale - 0.1);
-    else if (avg < 1 / 57) this.resScale = Math.min(1, this.resScale + 0.05);
-    if (this.resScale !== was) this.resize();
+    if (this.slowSecs >= 2) { this.tooSlowAt = this.resScale; this.resScale = Math.max(0.6, this.resScale - 0.1); }
+    else if (this.fastSecs >= 5 && this.resScale + 0.05 < (this.tooSlowAt ?? 9)) this.resScale = Math.min(1, this.resScale + 0.05);
+    if (this.resScale !== was) { this.resChangedAt = now; this.slowSecs = this.fastSecs = 0; this.resize(); }
   }
+  private slowSecs = 0;
+  private fastSecs = 0;
+  private resChangedAt = 0;
+  private tooSlowAt: number | null = null;
 
   /** If high quality cannot keep up (sustained frames over ~35 ms), drop to low once, automatically. */
   private watchFrameRate(dt: number) {

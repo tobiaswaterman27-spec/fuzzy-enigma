@@ -303,11 +303,15 @@ const mutableMats = new Set<THREE.Material>();
 const pooled = new Map<string, THREE.MeshStandardMaterial>();
 function pool(mat: THREE.Material, geo: THREE.BufferGeometry): [THREE.Material, THREE.BufferGeometry] {
   const m = mat as THREE.MeshStandardMaterial;
-  if (!m.isMeshStandardMaterial || (m as THREE.MeshPhysicalMaterial).isMeshPhysicalMaterial || m.map || m.transparent || m.alphaTest || m.emissiveMap || mutableMats.has(m) || m.vertexColors || m.normalMap || m.roughnessMap) return [mat, geo];
-  if (m.emissive.r + m.emissive.g + m.emissive.b > 0) return [mat, geo];
-  const key = `${m.roughness.toFixed(2)}|${m.metalness.toFixed(2)}|${m.side}|${m.flatShading}`;
+  if (!m.isMeshStandardMaterial || (m as THREE.MeshPhysicalMaterial).isMeshPhysicalMaterial || m.transparent || m.alphaTest || m.emissiveMap || mutableMats.has(m) || m.vertexColors) return [mat, geo];
+  // textured ones too: one shared material per set of textures, the tint in the vertices (a wall
+  // painted three colours with the same plaster texture is then one draw call, not three)
+  const key = `${m.roughness.toFixed(2)}|${m.metalness.toFixed(2)}|${m.side}|${m.flatShading}|${m.map?.uuid ?? ''}|${m.normalMap?.uuid ?? ''}|${m.roughnessMap?.uuid ?? ''}|${m.normalScale.x.toFixed(2)}|${m.emissive.getHexString()}|${m.emissiveIntensity.toFixed(2)}|${m.envMapIntensity.toFixed(2)}`;
   let shared = pooled.get(key);
-  if (!shared) { shared = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: m.roughness, metalness: m.metalness, side: m.side, vertexColors: true, envMapIntensity: m.envMapIntensity }); pooled.set(key, shared); }
+  if (!shared) {
+    shared = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: m.roughness, metalness: m.metalness, side: m.side, flatShading: m.flatShading, vertexColors: true, envMapIntensity: m.envMapIntensity, map: m.map, normalMap: m.normalMap, normalScale: m.normalScale.clone(), roughnessMap: m.roughnessMap, emissive: m.emissive.clone(), emissiveIntensity: m.emissiveIntensity });
+    pooled.set(key, shared);
+  }
   const n = geo.getAttribute('position').count;
   const col = new Float32Array(n * 3);
   for (let i = 0; i < n; i++) { col[i * 3] = m.color.r; col[i * 3 + 1] = m.color.g; col[i * 3 + 2] = m.color.b; }
@@ -429,7 +433,7 @@ function bakeStatic(g: THREE.Group, cutaway: WorldView['cutaway']) {
   // materials in small cells, light ones in big cells; insides apart from outsides, so a building's
   // contents can be dropped from far off while its street front still shows
   for (const p of pieces) {
-    const size = (trisOf.get(p.mat) ?? 0) > 15000 ? CELL : CELL * 3;
+    const size = (trisOf.get(p.mat) ?? 0) > 15000 ? CELL * 2 : p.inside ? CELL * 3 : 100000;
     const key = `${p.mat.uuid}|${p.shadow}|${Math.floor(p.cx / size)},${Math.floor(p.cz / size)}|${p.inside}`;
     const b = buckets.get(key) ?? { mat: p.mat, geos: [], shadow: p.shadow, inside: p.inside };
     b.geos.push(p.geo);
@@ -537,7 +541,6 @@ function windowMesh(w: number, h: number, frameCol: string, lit: THREE.MeshStand
   grp.add(box(0.08, h, 0.1, fm, w / 2, 0, 0, false));
   grp.add(box(0.05, h, 0.06, fm, 0, 0, 0, false));
   if (!inner) grp.add(box(w + 0.25, 0.06, 0.22, M('#d8d4cc', 0.7), 0, -h / 2 - 0.05, 0.06, false));
-  grp.traverse((o) => { if ((o as THREE.Mesh).material === CLEAR_GLASS) o.userData.dynamic = true; });
   return grp;
 }
 
