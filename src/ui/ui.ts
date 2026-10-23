@@ -1,5 +1,6 @@
 // UIController: every panel reads authoritative state and requests changes
 // through simulation functions; it never computes money or outcomes itself.
+import { BUS_FARE, busMinutes, busStops, rideBus } from '../sim/bus';
 import { AVENUE_NAMES, CITY, DISTRICT_NAMES, districtAt, STREET_NAMES, streetAt } from '../sim/world/city';
 import { planX } from '../sim/world/levels';
 import type { Game } from '../game/game';
@@ -64,7 +65,7 @@ export class UI {
     game.onToast = (m) => this.toast(m);
     game.onApproach = (id) => void this.approached(id);
     game.onAmbientChat = (a, b) => void this.ambientChat(a, b);
-    game.onUi = (w, arg) => (w === 'darts' ? this.darts() : w === 'chat' ? this.openChat(arg!, false) : w === 'jobs' || w === 'laptop' ? this.openPhone(w === 'laptop' ? this.tab : 'jobs') : w === 'homestore' ? this.openPhone('home') : w === 'invite' ? this.toast(inviteForCoffee(this.s, this.p.id, arg!).msg) : w === 'interview' ? this.interviewInPerson(arg!) : this.advisor());
+    game.onUi = (w, arg) => (w === 'bus' ? this.busMenu() : w === 'darts' ? this.darts() : w === 'chat' ? this.openChat(arg!, false) : w === 'jobs' || w === 'laptop' ? this.openPhone(w === 'laptop' ? this.tab : 'jobs') : w === 'homestore' ? this.openPhone('home') : w === 'invite' ? this.toast(inviteForCoffee(this.s, this.p.id, arg!).msg) : w === 'interview' ? this.interviewInPerson(arg!) : this.advisor());
     game.onQualityAuto = () => this.toast(`Graphics lowered to ${game.quality === 'medium' ? 'Medium' : 'Low'} for smoother play (Menu > Graphics to change).`);
     game.onFrame = () => this.frame();
     game.onHurt = (n) => { const f = $('#hurt-flash'); f.classList.add('on'); f.style.setProperty('--a', String(Math.min(1, n / 30))); requestAnimationFrame(() => requestAnimationFrame(() => f.classList.remove('on'))); };
@@ -149,7 +150,7 @@ export class UI {
     if (p.weapon) $('#weapon-ind').textContent = `Holding: ${WEAPONS[p.weapon].label} (F to use, Q to put away)`;
     const away = p.away;
     $('#away').hidden = !away && p.down == null;
-    if (away) $('#away').innerHTML = `<h2>${away.place === 'hospital' ? HOSPITAL : away.place === 'prison' ? 'HMP Harbourside' : 'Harbourside Police Station'}</h2><div class="muted">${esc(away.reason)}</div><div>Out ${fmtDate(away.until)} ${fmtClock(away.until)}</div><div class="muted">Time passes quickly…</div>`;
+    if (away) $('#away').innerHTML = `<h2>${away.place === 'bus' ? 'On the bus' : away.place === 'hospital' ? HOSPITAL : away.place === 'prison' ? 'HMP Harbourside' : 'Harbourside Police Station'}</h2><div class="muted">${esc(away.reason)}</div><div>Out ${fmtDate(away.until)} ${fmtClock(away.until)}</div><div class="muted">Time passes quickly…</div>`;
     else if (p.down != null) $('#away').innerHTML = '<h2>You are on the ground</h2><div class="muted">An ambulance is on its way.</div>';
     $('#cond').textContent = conditionLabel(p).join(' · ');
     // a time-critical reminder (only shown when it is nearly time to set off) outranks the general goal
@@ -930,6 +931,19 @@ export class UI {
       });
     };
     render();
+  }
+
+  /** the bus network from this stop: everywhere, nearest first, with the journey time */
+  busMenu() {
+    const p = this.p;
+    const all = busStops();
+    const here = all.reduce((a, b) => (Math.hypot(b.pos.x - p.pos.x, b.pos.z - p.pos.z) < Math.hypot(a.pos.x - p.pos.x, a.pos.z - p.pos.z) ? b : a));
+    const rows = all.filter((s) => s.id !== here.id).sort((a, b) => busMinutes(here.pos, a.pos) - busMinutes(here.pos, b.pos))
+      .map((s) => `<button class="line" data-stop="${s.id}" style="width:100%;text-align:left"><span>${esc(s.name)}</span><span class="muted">${busMinutes(here.pos, s.pos)} min</span></button>`).join('');
+    this.dialog(`<h2>${esc(here.name)}</h2><p class="muted">City buses: ${fmtMoney(BUS_FARE)} to any stop. Where to?</p><div style="max-height:52vh;overflow:auto">${rows}</div><div class="row"><button data-cancel="1">Not now</button></div>`, (btn) => {
+      this.closeDialog();
+      if (btn.dataset.stop) this.toast(rideBus(this.s, p.id, btn.dataset.stop).msg);
+    });
   }
 
   advisor() {

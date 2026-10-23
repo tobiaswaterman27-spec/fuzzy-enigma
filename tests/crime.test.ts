@@ -72,3 +72,22 @@ describe('Crime', () => {
     void exitCar;
   });
 });
+
+import { busStops, rideBus } from '../src/sim/bus';
+describe('Buses', () => {
+  it('a bus takes you across the city for the fare, and you get off at the stop', () => {
+    const s = createNewGame(7, setup);
+    const me = s.people.player;
+    const stops = busStops();
+    expect(stops.length).toBeGreaterThan(10);
+    me.pos = { ...stops[0].pos }; me.where = 'outside'; me.visible = true;
+    const far = stops[stops.length - 1];
+    const bal = s.ledger.accounts[me.accountId].balance;
+    expect(rideBus(s, me.id, far.id).ok).toBe(true);
+    expect(s.ledger.accounts[me.accountId].balance).toBe(bal - 250);
+    for (let i = 0; i < 4 * 30; i++) step(s, 0.25);
+    expect(me.away).toBeNull();
+    expect(Math.hypot(me.pos.x - far.pos.x, me.pos.z - far.pos.z)).toBeLessThan(1);
+    expect(auditLedger(s)).toEqual([]);
+  });
+});

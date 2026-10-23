@@ -5,6 +5,8 @@ import { useEnergy } from './bills';
 import { buyWeapon, finishRob, startRob, WEAPONS } from './health';
 import { breakIn, houseOf, houseOpen, knock, searchValuables } from './houses';
 import { breakUp, handIn, onPcsoShift, readBeat } from './station';
+import { BUS_FARE } from './bus';
+import { goToAandE } from './health';
 import { chopCandidate, chopPrice, mug, pickpocket, sellToChop } from './streetcrime';
 import { forceShop, lootTill, SHOP_IDS, shopLocked, shopOf, shopOpenNow } from './breakins';
 import { grabShoplifter } from './incidents';
@@ -47,7 +49,7 @@ export interface ActionOption {
   enabled: boolean;
   reason?: string;
   arg?: string;
-  ui?: 'jobs' | 'advisor' | 'interview' | 'laptop' | 'homestore' | 'invite' | 'chat' | 'darts';
+  ui?: 'jobs' | 'advisor' | 'interview' | 'laptop' | 'homestore' | 'invite' | 'chat' | 'darts' | 'bus';
 }
 
 export function interactable(state: GameState, id: Id): Interactable | null {
@@ -388,6 +390,12 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
       break;
     case 'cell_bench':
       break;
+    case 'hospital_door':
+      out.push(opt('ae', 'Go into A&E and get seen to', (p.health ?? 100) >= 90 && !p.injured ? 'You are fine' : undefined));
+      break;
+    case 'bus_stop':
+      out.push({ type: 'ui', label: `Catch a bus (${fmtMoney(BUS_FARE)} any stop)`, enabled: true, ui: 'bus' });
+      break;
     case 'chop_shop': {
       const car = chopCandidate(state, it.pos);
       out.push(opt('chop', car ? `Sell the stolen ${car.name} for parts · ${fmtMoney(chopPrice(state, car.id))}` : 'Sell a stolen car for parts', car ? undefined : 'Bring a stolen car round to the yard gate'));
@@ -681,6 +689,10 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
     }
     case 'chop':
       begin(p, type, itId, { duration: 0.8 }, now); break;
+    case 'ae': {
+      const r = goToAandE(state, p.id);
+      return r;
+    }
     case 'hand_in': case 'read_beat':
       begin(p, type, itId, { duration: 0.6 }, now); break;
     case 'break_up':

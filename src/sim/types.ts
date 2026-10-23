@@ -172,6 +172,7 @@ export type ActionType =
   | 'mug'
   | 'chop'
   | 'hand_in'
+  | 'ae'
   | 'read_beat'
   | 'break_up'
   | 'search'
@@ -326,7 +327,7 @@ export interface Person {
   /** weapon in hand, if any */
   weapon?: 'bat' | 'knife' | null;
   /** in hospital or in a police cell until a time */
-  away?: { until: number; reason: string; place: 'hospital' | 'custody' | 'prison' } | null;
+  away?: { until: number; reason: string; place: 'hospital' | 'custody' | 'prison' | 'bus'; to?: Vec2 } | null;
   /** fighting someone: hits back while they are close, until a time */
   combat?: { target: Id; until: number; next: number } | null;
   /** running away until a time */

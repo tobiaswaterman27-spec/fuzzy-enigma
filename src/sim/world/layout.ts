@@ -8,7 +8,7 @@ import { PLOTS } from './plots';
 // Coordinate system: metres, x = east, z = south (so -z is "north").
 // Facing angle θ: forward direction = (sin θ, cos θ); θ = 0 faces +z.
 import { LEVEL_DX, levelOf } from './levels';
-import { buildCity, CITY, type City } from './city';
+import { buildCity, CITY, ROAD_HALF, WALK_W, type City } from './city';
 import type { Vec2 } from '../types';
 import { PRODUCTS } from '../items';
 
@@ -197,6 +197,8 @@ export type InteractKind =
   | 'housedoor'
   | 'shopdoor'
   | 'chop_shop'
+  | 'bus_stop'
+  | 'hospital_door'
   | 'police_desk'
   | 'cell_bench'
   | 'beat_board'
@@ -786,6 +788,14 @@ function buildWorldData(homeDesign: HomeDesign): World {
   for (let z = -37; z < -31; z += 1.1) obstacles.push({ kind: 'cupboard', rect: { x0: 69.2, z0: z, x1: 69.85, z1: z + 1.0 }, height: 2.0, solid: true, rot: -Math.PI / 2 });
   obstacles.push({ kind: 'terminal', rect: { x0: 69.4, z0: -24.5, x1: 69.85, z1: -23.5 }, height: 1.4, solid: true });
   add({ id: 'police_terminal', kind: 'terminal', label: 'Staff terminal', pos: { x: 68.6, z: -24 }, facing: Math.PI / 2, obj: { x: 69.6, z: -24 }, locationId: 'police', businessId: 'police' });
+  // ---- bus stops: the two on Main Street and one at every shelter in the city
+  for (const [id, n] of [['bus_w', { x: -88, z: -6.49 }], ['bus_e', { x: 88, z: 6.6 }]] as const) { add({ id: `stop_${id}`, kind: 'bus_stop', label: 'Bus stop', pos: n, facing: id === 'bus_w' ? Math.PI : 0, obj: { x: n.x, z: n.z + (id === 'bus_w' ? -0.8 : 0.8) }, locationId: 'outside', range: 2.0 }); }
+  buildCity(B.filter((b) => !b.unit && !b.level).map((b) => b.rect)).props.filter((p) => p.kind === 'bus_stop').forEach((p, i) => add({ id: `stop_bus_${i}`, kind: 'bus_stop', label: 'Bus stop', pos: { x: p.x, z: p.z + 1.2 }, facing: Math.PI, obj: { x: p.x, z: p.z }, locationId: 'outside', range: 2.0 }));
+  // ---- Harbourside General's front doors: A&E
+  {
+    const hb = buildCity(B.filter((b) => !b.unit && !b.level).map((b) => b.rect)).buildings.find((c) => c.style === 'hospital' && c.name);
+    if (hb) { const x = (hb.rect.x0 + hb.rect.x1) / 2; add({ id: 'hospital_door', kind: 'hospital_door', label: `${hb.name} (A&E)`, pos: { x, z: hb.rect.z1 + 1.5 }, facing: Math.PI, obj: { x, z: hb.rect.z1 }, locationId: 'outside', range: 2.2 }); }
+  }
   // ---- Eastgate Motors' yard gate: stolen cars sold for parts
   add({ id: 'chop_shop', kind: 'chop_shop', label: 'Eastgate Motors (yard gate)', pos: { x: 84, z: -10.4 }, facing: Math.PI, obj: { x: 84, z: -12 }, locationId: 'outside', range: 1.6 });
   // ---- shop doors: after hours they are locked, and can be forced
@@ -1387,6 +1397,16 @@ function buildWorldData(homeDesign: HomeDesign): World {
   N('bus_e', 88, 6.6); L('se_88', 'bus_e');
 
   for (const [a, b] of city.joins) if (nodes[a] && nodes[b]) L(a, b);
+  // the hospital's front path, out to the pavement on Chapel Road
+  {
+    const hb = city.buildings.find((c) => c.style === 'hospital' && c.name);
+    if (hb) {
+      const x = (hb.rect.x0 + hb.rect.x1) / 2, sz = Math.ceil(hb.rect.z1 / 130) * 130 - ROAD_HALF - WALK_W / 2;
+      N('hosp_door', x, hb.rect.z1 + 1.5); N('hosp_walk', x, sz);
+      L('hosp_door', 'hosp_walk');
+      for (const n of city.nodes) if (Math.abs(n.z - sz) < 0.1 && Math.abs(n.x - x) < 130) L('hosp_walk', n.id);
+    }
+  }
 
   // ---- roads & ground
   const roads: RoadDef[] = [

@@ -24,7 +24,7 @@ export type WeaponId = keyof typeof WEAPONS;
 
 /** where people come out of hospital or the police station (the bus stop on Harbour Road) */
 const RELEASE_NODE = 'bus_e';
-export const HOSPITAL = "St Mary's Hospital";
+export const HOSPITAL = 'Harbourside General Hospital';
 const OFFICERS = ['PC Dawn Ellery', 'PC Marcus Webb', 'PC Ade Okafor'];
 
 export const healthOf = (p: Person) => p.health ?? 100;
@@ -206,9 +206,13 @@ function release(state: GameState, p: Person) {
   const a = p.away!;
   p.away = null;
   if (a.place === 'hospital') { p.health = Math.max(healthOf(p), p.isPlayer ? 85 : 90); p.injured = null; }
+  if (a.place === 'bus') { p.pos = { ...(a.to ?? p.pos) }; p.visible = true; p.where = 'outside'; return; }
   if (p.isPlayer) {
     const n = getWorld().nodes[a.place === 'custody' ? 'pol_out' : RELEASE_NODE];
     p.pos = n ? { x: n.x, z: n.z } : { x: 0, z: 0 };
+    // out of the hospital's front doors
+    const hosp = a.place === 'hospital' ? hospitalDoor() : null;
+    if (hosp) p.pos = hosp;
     p.visible = true; p.where = 'outside';
     p.needs.energy = Math.max(p.needs.energy, 60); p.needs.satiety = Math.max(p.needs.satiety, 45);
     if (a.place === 'hospital') {
@@ -435,11 +439,19 @@ export function buyWeapon(state: GameState, id: Id, k: WeaponId, sellerAccount: 
 }
 
 /** go to A&E yourself: a few hours waiting and being seen */
+/** the front doors of Harbourside General (in the city, Station Road) */
+export function hospitalDoor(): { x: number; z: number } | null {
+  const b = getWorld().city.buildings.find((c) => c.style === 'hospital' && c.name);
+  return b ? { x: (b.rect.x0 + b.rect.x1) / 2, z: b.rect.z1 + 2.5 } : null;
+}
+
 export function goToAandE(state: GameState, id: Id): { ok: boolean; msg: string } {
   const p = state.people[id];
   if (healthOf(p) >= 90 && !p.injured) return { ok: false, msg: 'You are fine. A&E is for injuries.' };
   sendAway(state, p, 'hospital', 180 + Math.round((100 - healthOf(p)) * 6), 'A&E visit');
-  return { ok: true, msg: `You take the bus to ${HOSPITAL}.` };
+  const door = hospitalDoor();
+  const there = door && Math.hypot(p.pos.x - door.x, p.pos.z - door.z) < 12;
+  return { ok: true, msg: there ? 'You book in at A&E and wait to be seen.' : `You take the bus to ${HOSPITAL}.` };
 }
 
 export const isNight = (state: GameState) => { const m = minuteOfDay(state.minute); return m < 6 * 60 || m > 22 * 60; };

@@ -450,12 +450,12 @@ export class Game {
     return r;
   }
 
-  onUi: (which: 'jobs' | 'advisor' | 'interview' | 'laptop' | 'homestore' | 'invite' | 'chat' | 'darts', arg?: string) => void = () => {};
+  onUi: (which: 'jobs' | 'advisor' | 'interview' | 'laptop' | 'homestore' | 'invite' | 'chat' | 'darts' | 'bus', arg?: string) => void = () => {};
 
   /** game minutes per real second right now */
   get rate() {
     const away = this.player.away;
-    if (away) return away.place === 'prison' ? 900 : away.place === 'custody' ? 150 : 120;
+    if (away) return away.place === 'prison' ? 900 : away.place === 'custody' ? 150 : away.place === 'bus' ? 40 : 120;
     if (this.player.down != null) return 1;
     if (this.player.sleeping) return 45;
     return BASE_TIME_SCALE * this.speedMult;
