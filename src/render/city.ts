@@ -433,6 +433,10 @@ export class CityView {
     inst(arm, poleMat, lamps, (p, m) => place(p, m, 0), false);
     const head = new THREE.BoxGeometry(0.3, 0.1, 0.5); head.translate(0, 5.05, 1.05);
     inst(head, this.bulbs, lamps, (p, m) => place(p, m, 0), false);
+    // after dark each lamp throws a warm pool of light on the pavement and the road beneath it
+    const pool = new THREE.PlaneGeometry(11, 11); pool.rotateX(-Math.PI / 2); pool.translate(0, 0.05, 1.3);
+    const pools = inst(pool, this.poolMat, lamps, (p, m) => place(p, m, 0), false);
+    if (pools) { pools.receiveShadow = false; pools.renderOrder = 2; pools.name = 'lamp_pools'; this.pools = pools; }
     // benches and bins
     // the red pillar box: a cylinder with a domed cap and a black plinth
     const pbody = mergeGeometries([new THREE.CylinderGeometry(0.27, 0.27, 1.25, 14).translate(0, 0.78, 0), new THREE.CylinderGeometry(0.31, 0.31, 0.1, 14).translate(0, 1.45, 0), new THREE.SphereGeometry(0.29, 14, 6, 0, Math.PI * 2, 0, Math.PI / 2).translate(0, 1.5, 0)])!;
@@ -486,7 +490,19 @@ export class CityView {
   }
 
   /** each frame: far chunks hidden, windows lit after dark */
+  private pools: THREE.InstancedMesh | null = null;
+  private poolMat = (() => {
+    const c = document.createElement('canvas'); c.width = c.height = 128;
+    const g = c.getContext('2d')!;
+    const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+    grad.addColorStop(0, 'rgba(255,214,150,1)'); grad.addColorStop(0.35, 'rgba(255,190,120,.55)'); grad.addColorStop(1, 'rgba(255,170,90,0)');
+    g.fillStyle = grad; g.fillRect(0, 0, 128, 128);
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+    return new THREE.MeshBasicMaterial({ map: t, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, fog: true });
+  })();
   update(camera: THREE.Camera, night: number) {
+    this.poolMat.opacity = Math.max(0, night - 0.25) * 0.6;
+    if (this.pools) this.pools.visible = night > 0.3;
     const p = camera.position;
     for (const c of this.chunks) c.g.visible = Math.hypot(c.cx - p.x, c.cz - p.z) < VIEW + CHUNK * 0.7;
     for (const c of this.lods) { const d = Math.hypot(c.cx - p.x, c.cz - p.z); c.g.visible = d >= VENUE_LOD && d < VIEW + CHUNK; }
