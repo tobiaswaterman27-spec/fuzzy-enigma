@@ -110,7 +110,9 @@ export function hurt(state: GameState, p: Person, dmg: number, cause: string, by
 function dropCash(state: GameState, p: Person, byId: Id | null) {
   if (p.isPlayer || !byId || !state.people[byId]?.isPlayer || p.dropped) return;
   p.dropped = true;
-  const amount = Math.min(state.ledger.accounts[p.accountId]?.balance ?? 0, 500 + randInt(state, 0, 6000));
+  // a pickpocket you have caught: your money, and whatever else they had
+  const amount = Math.min(state.ledger.accounts[p.accountId]?.balance ?? 0, (p.stole ?? 0) + 500 + randInt(state, 0, 6000));
+  if (p.stole) { p.stole = 0; if (state.thief?.id === p.id) state.thief = null; }
   if (amount <= 0) return;
   (state.drops ??= []).push({ id: nextId(state, 'drop'), pos: { x: p.pos.x + (rand(state) - 0.5) * 0.8, z: p.pos.z + (rand(state) - 0.5) * 0.8 }, amount, from: p.id, at: state.minute });
 }

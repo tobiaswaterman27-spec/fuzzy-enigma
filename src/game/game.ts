@@ -695,6 +695,7 @@ export class Game {
     } else if (this.cabMarker) this.cabMarker.visible = false;
     this.updateRace();
     this.updateMission();
+    this.updateThief();
     this.updateWaypoint();
     this.updateWallets();
     // a PCSO's beat: a yellow ring at each point still to check in at
@@ -980,6 +981,19 @@ export class Game {
     if (!goal) { if (this.missionAim && this.waypoint === this.missionAim) this.setWaypoint(null); this.missionAim = null; return; }
     this.missionRing.position.set(goal.x, 0.3 + Math.sin(performance.now() / 300) * 0.1, goal.z);
     if (!this.missionAim || Math.hypot(goal.x - this.missionAim.x, goal.z - this.missionAim.z) > 15) { this.missionAim = { ...goal }; this.setWaypoint(this.missionAim); }
+  }
+
+  /** a red arrow bobbing over a pickpocket making off with your money */
+  private thiefMark: THREE.Mesh | null = null;
+  private updateThief() {
+    const t = this.state.thief;
+    const o = t?.stage === 'running' ? this.state.people[t.id] : null;
+    if (!this.thiefMark) {
+      this.thiefMark = new THREE.Mesh(new THREE.ConeGeometry(0.25, 0.5, 4), new THREE.MeshStandardMaterial({ color: '#ff1744', emissive: '#ff1744', emissiveIntensity: 1.5 }));
+      this.thiefMark.rotation.x = Math.PI; this.scene.add(this.thiefMark);
+    }
+    this.thiefMark.visible = !!o && o.visible;
+    if (o) this.thiefMark.position.set(o.pos.x, 2.4 + Math.sin(performance.now() / 200) * 0.12, o.pos.z);
   }
 
   /** lost wallets glint on the ground as you get near */
