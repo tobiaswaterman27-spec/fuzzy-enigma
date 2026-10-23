@@ -49,6 +49,7 @@ export class CarSeq {
   private s: Seq | null = null;
   constructor(private scene: THREE.Scene) {}
   get active() { return !!this.s; }
+  onSound: (what: 'open' | 'slam' | 'engine') => void = () => {};
 
   /** world position of a car-local point */
   private at(s: Seq, l: { x: number; z: number }) {
@@ -80,8 +81,13 @@ export class CarSeq {
   update(dt: number, p: Person, minute: number): boolean {
     const s = this.s;
     if (!s) return false;
+    const t0 = s.t;
     s.t += dt;
     const t = s.t;
+    // the sounds: the door's latch, the slam, the engine catching
+    const cross = (at: number) => t0 < at && t >= at;
+    if (s.mode === 'in') { if (cross(0.75)) this.onSound('open'); if (cross(1.9)) this.onSound('slam'); if (cross(1.98)) this.onSound('engine'); }
+    else { if (cross(0.001) || t0 === 0) this.onSound('open'); if (cross(1.2)) this.onSound('slam'); }
     const spot = this.at(s, DOOR_SPOT), seat = this.at(s, SEAT);
     const faceCar = s.heading - SIDE * Math.PI / 2 + Math.PI;
     let open = 0;

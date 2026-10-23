@@ -258,6 +258,7 @@ export class UI {
   // ------------------------------------------------------------ phone
   openPhone(tab: Tab) {
     this.tab = tab;
+    if (!this.phoneOpen) this.game.audio.phone(true);
     this.phoneOpen = true;
     // out comes your phone
     if (!this.p.away && this.p.where !== 'vehicle') this.p.gesture = { clip: 'phone', until: this.s.minute + 600 };
@@ -279,7 +280,7 @@ export class UI {
   }
   private titleTimer = 0;
   private radioTimer = 0;
-  closePhone() { this.phoneOpen = false; $('#phone').hidden = true; if (this.p.gesture?.clip === 'phone') this.p.gesture = null; this.syncModal(); }
+  closePhone() { this.game.audio.phone(false); this.phoneOpen = false; $('#phone').hidden = true; if (this.p.gesture?.clip === 'phone') this.p.gesture = null; this.syncModal(); }
 
   renderPhone() {
     this.lastPhoneRender = performance.now();

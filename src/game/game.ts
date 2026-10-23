@@ -341,6 +341,7 @@ export class Game {
     this.views.onBoom = (x, z) => this.audio.boom(Math.hypot(x - this.player.pos.x, z - this.player.pos.z));
     this.traffic = new Traffic(this.scene);
     this.carSeq = new CarSeq(this.scene);
+    this.carSeq.onSound = (w) => this.audio.car(w);
     this.traffic.onHorn = (x, z) => this.audio.horn(Math.hypot(x - this.player.pos.x, z - this.player.pos.z));
     this.emergency = new Emergency(this.scene, this.views.fx);
     this.pigeons = new Pigeons(this.scene);
@@ -508,6 +509,7 @@ export class Game {
         if (this.football.near(p.pos.x, p.pos.z)) { this.football.shoot(p.facing, 9 + (p.fitness ?? 40) / 15); p.action = { type: 'attack', target: 'air', arg: 'kick', started: this.state.minute, progress: 0, unitTime: 0, duration: 0.35, units: 0 }; return; }
         const t = attackTarget(this.state, p.id);
         const msg = attack(this.state, p.id, t?.id ?? null);
+        this.audio.punch(false);
         if (msg) this.onToast(msg);
         return;
       }
@@ -675,7 +677,7 @@ export class Game {
     if (this.jumpY > 0 || this.jumpV > 0) {
       const ddt = this.paused ? 0 : dt;
       this.jumpY += this.jumpV * ddt; this.jumpV -= 9.8 * ddt;
-      if (this.jumpY <= 0) { this.jumpY = 0; this.jumpV = 0; }
+      if (this.jumpY <= 0) { this.jumpY = 0; this.jumpV = 0; this.audio.land(); }
       const v = this.views.playerView(s);
       if (v && this.jumpY > 0) {
         v.rig.body.position.y += this.jumpY;
@@ -737,6 +739,7 @@ export class Game {
     this.world.update(s, dt);
     this.emergency.update(s, this.paused ? 0 : dt, { x: planX(this.player.pos.x), z: this.player.pos.z });
     this.audio.siren(this.emergency.sirenAt);
+    this.listenFor(s);
     this.audio.screech(this.paused ? 0 : this.skid);
     if (!this.insideId) {
       // the pigeons mind the player, anyone walking past, and the traffic
@@ -1035,6 +1038,24 @@ export class Game {
     if (!goal) { if (this.missionAim && this.waypoint === this.missionAim) this.setWaypoint(null); this.missionAim = null; return; }
     this.missionRing.position.set(goal.x, 0.3 + Math.sin(performance.now() / 300) * 0.1, goal.z);
     if (!this.missionAim || Math.hypot(goal.x - this.missionAim.x, goal.z - this.missionAim.z) > 15) { this.missionAim = { ...goal }; this.setWaypoint(this.missionAim); }
+  }
+
+  /** sounds for things that happen in the sim: blows landing near you, money coming in */
+  private heardHits = new Map<string, number>();
+  private lastBalance = -1;
+  private listenFor(s: GameState) {
+    const me = this.player, px = planX(me.pos.x), pz = me.pos.z;
+    for (const p of Object.values(s.people)) {
+      const h = p.hit;
+      if (!h || this.heardHits.get(p.id) === h.at) continue;
+      const fresh = this.heardHits.has(p.id) || s.minute - h.at < 0.2;
+      this.heardHits.set(p.id, h.at);
+      const d = Math.hypot(planX(p.pos.x) - px, p.pos.z - pz);
+      if (fresh && d < 40 && (p.visible || p.id === me.id)) this.audio.smack(d, !!h.heavy);
+    }
+    const bal = s.ledger.accounts[me.accountId]?.balance ?? 0;
+    if (this.lastBalance >= 0 && bal > this.lastBalance + 50) this.audio.cash();
+    this.lastBalance = bal;
   }
 
   /** a red arrow bobbing over a pickpocket making off with your money */

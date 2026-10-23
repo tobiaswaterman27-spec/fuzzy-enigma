@@ -145,6 +145,52 @@ export class Audio {
     if (!this.ctx || this.muted) return;
     for (let k = 0; k < Math.min(10, n * 2); k++) setTimeout(() => this.thud(900 + Math.random() * 900, 0.06, 0.07), k * 45 + Math.random() * 30);
   }
+  /** a punch thrown: the swish, and the smack if it lands */
+  punch(hit: boolean, dist = 1) {
+    if (!this.ctx || this.muted) return;
+    const c = this.ctx, t = c.currentTime, v = Math.min(1, 6 / Math.max(2, dist));
+    const src = c.createBufferSource(); src.buffer = this.noise;
+    const f = c.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 1.2;
+    f.frequency.setValueAtTime(600, t); f.frequency.exponentialRampToValueAtTime(2600, t + 0.14);
+    const g = c.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.18 * v, t + 0.06); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+    src.connect(f).connect(g).connect(this.master); src.start(t, Math.random() * 0.5); src.stop(t + 0.2);
+    if (hit) setTimeout(() => { this.thud(110, 0.18, 0.7 * v); this.thud(700, 0.07, 0.35 * v); }, 110);
+  }
+  /** car doors and the engine catching */
+  car(what: 'open' | 'slam' | 'engine') {
+    if (!this.ctx || this.muted) return;
+    if (what === 'open') { this.thud(2200, 0.05, 0.25); this.thud(500, 0.08, 0.2); }
+    else if (what === 'slam') { this.thud(90, 0.25, 0.8); this.thud(1400, 0.06, 0.3); }
+    else {
+      // the starter whirring, then the engine catching
+      const c = this.ctx, t = c.currentTime;
+      const o = c.createOscillator(); o.type = 'sawtooth';
+      for (let i = 0; i < 5; i++) { o.frequency.setValueAtTime(38, t + i * 0.11); o.frequency.linearRampToValueAtTime(52, t + i * 0.11 + 0.08); }
+      o.frequency.linearRampToValueAtTime(90, t + 0.75); o.frequency.exponentialRampToValueAtTime(44, t + 1.3);
+      const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 500;
+      const g = c.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.18, t + 0.05); g.gain.setValueAtTime(0.18, t + 0.6); g.gain.linearRampToValueAtTime(0.3, t + 0.75); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.4);
+      o.connect(f).connect(g).connect(this.master); o.start(t); o.stop(t + 1.45);
+    }
+  }
+  /** money in: the till's ka-ching */
+  cash() {
+    if (!this.ctx || this.muted) return;
+    this.blip(2093, 0.12, 'triangle', 0.06); this.blip(2637, 0.4, 'triangle', 0.07, 0.08); this.thud(5000, 0.05, 0.08);
+  }
+  /** a blow landing on someone (heavier for a bat or a car) */
+  smack(dist: number, heavy: boolean) {
+    if (!this.ctx || this.muted) return;
+    const v = Math.min(1, 8 / Math.max(2, dist));
+    this.thud(heavy ? 80 : 120, heavy ? 0.3 : 0.18, 0.75 * v); this.thud(heavy ? 400 : 800, 0.08, 0.35 * v);
+  }
+  /** feet back on the ground */
+  land() { if (this.ctx && !this.muted) this.thud(120, 0.12, 0.35); }
+  /** the phone: two soft bleeps up (out) or down (away) */
+  phone(open: boolean) {
+    if (!this.ctx || this.muted) return;
+    const [a, b] = open ? [880, 1320] : [1320, 880];
+    this.blip(a, 0.07, 'sine', 0.05); this.blip(b, 0.09, 'sine', 0.05, 0.08);
+  }
   /** a car going up */
   boom(dist: number) {
     if (!this.ctx || this.muted) return;
