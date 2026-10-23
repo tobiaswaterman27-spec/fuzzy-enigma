@@ -1292,6 +1292,22 @@ function buildObstacle(o: Obstacle): THREE.Object3D {
       grp.traverse((x) => (x.userData.dynamic = true));
       break;
     }
+    case 'phonebox': {
+      // the red K6 box: a domed roof, glazed doors and the crown sign
+      const red = M('#c8102e', 0.45), glazing = M('#cfe3ea', 0.1, { transparent: true, opacity: 0.35 });
+      grp.add(box(W, 0.12, D, red, cx, 0.06, cz));
+      for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) grp.add(box(0.1, 2.3, 0.1, red, cx + sx * (W / 2 - 0.05), 1.2, cz + sz * (D / 2 - 0.05)));
+      grp.add(box(W - 0.12, 1.8, D - 0.12, glazing, cx, 1.25, cz, false));
+      for (let y = 0.5; y < 2.2; y += 0.3) for (const sd of [-1, 1]) {
+        grp.add(box(W, 0.04, 0.04, red, cx, y, cz + sd * (D / 2 - 0.05), false));
+        grp.add(box(0.04, 0.04, D, red, cx + sd * (W / 2 - 0.05), y, cz, false));
+      }
+      grp.add(box(W - 0.3, 0.9, 0.3, M('#222', 0.6), cx, 1.1, cz - D / 2 + 0.25, false));
+      grp.add(box(W + 0.04, 0.22, D + 0.04, M('#1a1a1a', 0.5, { emissive: new THREE.Color('#ffffff'), emissiveIntensity: 0.25 }), cx, 2.25, cz, false));
+      grp.add(box(W + 0.1, 0.18, D + 0.1, red, cx, 2.45, cz));
+      const dome = new THREE.Mesh(new THREE.CylinderGeometry(0.01, (W + 0.1) / 1.6, 0.25, 4), red); dome.rotation.y = Math.PI / 4; dome.position.set(cx, 2.66, cz); grp.add(dome);
+      break;
+    }
     case 'halt_sign': {
       // a rail halt: two posts, the red double-arrow sign, and a bench
       for (const x of [r.x0 + 0.2, r.x1 - 0.2]) grp.add(box(0.1, 3.0, 0.1, metal('#30363a', 0.4), x, 1.5, cz, false));

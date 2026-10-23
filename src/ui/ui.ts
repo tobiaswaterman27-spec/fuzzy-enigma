@@ -1,5 +1,6 @@
 // UIController: every panel reads authoritative state and requests changes
 // through simulation functions; it never computes money or outcomes itself.
+import { missionText } from '../sim/missions';
 import { rideTrain, trainMinutes, trainStops, TRAIN_FARE } from '../sim/train';
 import { BUS_FARE, busMinutes, busStops, rideBus } from '../sim/bus';
 import { dealBlackjack, finishBlackjack, type Hand, handValue, hitBlackjack, roulette } from '../sim/venues';
@@ -161,7 +162,7 @@ export class UI {
     $('#objective').hidden = !obj && !rem;
     $('#objective').classList.toggle('urgent', !!rem?.urgent);
     const fav = (s.favours ?? []).find((f) => f.status === 'open');
-    const raceText = (this.game as any).raceText as string;
+    const raceText = ((this.game as any).raceText as string) || missionText(s);
     const cabGoal = raceText ? { text: raceText } : taxiTarget(s) ?? (fav && !rem ? { text: `Favour: ${fav.text}` } : null);
     if (cabGoal) { $('#objective').hidden = false; $('#objective-text').textContent = cabGoal.text; }
     else if (rem) $('#objective-text').textContent = rem.text;

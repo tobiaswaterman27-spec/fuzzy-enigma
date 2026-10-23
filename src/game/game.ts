@@ -17,6 +17,7 @@ import { buildingAt, collidersIn, DWELLING_IDS, dwellingDoor, getWorld, stairCro
 import { shopLocked } from '../sim/breakins';
 import { onPcsoShift } from '../sim/station';
 import { finishRace, RACES } from '../sim/races';
+import { missionGoal } from '../sim/missions';
 import { walletSpots } from '../sim/collect';
 import { planRoute } from '../sim/world/nav';
 import { LEVEL_DX, levelOf, planX, sceneOf } from '../sim/world/levels';
@@ -557,6 +558,7 @@ export class Game {
       this.cabMarker.position.set(cab.pos.x, 0.15 + Math.sin(performance.now() / 300) * 0.05, cab.pos.z);
     } else if (this.cabMarker) this.cabMarker.visible = false;
     this.updateRace();
+    this.updateMission();
     this.updateWaypoint();
     this.updateWallets();
     // a PCSO's beat: a yellow ring at each point still to check in at
@@ -746,6 +748,21 @@ export class Game {
       if (last) { this.onToast(finishRace(this.state, p.id, r.id, t)); this.race = null; this.raceRing.visible = false; }
       else this.race.cp++;
     }
+  }
+
+  /** Vince's job: a green ring where to go next, and the waypoint set to it whenever the goal moves */
+  private missionRing: THREE.Mesh | null = null;
+  private missionAim: { x: number; z: number } | null = null;
+  private updateMission() {
+    const goal = missionGoal(this.state);
+    if (!this.missionRing) {
+      this.missionRing = new THREE.Mesh(new THREE.TorusGeometry(3, 0.22, 8, 40), new THREE.MeshStandardMaterial({ color: '#00e676', emissive: '#00e676', emissiveIntensity: 1.6, transparent: true, opacity: 0.85 }));
+      this.missionRing.rotation.x = Math.PI / 2; this.scene.add(this.missionRing);
+    }
+    this.missionRing.visible = !!goal;
+    if (!goal) { if (this.missionAim && this.waypoint === this.missionAim) this.setWaypoint(null); this.missionAim = null; return; }
+    this.missionRing.position.set(goal.x, 0.3 + Math.sin(performance.now() / 300) * 0.1, goal.z);
+    if (!this.missionAim || Math.hypot(goal.x - this.missionAim.x, goal.z - this.missionAim.z) > 15) { this.missionAim = { ...goal }; this.setWaypoint(this.missionAim); }
   }
 
   /** lost wallets glint on the ground as you get near */

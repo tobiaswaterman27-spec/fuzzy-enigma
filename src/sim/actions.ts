@@ -7,6 +7,7 @@ import { bargeIn, breakIn, houseOf, houseOpen, knock, searchValuables } from './
 import { breakUp, handIn, onPcsoShift, readBeat } from './station';
 import { BUS_FARE } from './bus';
 import { TRAIN_FARE } from './train';
+import { callVince, dropMission, missionText } from './missions';
 import { fixture, gateOpen, goToMatch, ODDS, STAKE, TICKET, type Pick } from './stadium';
 import { arcadeGo, buyAt, clearRecord, crackVault, RECORD_FEE, smashCases, watchFilm, wedding, WEDDING_FEE, haircut, hasGymPass, newOutfit, offersAt, PAWN, pawnSell, robVenue, shoplift, slots, staffOf, venueOfSpot, workout } from './venues';
 import { venueOpen } from './world/venues';
@@ -454,6 +455,11 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
       out.push(opt('chop', car ? `Sell the stolen ${car.name} for parts · ${fmtMoney(chopPrice(state, car.id))}` : 'Sell a stolen car for parts', car ? undefined : 'Bring a stolen car round to the yard gate'));
       break;
     }
+    case 'payphone':
+      if (!p.isPlayer) break;
+      if (state.mission) { out.push(opt('vince', `Ring Vince (on a job: ${missionText(state).replace('Vince: ', '')})`, undefined, 'call')); out.push(opt('vince', 'Tell Vince you are dropping the job', undefined, 'drop')); }
+      else out.push(opt('vince', `Ring Vince for some work${(state.vinceRep ?? 0) ? ` (trust: ${state.vinceRep})` : ''}`, undefined, 'call'));
+      break;
     case 'turnstile': {
       const g = gateOpen(state.minute);
       const f = fixture(dayIndex(state.minute));
@@ -769,6 +775,7 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
     }
     case 'chop':
       begin(p, type, itId, { duration: 0.8 }, now); break;
+    case 'vince': return { ok: true, msg: arg === 'drop' ? dropMission(state) : callVince(state, p.id) };
     case 'match': return goToMatch(state, p.id, arg === 'watch' ? undefined : (arg as Pick));
     case 'ae': {
       const r = goToAandE(state, p.id);

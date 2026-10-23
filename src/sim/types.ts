@@ -182,6 +182,7 @@ export type ActionType =
   | 'dance'
   | 'pray'
   | 'match'
+  | 'vince'
   | 'film'
   | 'smash_case'
   | 'workout'
@@ -746,6 +747,9 @@ export interface GameState {
   /** a hold-up in progress */
   robbery?: { robber: Id; clerk: Id; business: Id } | null;
   /** today's PCSO beat: the points to check in at */
+  /** the job you are doing for Vince, and how far he trusts you */
+  mission?: import('./missions').Mission | null;
+  vinceRep?: number;
   /** at the match: which day's game, and what you bet on */
   matchBet?: { day: number; pick: 'H' | 'D' | 'A' | null } | null;
   beat?: { day: number; by: Id; points: { x: number; z: number; label: string; done: boolean }[] } | null;
