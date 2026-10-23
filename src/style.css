@@ -89,12 +89,8 @@ button.primary { background: var(--accent); color: #07150d; border-color: transp
 .boot-logo .big { font-size: clamp(54px, 12vw, 150px); color: #f4c430; -webkit-text-stroke: 3px #000; letter-spacing: .02em; }
 .boot-logo .sub { font-size: clamp(14px, 2.2vw, 26px); letter-spacing: .5em; color: #fff; margin-top: 8px; }
 .boot-foot { position: absolute; left: 6vw; right: 6vw; bottom: 6vh; display: grid; gap: 10px; font-family: 'IBM Plex Sans', sans-serif; }
-#boot-tip { font-size: clamp(13px, 1.6vw, 17px); max-width: 640px; color: #e8e8e8; text-shadow: 0 2px 6px #000; min-height: 2.6em; }
 .boot-bar { height: 6px; background: rgba(255,255,255,.18); border-radius: 3px; overflow: hidden; max-width: 640px; }
 .boot-bar i { display: block; height: 100%; width: 0; background: #f4c430; transition: width .4s ease; }
-#boot-step { font: 500 12px 'IBM Plex Mono', monospace; color: #bbb; letter-spacing: .08em; text-transform: uppercase; }
-#boot-press { font-family: 'Archivo Black', Impact, sans-serif; font-size: clamp(20px, 3vw, 34px); color: #fff; animation: bootPress 1.4s ease-in-out infinite; text-shadow: 0 3px 0 #000; }
-#boot-press[hidden] { display: none; }
 @keyframes bootPress { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) { .boot-art { animation: none; } .boot-art:first-child { opacity: 1; } #boot-press { animation: none; } }
 @media (max-width: 700px) { #needs { top: auto; bottom: 120px; right: 10px; width: 170px; } #shift { top: 150px; } #objective { max-width: calc(100vw - 20px); } }
@@ -170,3 +166,15 @@ body.fx-busted #view { filter: grayscale(.85) sepia(.25) hue-rotate(180deg) brig
 #speedo b { font: 400 34px/1 'Archivo Black', Impact, sans-serif; color: #fff; min-width: 2ch; text-align: right; }
 #speedo span { font: 600 12px 'IBM Plex Sans', sans-serif; color: #f4c430; letter-spacing: .1em; text-transform: uppercase; }
 @media (max-width: 700px) { #speedo { left: 150px; } }
+
+.boot-loading { font: 400 clamp(16px, 2vw, 22px) 'Archivo Black', Impact, sans-serif; letter-spacing: .3em; color: #fff; text-shadow: 0 2px 0 #000, 0 4px 14px rgba(0,0,0,.7); animation: bootPress 1.6s ease-in-out infinite; }
+#boot-press { position: absolute; left: 0; right: 0; bottom: 12vh; text-align: center; font: 400 clamp(20px, 3vw, 34px) 'Archivo Black', Impact, sans-serif; letter-spacing: .25em; color: #fff; text-shadow: 0 3px 0 #000, 0 6px 18px rgba(0,0,0,.7); display: none; }
+/* the title: the art gives way to the live city behind, the logo comes to the middle and breathes */
+body.titling #hud { display: none; }
+#boot.title { background: transparent; }
+#boot.title .boot-arts { opacity: 0; transition: opacity 1.6s ease; }
+#boot.title .boot-shade { background: radial-gradient(ellipse at center, rgba(0,0,0,0) 35%, rgba(0,0,0,.55) 100%), linear-gradient(180deg, rgba(0,0,0,.25), rgba(0,0,0,0) 35%, rgba(0,0,0,0) 65%, rgba(0,0,0,.6)); }
+#boot.title .boot-foot { display: none; }
+#boot.title #boot-press { display: block; animation: bootPress 1.4s ease-in-out infinite; }
+#boot.title .boot-logo { left: 50%; top: 50%; transform: translate(-50%, -60%) rotate(-4deg); align-items: center; animation: titleBreathe 6s ease-in-out infinite; transition: left 1.2s ease, top 1.2s ease; }
+@keyframes titleBreathe { 0%, 100% { transform: translate(-50%, -60%) rotate(-4deg) scale(1); } 50% { transform: translate(-50%, -60%) rotate(-3deg) scale(1.04); } }

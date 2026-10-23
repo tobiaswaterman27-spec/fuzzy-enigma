@@ -13,28 +13,11 @@ import { hasHumanBuild } from './render/humanAsset';
 import { buildRig, loadMocap } from './render/character';
 import { hasAi, initClaudeAi, setApiKey } from './ai/openai';
 
-// the loading screen: a real progress bar (each part ticks it on), and tips while you wait
-const TIPS = [
-  'The police lose interest if you stay out of sight long enough. Hide in an alley, change your clothes, or lie low indoors.',
-  'Hit a ramp fast enough and you might land a Unique Stunt Bonus.',
-  'Vince is always at the other end of a red phone box. He pays well. He also remembers.',
-  'Pigeons scatter if you run at them. Sit on a bench and feed them instead.',
-  'Rain makes the roads slippery and the streets quieter. Thunder means stay in.',
-  'Everyone in Harbourside has a job, a family and a memory. Be nice, or don\'t, and they will remember.',
-  'Hands up (H) and they might go easier on you.',
-  'A Harbour Bikes hire is the quickest way round the old town. Leave it at any dock.',
-  'Drive with the radio on: R changes station.',
-  'Money in the bank is safe. Money in your pocket can be nicked.',
-  'They say if you press ` and ask for a CUPPA, everything feels better.',
-  'Space is the handbrake when you are driving. Slide it round the corner.',
-];
-const bootFill = document.getElementById('boot-fill'), bootStep = document.getElementById('boot-step'), bootTip = document.getElementById('boot-tip');
-let tipN = Math.floor(Math.random() * TIPS.length);
-const nextTip = () => { if (bootTip) bootTip.textContent = `Tip: ${TIPS[tipN++ % TIPS.length]}`; };
-nextTip();
-const tipTimer = window.setInterval(nextTip, 6000);
+// the loading screen: a real progress bar (each part ticks it on)
+
+const bootFill = document.getElementById('boot-fill');
 let bootDone = 0;
-const bootTick = (label: string, parts = 5) => { bootDone++; if (bootFill) bootFill.style.width = `${Math.min(100, (bootDone / parts) * 100)}%`; if (bootStep) bootStep.textContent = label; };
+const bootTick = (_label: string, parts = 5) => { bootDone++; if (bootFill) bootFill.style.width = `${Math.min(100, (bootDone / parts) * 100)}%`; };
 const ticked = <T,>(p: Promise<T>, label: string) => p.then((v) => { bootTick(label); return v; });
 await Promise.all([ticked(loadHumanAsset(), 'Fitting the townspeople'), ticked(loadMocap(), 'Teaching them to walk'), ticked(loadModels(['car', 'van', 'car_lod', 'van_lod', 'saloon', 'saloon_lod', 'suv', 'suv_lod', 'sports', 'sports_lod', 'gondola_bay', 'checkout', 'sofa', 'bed', 'wardrobe', 'table', 'chair', 'tvunit', 'kitchen_base', 'cooker', 'fridge', 'coffee_table', 'bookcase', 'drawers', 'armchair', 'desk', 'sideboard', 'bedside', 'basin', 'baler', 'dumpster', 'shopbin', 'washer', 'binbag', 'carton', 'storage_shelf', 'ironing_board', 'laundry_basket', 'drying_rack', 'bike', 'vacuum', 'rack_bay', 'pallet_load', 'pallet', 'forklift', 'roller_door', 'terminal', 'locker', 'kiosk', 'notice_board', 'office_desk', 'tree', 'park_bench', 'street_bin', 'bus_shelter', 'house_plant', 'floor_lamp', 'cafe_counter', 'bistro_set', 'waiting_chairs', 'water_cooler', 'leaflet_stand', 'shoe_trainer', 'shoe_oxford', 'shoe_boot', 'site_cabin', 'cement_mixer', 'heras_panel', 'wheelbarrow', 'tool_spade', 'tool_shovel', 'tool_hammer', 'tool_drill', 'tool_roller']), 'Parking the cars')]);
 bootTick('Building the city');
@@ -56,7 +39,6 @@ const game = new Game(canvas, state);
 const ui = new UI(game);
 (window as any).__bigshot = { game, ui, sim, THREE, buildRig, buildRealHuman, bodies: { workerActive, hasHumanBuild } };
 bootTick('Ready');
-window.clearInterval(tipTimer);
 
 const EYE_COLORS = ['#4a6b8a', '#5a4632', '#3b2a1c', '#4f6b3a', '#6b7f8c', '#7a5a2a'] as const;
 const GAITS = [['walk', 'normal'], ['walk_b', 'relaxed'], ['walk_c', 'casual'], ['walk_brisk', 'brisk'], ['walk_proud', 'confident']] as const;
@@ -125,13 +107,22 @@ const params = new URLSearchParams(location.search);
 const boot = document.getElementById('boot')!;
 if (params.has('skipcreator')) boot.remove();
 else {
-  // press any key: the music starts, the loading screen fades into the character creator
-  creator();
-  document.getElementById('boot-step')!.hidden = true;
-  (boot.querySelector('.boot-bar') as HTMLElement).hidden = true;
-  document.getElementById('boot-press')!.hidden = false;
+  // the title: the loading art fades away to the city itself, the camera drifting round the harbour,
+  // until a key is pressed; then the music starts and the character creator opens
+  boot.classList.add('title');
+  document.body.classList.add('titling');
+  game.uiOpen = true;
+  const t0 = performance.now();
+  let titling = true;
+  const fly = () => { if (!titling) return; boot.style.background = `rgba(0,0,0,${game.titleShot((performance.now() - t0) / 1000).toFixed(3)})`; requestAnimationFrame(fly); };
+  fly();
   const go = () => {
     window.removeEventListener('keydown', go); boot.removeEventListener('pointerdown', go);
+    titling = false;
+    game.freeCam = false;
+    boot.style.background = '';
+    document.body.classList.remove('titling');
+    creator();
     game.audio.start();
     game.audio.theme.play(true);
     boot.classList.add('gone');

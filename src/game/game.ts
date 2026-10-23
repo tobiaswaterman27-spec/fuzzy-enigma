@@ -235,6 +235,26 @@ export class Game {
   private distCur = 0;
   /** debug/photo mode: the camera is positioned externally */
   freeCam = false;
+  /** the title screen: the camera drifts on its own round the harbour and the towers behind it (t in seconds) */
+  titleShot(t: number): number {
+    this.freeCam = true; this.insideId = null;
+    // three shots, twelve seconds each: high round the harbour, down a street at head height, in over the water
+    const SHOT = 12, shot = Math.floor(t / SHOT) % 3, u = t % SHOT;
+    const c = this.camera;
+    if (shot === 0) {
+      const a = 2.2 + t * 0.035, cx = 0, cz = -70, r = 165 - Math.sin(t * 0.05) * 35;
+      c.position.set(cx + Math.cos(a) * r, 40 + Math.sin(t * 0.09) * 14, cz + Math.sin(a) * r);
+      c.lookAt(cx + Math.cos(a + 1.2) * 30, 14, cz + Math.sin(a + 1.2) * 30 - 30);
+    } else if (shot === 1) {
+      c.position.set(-3.5, 2.6 + Math.sin(u * 0.8) * 0.15, -18 - u * 5.5);
+      c.lookAt(-1 + Math.sin(u * 0.2) * 3, 3.5, -140 - u * 5.5);
+    } else {
+      c.position.set(-150 + u * 14, 7 + u * 0.8, 130 - u * 2);
+      c.lookAt(-40 + u * 6, 12, -40);
+    }
+    // how dark the cut is (a quick dip to black between shots)
+    return Math.max(0, 1 - u / 0.7, (u - SHOT + 0.7) / 0.7);
+  }
   private raycaster = new THREE.Raycaster();
   private camCur = new THREE.Vector3();
   speedMult = 1;
