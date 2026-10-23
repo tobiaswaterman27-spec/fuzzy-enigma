@@ -206,7 +206,7 @@ function release(state: GameState, p: Person) {
   const a = p.away!;
   p.away = null;
   if (a.place === 'hospital') { p.health = Math.max(healthOf(p), p.isPlayer ? 85 : 90); p.injured = null; }
-  if (a.place === 'bus') { p.pos = { ...(a.to ?? p.pos) }; p.visible = true; p.where = 'outside'; return; }
+  if (a.place === 'bus' || a.place === 'train') { p.pos = { ...(a.to ?? p.pos) }; p.visible = true; p.where = 'outside'; return; }
   if (p.isPlayer) {
     const n = getWorld().nodes[a.place === 'custody' ? 'pol_out' : RELEASE_NODE];
     p.pos = n ? { x: n.x, z: n.z } : { x: 0, z: 0 };
@@ -441,7 +441,7 @@ export function buyWeapon(state: GameState, id: Id, k: WeaponId, sellerAccount: 
 /** go to A&E yourself: a few hours waiting and being seen */
 /** the front doors of Harbourside General (in the city, Station Road) */
 export function hospitalDoor(): { x: number; z: number } | null {
-  const b = getWorld().city.buildings.find((c) => c.style === 'hospital' && c.name);
+  const b = getWorld().buildings.find((c) => c.name === HOSPITAL);
   return b ? { x: (b.rect.x0 + b.rect.x1) / 2, z: b.rect.z1 + 2.5 } : null;
 }
 

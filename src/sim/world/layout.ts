@@ -1,4 +1,5 @@
 // Static world definition for the Harbourside starting district.
+import { HALTS } from '../train';
 import { STALLS } from '../streetmarket';
 import { defaultDesign, furnish, type HomeDesign, type PlacedItem } from './homes';
 import { PLOTS } from './plots';
@@ -8,7 +9,7 @@ import { PLOTS } from './plots';
 // Coordinate system: metres, x = east, z = south (so -z is "north").
 // Facing angle θ: forward direction = (sin θ, cos θ); θ = 0 faces +z.
 import { LEVEL_DX, levelOf } from './levels';
-import { buildCity, CITY, ROAD_HALF, WALK_W, type City } from './city';
+import { buildCity, CITY, type City } from './city';
 import { planVenues, type Venue, type VenueKind } from './venues';
 import type { Vec2 } from '../types';
 import { PRODUCTS } from '../items';
@@ -83,9 +84,12 @@ export type ObstacleKind =
   | 'stairs'
   | 'stairwell'
   | 'stairguard'
+  | 'halt_sign'
   | 'cellbars'
   | 'reception'
   | 'clothes_rack'
+  | 'platform_edge'
+  | 'track'
   | 'mirror'
   | 'vault'
   | 'gaming_table'
@@ -207,6 +211,14 @@ export type InteractKind =
   | 'bus_stop'
   | 'hospital_door'
   | 'venue_till'
+  | 'ticket_machine'
+  | 'platform'
+  | 'food_court'
+  | 'jeweller'
+  | 'cinema'
+  | 'ae_desk'
+  | 'council_desk'
+  | 'pew'
   | 'venue_shelf'
   | 'venue_fridge'
   | 'clothes_rail'
@@ -814,10 +826,10 @@ function buildWorldData(homeDesign: HomeDesign): World {
   // ---- bus stops: the two on Main Street and one at every shelter in the city
   for (const [id, n] of [['bus_w', { x: -88, z: -6.49 }], ['bus_e', { x: 88, z: 6.6 }]] as const) { add({ id: `stop_${id}`, kind: 'bus_stop', label: 'Bus stop', pos: n, facing: id === 'bus_w' ? Math.PI : 0, obj: { x: n.x, z: n.z + (id === 'bus_w' ? -0.8 : 0.8) }, locationId: 'outside', range: 2.0 }); }
   buildCity(B.filter((b) => !b.unit && !b.level).map((b) => b.rect)).props.filter((p) => p.kind === 'bus_stop').forEach((p, i) => add({ id: `stop_bus_${i}`, kind: 'bus_stop', label: 'Bus stop', pos: { x: p.x, z: p.z + 1.2 }, facing: Math.PI, obj: { x: p.x, z: p.z }, locationId: 'outside', range: 2.0 }));
-  // ---- Harbourside General's front doors: A&E
-  {
-    const hb = buildCity(B.filter((b) => !b.unit && !b.level).map((b) => b.rect)).buildings.find((c) => c.style === 'hospital' && c.name);
-    if (hb) { const x = (hb.rect.x0 + hb.rect.x1) / 2; add({ id: 'hospital_door', kind: 'hospital_door', label: `${hb.name} (A&E)`, pos: { x, z: hb.rect.z1 + 1.5 }, facing: Math.PI, obj: { x, z: hb.rect.z1 }, locationId: 'outside', range: 2.2 }); }
+  // ---- the railway halts out of town (the line itself runs behind Central Station)
+  for (const h of HALTS) {
+    add({ id: h.id, kind: 'platform', label: `${h.name} (rail halt)`, pos: h.pos, facing: Math.PI, obj: { x: h.pos.x, z: h.pos.z - 0.9 }, locationId: 'outside', range: 2.2 });
+    obstacles.push({ kind: 'halt_sign', rect: { x0: h.pos.x - 1.4, z0: h.pos.z - 1.5, x1: h.pos.x + 1.4, z1: h.pos.z - 1.2 }, height: 3.0, solid: false });
   }
   // ---- Eastgate Motors' yard gate: stolen cars sold for parts
   add({ id: 'chop_shop', kind: 'chop_shop', label: 'Eastgate Motors (yard gate)', pos: { x: 84, z: -10.4 }, facing: Math.PI, obj: { x: 84, z: -12 }, locationId: 'outside', range: 1.6 });
@@ -1170,9 +1182,15 @@ function buildWorldData(homeDesign: HomeDesign): World {
       // the pavement's corner nodes either side along this street
       const row = city.nodes.filter((n) => Math.abs(n.z - v.outside.z) < 1.2 && Math.abs(n.x - v.outside.x) < 135);
       const west = row.filter((n) => n.x < v.outside.x).sort((a, b) => b.x - a.x)[0], east = row.filter((n) => n.x > v.outside.x).sort((a, b) => a.x - b.x)[0];
-      for (const c of [west, east]) if (c && clearV(c, v.outside)) L(`door_${v.id}`, c.id);
+      if (v.path) {
+        // a landmark's front path down to the pavement, and along it to the corners
+        N(`walk_${v.id}`, v.path.x, v.path.z);
+        L(`door_${v.id}`, `walk_${v.id}`);
+        const prow = city.nodes.filter((n) => Math.abs(n.z - v.path!.z) < 1.2 && Math.abs(n.x - v.path!.x) < 135);
+        for (const c of [prow.filter((n) => n.x < v.path!.x).sort((a, b) => b.x - a.x)[0], prow.filter((n) => n.x > v.path!.x).sort((a, b) => a.x - b.x)[0]]) if (c) L(`walk_${v.id}`, c.id);
+      } else for (const c of [west, east]) if (c && clearV(c, v.outside)) L(`door_${v.id}`, c.id);
       // a walking grid over the floor (the aisles between the shelves and machines), joined up
-      const r0 = v.rect, step = 1.1, grid: string[] = [];
+      const r0 = v.rect, step = (r0.x1 - r0.x0) * (r0.z1 - r0.z0) > 900 ? 1.8 : 1.1, grid: string[] = [];
       const blocked = (x: number, z: number) => near(x - 1, z - 1, x + 1, z + 1).some((r) => x > r.x0 - 0.3 && x < r.x1 + 0.3 && z > r.z0 - 0.3 && z < r.z1 + 0.3);
       for (let i = 0; r0.x0 + 0.55 + i * step < r0.x1 - 0.3; i++) for (let j = 0; r0.z0 + 0.55 + j * step < r0.z1 - 0.3; j++) {
         const x = r0.x0 + 0.55 + i * step, z = r0.z0 + 0.55 + j * step;
@@ -1458,16 +1476,7 @@ function buildWorldData(homeDesign: HomeDesign): World {
   N('bus_e', 88, 6.6); L('se_88', 'bus_e');
 
   for (const [a, b] of city.joins) if (nodes[a] && nodes[b]) L(a, b);
-  // the hospital's front path, out to the pavement on Chapel Road
-  {
-    const hb = city.buildings.find((c) => c.style === 'hospital' && c.name);
-    if (hb) {
-      const x = (hb.rect.x0 + hb.rect.x1) / 2, sz = Math.ceil(hb.rect.z1 / 130) * 130 - ROAD_HALF - WALK_W / 2;
-      N('hosp_door', x, hb.rect.z1 + 1.5); N('hosp_walk', x, sz);
-      L('hosp_door', 'hosp_walk');
-      for (const n of city.nodes) if (Math.abs(n.z - sz) < 0.1 && Math.abs(n.x - x) < 130) L('hosp_walk', n.id);
-    }
-  }
+  // (the hospital, like the other landmarks, is a venue with its own front path)
 
   // ---- roads & ground
   const roads: RoadDef[] = [
@@ -1550,6 +1559,7 @@ const KIND_ROLE: Record<VenueKind, string> = {
   shop: 'Corner shop - snacks, drinks and groceries', cafe: 'Cafe - coffee and something to eat', takeaway: 'Takeaway - hot food to eat now', pub: 'Pub - pints, a seat, darts',
   clothes: 'Clothes shop - a new look', barber: 'Barber - a new haircut', bank: 'Bank - and a vault full of cash', casino: 'Casino - roulette, blackjack, slots',
   nightclub: 'Nightclub - drinks and dancing, late', gym: 'Gym - get fit', arcade: 'Amusement arcade', pawn: 'Pawnbroker - sells and buys anything',
+  station: 'Railway station - trains to Westbay and Northfield', mall: 'Shopping centre - food court, jeweller, cinema, clothes', hospital: 'Hospital - A&E', cityhall: 'City Hall - council services and weddings', church: 'Church',
 };
 function venueBuilding(v: Venue): BuildingDef {
   const side = v.front === 'n' ? 'zmin' : 'zmax';

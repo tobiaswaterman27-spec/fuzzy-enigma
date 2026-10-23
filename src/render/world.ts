@@ -1292,6 +1292,54 @@ function buildObstacle(o: Obstacle): THREE.Object3D {
       grp.traverse((x) => (x.userData.dynamic = true));
       break;
     }
+    case 'halt_sign': {
+      // a rail halt: two posts, the red double-arrow sign, and a bench
+      for (const x of [r.x0 + 0.2, r.x1 - 0.2]) grp.add(box(0.1, 3.0, 0.1, metal('#30363a', 0.4), x, 1.5, cz, false));
+      grp.add(box(W, 0.7, 0.08, M('#c0392b', 0.5), cx, 2.6, cz, false));
+      for (const dy of [-0.13, 0.13]) grp.add(box(W * 0.5, 0.07, 0.1, M('#ffffff', 0.5), cx, 2.6 + dy, cz, false));
+      grp.add(box(W * 0.8, 0.08, 0.45, M('#6d5236', 0.8), cx, 0.45, cz - 0.1, false));
+      break;
+    }
+    case 'platform_edge': {
+      // the yellow line and a waist-high glass screen along the edge
+      grp.add(box(W, 0.02, D + 0.4, M('#f1c40f', 0.6), cx, 0.11, cz - 0.4, false));
+      grp.add(box(W, 1.0, 0.05, M('#cfe8ef', 0.1, { transparent: true, opacity: 0.35 }), cx, 0.6, cz, false));
+      for (let x = r.x0 + 0.5; x < r.x1; x += 3) grp.add(box(0.06, 1.05, 0.06, metal('#9aa3a8', 0.4), x, 0.55, cz, false));
+      break;
+    }
+    case 'track': {
+      // ballast, sleepers and two rails; a train pulls in every few minutes, waits, and goes
+      grp.add(box(W, 0.12, D, M('#4a4743', 1), cx, 0.06, cz, false));
+      const lz = cz + D * 0.15;
+      for (let x = r.x0 + 0.3; x < r.x1; x += 0.7) grp.add(box(0.25, 0.08, 2.4, M('#5b4636', 0.9), x, 0.14, lz, false));
+      for (const dz of [-0.72, 0.72]) grp.add(box(W, 0.12, 0.08, metal('#b5b9bc', 0.3), cx, 0.22, lz + dz, false));
+      const train = new THREE.Group();
+      // clipped at the station's end walls, so it comes out of the tunnel mouths instead of the street
+      const clip = [new THREE.Plane(new THREE.Vector3(1, 0, 0), -r.x0), new THREE.Plane(new THREE.Vector3(-1, 0, 0), r.x1)];
+      const body = M('#d9dde0', 0.4, { clippingPlanes: clip }), stripe = M('#7b2d26', 0.5, { clippingPlanes: clip }), glass = M('#1d2a33', 0.15, { metalness: 0.4, clippingPlanes: clip }), doorM = M('#e8c547', 0.5, { clippingPlanes: clip });
+      const cars = 3, carL = 19;
+      for (let i = 0; i < cars; i++) {
+        const x = (i - (cars - 1) / 2) * (carL + 0.6);
+        train.add(box(carL, 3.0, 2.8, body, x, 1.9, 0));
+        train.add(box(carL + 0.02, 0.35, 2.82, stripe, x, 1.2, 0, false));
+        train.add(box(carL - 1.5, 0.8, 2.84, glass, x, 2.4, 0, false));
+        for (const d of [-carL / 4, carL / 4]) train.add(box(1.3, 2.1, 2.86, doorM, x + d, 1.5, 0, false));
+      }
+      train.position.set(cx, 0.15, lz);
+      train.visible = false;
+      grp.add(train);
+      const span = W / 2 + cars * carL;
+      fixtures.push((state) => {
+        // a twelve-minute timetable: in for 2 minutes, out for 2, gone for 8
+        const m = state.minute % 12;
+        if (m > 4) { train.visible = false; return; }
+        train.visible = true;
+        const k = m < 1 ? -((1 - m) ** 2) : m < 3 ? 0 : (m - 3) ** 2;
+        train.position.x = cx + k * span;
+      });
+      grp.traverse((x) => (x.userData.dynamic = true));
+      break;
+    }
     case 'treadmill': {
       const dark = M('#2b2b2b', 0.5);
       grp.add(box(W, 0.18, D, dark, cx, 0.09, cz));

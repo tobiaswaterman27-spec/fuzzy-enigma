@@ -12,6 +12,7 @@ import { addItems, count, removeItems } from './inventory';
 import { transfer } from './ledger';
 import { ambientName, makePerson } from './newgame';
 import { trainRun } from './leisure';
+import { moveHome } from './life';
 import { getWorld } from './world/layout';
 import { planVenues, venueOpen, type Venue } from './world/venues';
 import { planX } from './world/levels';
@@ -21,13 +22,13 @@ export const venueById = (id: string) => venues().find((v) => v.id === id) ?? nu
 /** the venue an interactable belongs to (ids are `<venue>_<spot>`) */
 export const venueOfSpot = (spotId: string) => venueById(spotId.split('_').slice(0, 2).join('_'));
 
-interface VenueState { till: number; day: number; robbedDay?: number; vaultDay?: number }
+interface VenueState { till: number; day: number; robbedDay?: number; vaultDay?: number; casesDay?: number }
 function vs(state: GameState, id: string): VenueState {
   const all = (state.venueState ??= {});
   const day = dayIndex(state.minute);
   let v = all[id];
   // a new day starts with a float in the till
-  if (!v || v.day !== day) { v = all[id] = { till: 15000, day, robbedDay: v?.robbedDay, vaultDay: v?.vaultDay }; }
+  if (!v || v.day !== day) { v = all[id] = { till: 15000, day, robbedDay: v?.robbedDay, vaultDay: v?.vaultDay, casesDay: v?.casesDay }; }
   return v;
 }
 
@@ -83,6 +84,12 @@ export function offersAt(v: Venue, spotKind: string): Offer[] {
     case 'pub': return [{ key: 'pint', label: 'A pint', price: 460, drink: 18, mood: 4 }, { key: 'lunch', label: 'Pie and mash', price: 1100, eat: 60, mood: 6 }];
     case 'nightclub': return [{ key: 'shot', label: 'A round of shots', price: 600, drink: 25, mood: 6 }, { key: 'water', label: 'Bottle of water', price: 250, energy: 3 }];
     case 'gym': return [{ key: 'pass', label: 'Day pass', price: 600 }];
+    case 'mall':
+      if (spotKind === 'food_court') return [{ key: 'burger', label: 'Burger and fries', price: 799, eat: 55, mood: 5 }, { key: 'noodles', label: 'Noodle box', price: 650, eat: 45, mood: 4 }, { key: 'shake', label: 'Milkshake', price: 399, eat: 10, energy: 6, mood: 6 }];
+      if (spotKind === 'jeweller') return [{ key: 'ring', label: 'A gold ring', price: 89900, item: 'jewellery', mood: 10 }, { key: 'watch', label: 'A watch', price: 64900, item: 'watch', mood: 8 }];
+      return [];
+    case 'station': return [{ key: 'coffee', label: 'Coffee to go', price: 320, energy: 15, mood: 2 }];
+    case 'hospital': return [{ key: 'vending', label: 'Vending machine snack', price: 180, eat: 15, mood: 1 }];
     default: return [];
   }
 }
@@ -142,6 +149,66 @@ export function robVenue(state: GameState, personId: Id, v: Venue): string {
   news(state, 'bad', `${big ? 'Bank raid' : 'Armed robbery'} at ${v.name}`, `${fmtMoney(take)} taken. Police are hunting the robber.`, false);
   crime(state, big ? 'armed robbery of a bank' : 'armed robbery', big ? 5 : 4, s.id);
   return big ? `The cashier stuffs ${fmtMoney(take)} into a bag with shaking hands. The alarm is screaming. RUN.` : `${s.name.split(' ')[0]} empties the till for you: ${fmtMoney(take)}. Now go.`;
+}
+
+/** smash the jeweller's display cases and grab what you can: loud, and the alarm goes straight off */
+export function smashCases(state: GameState, personId: Id, v: Venue): string {
+  const p = state.people[personId];
+  const st = vs(state, v.id);
+  const day = dayIndex(state.minute);
+  for (const o of Object.values(state.people)) if (!o.isPlayer && o.visible && dist(o.pos, p.pos) < 15 && !o.police) flee(state, o, p.pos);
+  crime(state, 'smash-and-grab at a jewellers', 3);
+  if (st.casesDay === day) return 'The cases are empty: someone already cleaned them out today.';
+  st.casesDay = day;
+  // a bat or a knife handle breaks the glass first time; bare fists, not so much
+  if (!p.weapon && rand(state) < 0.5) { p.health = Math.max(5, (p.health ?? 100) - 8); return 'The glass holds and your hand does not. The alarm is going.'; }
+  const rings = randInt(state, 1, 3), watches = randInt(state, 0, 2);
+  addItems(state.containers[p.bagId], 'jewellery', rings);
+  if (watches) addItems(state.containers[p.bagId], 'watch', watches);
+  lifeEvent(state, p, `Smash-and-grab at ${v.name}`);
+  news(state, 'bad', `Smash-and-grab at ${v.name}`, 'Display cases smashed, jewellery taken.', false);
+  return `Glass everywhere. You scoop ${rings} ring${rings > 1 ? 's' : ''}${watches ? ` and ${watches} watch${watches > 1 ? 'es' : ''}` : ''} into your bag. Pawn them somewhere quiet.`;
+}
+
+/** a film at the cinema: a couple of hours off your feet */
+export function watchFilm(state: GameState, personId: Id, v: Venue): string {
+  const p = state.people[personId];
+  const r = transfer(state, { from: p.accountId, to: state.externalId, amount: 1150, reason: 'purchase', memo: `Cinema ticket at ${v.name}`, key: `film:${personId}:${Math.floor(state.minute)}` });
+  if (!r.ok) return `A ticket is ${fmtMoney(1150)}: you can't afford it.`;
+  p.needs.mood = clamp(p.needs.mood + 25, 0, 100);
+  p.needs.energy = clamp(p.needs.energy + 5, 0, 100);
+  const films = ['a heist film that gets the vault scenes all wrong', 'a romcom set in a seaside town not unlike this one', 'a superhero sequel nobody asked for', 'a horror film: you jump twice', 'a car chase film: you drive home a little faster'];
+  return `You watched ${films[randInt(state, 0, films.length - 1)]}.`;
+}
+
+/** the council desk at City Hall */
+export const RECORD_FEE = 25000;
+export const WEDDING_FEE = 12000;
+export function clearRecord(state: GameState, personId: Id): string {
+  const p = state.people[personId];
+  const n = p.record?.length ?? 0;
+  if (!n) return 'Your record is already clean.';
+  const fee = RECORD_FEE * n;
+  const r = transfer(state, { from: p.accountId, to: state.externalId, amount: fee, reason: 'purchase', memo: 'Record expungement (City Hall)', key: `expunge:${personId}:${Math.floor(state.minute)}` });
+  if (!r.ok) return `It is ${fmtMoney(RECORD_FEE)} an offence: ${fmtMoney(fee)}. You can't afford it.`;
+  p.record = [];
+  lifeEvent(state, p, 'Had criminal record expunged');
+  return `${fmtMoney(fee)} and a lot of forms later, your record is wiped clean.`;
+}
+export function wedding(state: GameState, personId: Id): string {
+  const p = state.people[personId];
+  const o = p.partnerId ? state.people[p.partnerId] : null;
+  if (!o || p.relationship !== 'dating') return 'You need someone to marry (you have to be going out first).';
+  if (dist(o.pos, p.pos) > 12 || !o.visible) return `Bring ${o.name.split(' ')[0]} along: you both have to be here.`;
+  if ((o.relations[p.id] ?? 0) < 70) return `${o.name.split(' ')[0]} shakes their head. Not yet.`;
+  const r = transfer(state, { from: p.accountId, to: state.externalId, amount: WEDDING_FEE, reason: 'purchase', memo: 'Civil ceremony (City Hall)', key: `wed:${personId}:${Math.floor(state.minute)}` });
+  if (!r.ok) return `The ceremony is ${fmtMoney(WEDDING_FEE)}.`;
+  p.relationship = o.relationship = 'married';
+  lifeEvent(state, p, `Married ${o.name}`); lifeEvent(state, o, `Married ${p.name}`);
+  p.needs.mood = 100; o.needs.mood = 100;
+  if (p.homeId && o.homeId !== p.homeId) moveHome(state, o, p.homeId);
+  news(state, 'good', `You married ${o.name}`, 'A small ceremony at City Hall.', true);
+  return `"I do." You and ${o.name.split(' ')[0]} are married.`;
 }
 
 /** the vault: it takes time, and the police are coming the moment you start */

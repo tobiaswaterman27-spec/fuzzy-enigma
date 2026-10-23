@@ -6,7 +6,8 @@ import { buyWeapon, finishRob, startRob, WEAPONS } from './health';
 import { bargeIn, breakIn, houseOf, houseOpen, knock, searchValuables } from './houses';
 import { breakUp, handIn, onPcsoShift, readBeat } from './station';
 import { BUS_FARE } from './bus';
-import { arcadeGo, buyAt, crackVault, haircut, hasGymPass, newOutfit, offersAt, PAWN, pawnSell, robVenue, shoplift, slots, staffOf, venueOfSpot, workout } from './venues';
+import { TRAIN_FARE } from './train';
+import { arcadeGo, buyAt, clearRecord, crackVault, RECORD_FEE, smashCases, watchFilm, wedding, WEDDING_FEE, haircut, hasGymPass, newOutfit, offersAt, PAWN, pawnSell, robVenue, shoplift, slots, staffOf, venueOfSpot, workout } from './venues';
 import { venueOpen } from './world/venues';
 import { attack, crime, goToAandE } from './health';
 import { chopCandidate, chopPrice, mug, pickpocket, sellToChop } from './streetcrime';
@@ -51,7 +52,7 @@ export interface ActionOption {
   enabled: boolean;
   reason?: string;
   arg?: string;
-  ui?: 'jobs' | 'advisor' | 'interview' | 'laptop' | 'homestore' | 'invite' | 'chat' | 'darts' | 'bus' | 'roulette' | 'blackjack';
+  ui?: 'jobs' | 'advisor' | 'interview' | 'laptop' | 'homestore' | 'invite' | 'chat' | 'darts' | 'bus' | 'train' | 'roulette' | 'blackjack';
 }
 
 export function interactable(state: GameState, id: Id): Interactable | null {
@@ -416,9 +417,34 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
       if (it.kind === 'arcade') out.push(opt('venue', `Play a machine · ${fmtMoney(100)}`, open ? undefined : shut, 'arcade'));
       break;
     }
-    case 'hospital_door':
-      out.push(opt('ae', 'Go into A&E and get seen to', (p.health ?? 100) >= 90 && !p.injured ? 'You are fine' : undefined));
+    case 'hospital_door': case 'ae_desk':
+      out.push(opt('ae', 'Book in at A&E and get seen to', (p.health ?? 100) >= 90 && !p.injured ? 'You are fine' : undefined));
+      if (it.kind === 'ae_desk') { const v = venueOfSpot(it.id); if (v) for (const o of offersAt(v, 'x')) out.push(opt('venue', `${o.label} · ${fmtMoney(o.price)}`, staffOf(state, v) ? undefined : 'Nobody is serving', `buy:${o.key}`)); }
       break;
+    case 'ticket_machine': case 'platform': {
+      const v = it.id.startsWith('halt_') ? null : venueOfSpot(it.id);
+      const shut = v && !venueOpen(v, state.minute) ? 'No trains at this hour' : undefined;
+      out.push({ type: 'ui', label: `Take the train (${fmtMoney(TRAIN_FARE)} single)`, enabled: !shut, reason: shut, ui: 'train' });
+      if (v && it.kind === 'ticket_machine') for (const o of offersAt(v, 'x')) out.push(opt('venue', `${o.label} · ${fmtMoney(o.price)}`, shut ?? (staffOf(state, v) ? undefined : 'Nobody is serving'), `buy:${o.key}`));
+      break;
+    }
+    case 'food_court': case 'jeweller': case 'cinema': case 'council_desk': case 'pew': {
+      const v = venueOfSpot(it.id);
+      if (!v) break;
+      const open = venueOpen(v, state.minute), staff = staffOf(state, v);
+      const shut = !open ? `${v.name} is closed` : !staff ? 'Nobody is serving' : undefined;
+      if (it.kind === 'food_court' || it.kind === 'jeweller') for (const o of offersAt(v, it.kind)) out.push(opt('venue', `${o.label} · ${fmtMoney(o.price)}`, shut, `buy:${o.key}`));
+      if (it.kind === 'jeweller' && p.isPlayer) out.push(opt('smash_case', p.weapon ? 'Smash the display cases and grab what you can' : 'Smash the display cases (bare-handed: it may hurt)'));
+      if (it.kind === 'cinema') out.push(opt('film', `Watch a film · ${fmtMoney(1150)} (about 2 hours)`, open ? undefined : shut));
+      if (it.kind === 'council_desk') {
+        const n = p.record?.length ?? 0;
+        out.push(opt('venue', n ? `Apply to expunge your record (${n} offence${n > 1 ? 's' : ''}) · ${fmtMoney(RECORD_FEE * n)}` : 'Expunge your criminal record', shut ?? (n ? undefined : 'Your record is clean'), 'clear'));
+        const partner = p.partnerId ? state.people[p.partnerId] : null;
+        out.push(opt('venue', partner ? `Marry ${partner.name.split(' ')[0]} in a civil ceremony · ${fmtMoney(WEDDING_FEE)}` : 'Book a civil ceremony', shut ?? (!partner || p.relationship !== 'dating' ? (p.relationship === 'married' ? 'You are already married' : 'You need to be going out with someone first') : undefined), 'wed'));
+      }
+      if (it.kind === 'pew') out.push(opt('pray', 'Sit quietly for a while (10 min)', open ? undefined : `${v.name} is locked`));
+      break;
+    }
     case 'bus_stop':
       out.push({ type: 'ui', label: `Catch a bus (${fmtMoney(BUS_FARE)} any stop)`, enabled: true, ui: 'bus' });
       break;
@@ -714,6 +740,11 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
       crime(state, 'breaking into a bank vault', 4);
       begin(p, type, itId, { duration: 4 }, now); break;
     case 'dance': begin(p, type, itId, { duration: 8 }, now); break;
+    case 'pray': begin(p, type, itId, { duration: 10 }, now); break;
+    case 'film':
+      if ((state.ledger.accounts[p.accountId]?.balance ?? 0) < 1150) return { ok: false, msg: `A ticket is ${fmtMoney(1150)}.` };
+      begin(p, type, itId, { duration: 110 }, now); break;
+    case 'smash_case': begin(p, type, itId, { duration: 1.2 }, now); break;
     case 'workout': begin(p, type, itId, { duration: 20, arg }, now); break;
     case 'punch':
       return { ok: true, msg: attack(state, p.id, itId.slice(7)) || '' };
@@ -1046,6 +1077,8 @@ export function tickAction(state: GameState, p: Person, dt: number): string | nu
       else if (verb === 'hair') msg = haircut(state, p.id, v, what as 'short');
       else if (verb === 'slots') msg = slots(state, p.id, Number(what)).msg;
       else if (verb === 'arcade') msg = arcadeGo(state, p.id);
+      else if (verb === 'clear') msg = clearRecord(state, p.id);
+      else if (verb === 'wed') msg = wedding(state, p.id);
       break;
     }
     case 'shoplift': { const v = venueOfSpot(a.target); msg = v ? shoplift(state, p.id, v, a.arg ?? 'snacks') : null; break; }
@@ -1056,6 +1089,12 @@ export function tickAction(state: GameState, p: Person, dt: number): string | nu
       msg = (p.drunk ?? 0) > 40 ? 'You throw some shapes. Some of them are even in time.' : 'You lose yourself in the music for a while.';
       break;
     case 'workout': msg = workout(state, p.id, a.arg === 'weights' ? 'weights' : 'treadmill'); break;
+    case 'pray':
+      p.needs.mood = clamp(p.needs.mood + 10, 0, 100); p.needs.energy = clamp(p.needs.energy + 4, 0, 100);
+      msg = (p.record?.length ?? 0) ? 'You sit in the quiet for a while. It helps, a bit.' : 'Ten minutes of peace and quiet. You feel calmer.';
+      break;
+    case 'film': { const v = venueOfSpot(a.target); msg = v ? watchFilm(state, p.id, v) : null; break; }
+    case 'smash_case': { const v = venueOfSpot(a.target); msg = v ? smashCases(state, p.id, v) : null; break; }
     case 'pickpocket': msg = pickpocket(state, p.id, a.target.slice(7)) || null; break;
     case 'mug': msg = mug(state, p.id, a.target.slice(7)) || null; break;
     case 'chop': { const car = chopCandidate(state, interactable(state, a.target)?.pos ?? p.pos); msg = car ? sellToChop(state, p.id, car.id) : null; break; }

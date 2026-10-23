@@ -221,6 +221,7 @@ export class Game {
 
   constructor(public canvas: HTMLCanvasElement, public state: GameState) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+    this.renderer.localClippingEnabled = true;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -486,12 +487,12 @@ export class Game {
     return r;
   }
 
-  onUi: (which: 'jobs' | 'advisor' | 'interview' | 'laptop' | 'homestore' | 'invite' | 'chat' | 'darts' | 'bus' | 'roulette' | 'blackjack', arg?: string) => void = () => {};
+  onUi: (which: 'jobs' | 'advisor' | 'interview' | 'laptop' | 'homestore' | 'invite' | 'chat' | 'darts' | 'bus' | 'train' | 'roulette' | 'blackjack', arg?: string) => void = () => {};
 
   /** game minutes per real second right now */
   get rate() {
     const away = this.player.away;
-    if (away) return away.place === 'prison' ? 900 : away.place === 'custody' ? 150 : away.place === 'bus' ? 40 : 120;
+    if (away) return away.place === 'prison' ? 900 : away.place === 'custody' ? 150 : away.place === 'bus' || away.place === 'train' ? 40 : 120;
     if (this.player.down != null) return 1;
     if (this.player.sleeping) return 45;
     return BASE_TIME_SCALE * this.speedMult;

@@ -25,14 +25,22 @@ function walker(state: GameState, i: number): Person {
   return p;
 }
 
-const cityNodes = () => Object.values(getWorld().nodes).filter((n) => n.id.startsWith('c_'));
+// the street nodes (cached per world), and the ones at the right distance to appear on (cached until you move)
+let nodeCache: { w: unknown; all: { id: string; x: number; z: number }[] } | null = null;
+const cityNodes = () => {
+  const w = getWorld();
+  if (nodeCache?.w !== w) nodeCache = { w, all: Object.values(w.nodes).filter((n) => n.id.startsWith('c_')) };
+  return nodeCache.all;
+};
+let nearCache: { all: unknown; x: number; z: number; near: { id: string; x: number; z: number }[] } | null = null;
 
 export function crowdTick(state: GameState) {
   const me = state.people[state.playerId];
   if (!me || levelOf(me.pos.x) !== 0) return;
   const nodes = cityNodes();
   if (!nodes.length) return;
-  const near = nodes.filter((n) => { const d = dist(n, me.pos); return d > 40 && d < KEEP - 30; });
+  if (!nearCache || nearCache.all !== nodes || Math.hypot(nearCache.x - me.pos.x, nearCache.z - me.pos.z) > 8) nearCache = { all: nodes, x: me.pos.x, z: me.pos.z, near: nodes.filter((n) => { const d = dist(n, me.pos); return d > 40 && d < KEEP - 30; }) };
+  const near = nearCache.near;
   for (let i = 0; i < POOL; i++) {
     const p = walker(state, i);
     if (p.dead || p.away || p.down != null || p.combat || p.action || (p.fleeing ?? 0) > state.minute) continue;
