@@ -225,6 +225,7 @@ export class Game {
     this.renderer.localClippingEnabled = true;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.autoUpdate = false;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     // a near plane of 0.2 m doubles depth precision over 0.1 (less flicker between close surfaces)
@@ -250,7 +251,14 @@ export class Game {
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     this.renderer.toneMappingExposure = 0.95;
-    this.quality = (() => { try { return (localStorage.getItem('bigshot.gfx') as 'high' | 'medium' | 'low') ?? 'high'; } catch { return 'high'; } })();
+    // medium by default: high adds ambient occlusion, which draws the whole scene a second time.
+    // Anyone on high from before that change is moved down once (they can pick high again).
+    this.quality = (() => {
+      try {
+        if (!localStorage.getItem('bigshot.gfx.v2')) { localStorage.setItem('bigshot.gfx.v2', '1'); if (localStorage.getItem('bigshot.gfx') === 'high') localStorage.setItem('bigshot.gfx', 'medium'); }
+        return (localStorage.getItem('bigshot.gfx') as 'high' | 'medium' | 'low') ?? 'medium';
+      } catch { return 'medium'; }
+    })();
     this.setupComposer();
     this.world = buildWorld(this.scene);
     this.city = new CityView(this.scene, getWorld().city);
@@ -574,9 +582,12 @@ export class Game {
     this.audio.update(s, this.paused ? 0 : dt, Math.hypot(this.vel.x, this.vel.z), this.drivingVan() ? this.vanSpeed : null);
     this.watchFrameRate(dt);
     this.world.update(s, dt);
+    this.world.cull(this.camera.position.x, this.camera.position.z);
     this.city.update(this.camera, this.nightLevel);
     if (!this.freeCam) this.updateCamera(dt);
     this.updateLighting();
+    // the sun's shadow map is redrawn every other frame: half the shadow work, and nothing visibly lags
+    this.renderer.shadowMap.needsUpdate = (this.frameCount & 1) === 0;
     if (this.composer && !this.freeCam) this.composer.render(); else this.renderer.render(this.scene, this.camera);
     this.onFrame();
   }

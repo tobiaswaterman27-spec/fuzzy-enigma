@@ -68,6 +68,8 @@ interface Landmark { block: [number, number]; build: (r: Rect) => { buildings: C
 
 export interface City {
   buildings: CityBuilding[];
+  /** the buildings opened up as venues: drawn in detail near by, and as plain blocks from far off */
+  opened?: CityBuilding[];
   ground: Ground[];
   props: CityProp[];
   /** road and pavement strips (outside Harbourside) */

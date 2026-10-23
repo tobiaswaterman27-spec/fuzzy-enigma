@@ -171,9 +171,13 @@ function pitched(b: Builder, gable: Builder, r: { x0: number; z0: number; x1: nu
 }
 
 // ---------------------------------------------------------------- the view
+/** opened buildings: the detailed version within this distance (world view), the plain block beyond */
+export const VENUE_LOD = 150;
+
 export class CityView {
   group = new THREE.Group();
   private chunks: { g: THREE.Group; cx: number; cz: number }[] = [];
+  private lods: { g: THREE.Group; cx: number; cz: number }[] = [];
   private glowMats: THREE.MeshStandardMaterial[] = [];
   private bulbs: THREE.MeshStandardMaterial;
 
@@ -258,6 +262,15 @@ export class CityView {
     }
     // buildings
     for (const cb of city.buildings) this.building(cb, facade, roofMat, tileMat, trimMat, bucket);
+    // the opened ones as plain blocks, each on its own so it can give way to the detailed one close up
+    for (const cb of city.opened ?? []) {
+      const own = new Map<THREE.Material, Builder>();
+      this.building(cb, facade, roofMat, tileMat, trimMat, (_x, _z, m) => { let b = own.get(m); if (!b) { b = new Builder(); own.set(m, b); } return b; });
+      const g = new THREE.Group();
+      for (const [mat, b] of own) { const geo = b.geometry(); if (!geo) continue; const m = new THREE.Mesh(geo, mat); m.castShadow = true; m.receiveShadow = true; m.matrixAutoUpdate = false; g.add(m); }
+      this.group.add(g);
+      this.lods.push({ g, cx: (cb.rect.x0 + cb.rect.x1) / 2, cz: (cb.rect.z0 + cb.rect.z1) / 2 });
+    }
 
     // assemble the chunks
     for (const [k, c] of chunkOf) {
@@ -431,6 +444,7 @@ export class CityView {
   update(camera: THREE.Camera, night: number) {
     const p = camera.position;
     for (const c of this.chunks) c.g.visible = Math.hypot(c.cx - p.x, c.cz - p.z) < VIEW + CHUNK * 0.7;
+    for (const c of this.lods) { const d = Math.hypot(c.cx - p.x, c.cz - p.z); c.g.visible = d >= VENUE_LOD && d < VIEW + CHUNK; }
     for (const m of this.glowMats) m.emissiveIntensity = night * 1.2;
     this.bulbs.emissiveIntensity = night > 0.3 ? 1.6 : 0;
   }

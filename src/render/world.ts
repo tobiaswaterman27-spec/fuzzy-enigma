@@ -6,6 +6,7 @@ import { dartboardMesh } from './dartboard';
 import { LEVEL_DX, LEVEL_H, levelOf } from '../sim/world/levels';
 import { shopLocked } from '../sim/breakins';
 import { flightsAt, MARLOW_LEVELS, type Flight, SHOP_IDS, getWorld, wallsFor, WALL_T, type BuildingDef, type Obstacle, type Rect } from '../sim/world/layout';
+import { VENUE_LOD } from './city';
 import { fitModel, hasModel, modelInstance } from './models';
 import { FLOORS, WALLPAPERS } from '../sim/world/homes';
 import { tex, TILE, worldUV, planeUV, signTexture, normalOf } from './textures';
@@ -79,6 +80,8 @@ export interface WorldView {
   doors: AnimDoor[];
   parkedCars: THREE.Object3D[];
   update: (state: GameState, dt: number) => void;
+  /** hide what is too far from the camera to matter */
+  cull: (x: number, z: number) => void;
 }
 
 function facadeFor(b: BuildingDef): { mat: THREE.MeshStandardMaterial; tile: number } {
@@ -212,6 +215,9 @@ export function buildWorld(scene: THREE.Scene): WorldView {
       child.position.x -= k * LEVEL_DX;
       child.position.y += k * LEVEL_H;
       if (!inCut.has(child)) {
+        // the rooms of an upper storey are under its own walls and the roof: only the walls need to cast sun shadows
+        const occSet = new Set(occ);
+        child.traverse((o) => { if ((o as THREE.Mesh).isMesh && !occSet.has(o)) o.castShadow = false; });
         const key = `level:${k}`;
         if (!cutaway.has(key)) cutaway.set(key, { roof: [], walls: [], fullH: 3.2 });
         cutaway.get(key)!.roof.push(child);
@@ -219,7 +225,28 @@ export function buildWorld(scene: THREE.Scene): WorldView {
     }
     for (const l of lightSpots) { const k = levelOf(l.x); if (k > 0) { l.x -= k * LEVEL_DX; l.y += k * LEVEL_H; } }
   }
+  for (const m of windowsMat) mutableMats.add(m);
+  mutableMats.add(lampBulbs);
   bakeStatic(g, cutaway);
+  const shellSet = new Set<THREE.Object3D>();
+  // the street faces of buildings show from far off; a storey's rooms (cut away like a roof) do not
+  for (const [k, c] of cutaway) {
+    if (k.startsWith('level:')) { c.walls.forEach((o) => shellSet.add(o)); c.roof.forEach((o) => (o.userData.far = FAR_INSIDE + 10)); continue; }
+    // an opened city building swaps with the city view's plain block at a set distance from its middle
+    const b = k.startsWith('v_') ? getWorld().buildings.find((x) => x.id === k) : null;
+    if (b) { const lod = { x: (b.rect.x0 + b.rect.x1) / 2, z: (b.rect.z0 + b.rect.z1) / 2 }; [...c.walls, ...c.roof].forEach((o) => (o.userData.lod = lod)); continue; }
+    c.walls.forEach((o) => shellSet.add(o)); c.roof.forEach((o) => shellSet.add(o));
+  }
+  const farThings = farList(g, shellSet);
+  /** draw only what is near enough to matter (layers, so it never fights code that shows and hides things) */
+  const cull = (x: number, z: number) => {
+    for (const e of farThings) {
+      const show = e.exact ? Math.hypot(e.x - x, e.z - z) < e.far : Math.hypot(e.x - x, e.z - z) - e.r < e.far;
+      if (show === e.shown) continue;
+      e.shown = show;
+      for (const m of e.meshes) m.layers.mask = show ? 1 : 0;
+    }
+  };
 
   const update = (state: GameState, dt: number) => {
     for (const f of fixtures) f(state, dt);
@@ -243,11 +270,33 @@ export function buildWorld(scene: THREE.Scene): WorldView {
       }
     }
   };
-  return { group: g, cutaway, windowsMat, lampBulbs, lampLights, lightSpots, occluders: occ, doors, parkedCars, update };
+  return { group: g, cutaway, windowsMat, lampBulbs, lampLights, lightSpots, occluders: occ, doors, parkedCars, update, cull };
 }
 
 /** world-space pieces of a mesh, one per material (multi-material boxes are split by their groups) */
+/** materials that change while the game runs (lit windows at night and the like): never pooled */
+const mutableMats = new Set<THREE.Material>();
+/** plain single-colour materials are pooled into a few shared ones with the colour in the vertices,
+ * so a street of differently painted things is one draw call rather than one per paint */
+const pooled = new Map<string, THREE.MeshStandardMaterial>();
+function pool(mat: THREE.Material, geo: THREE.BufferGeometry): [THREE.Material, THREE.BufferGeometry] {
+  const m = mat as THREE.MeshStandardMaterial;
+  if (!m.isMeshStandardMaterial || (m as THREE.MeshPhysicalMaterial).isMeshPhysicalMaterial || m.map || m.transparent || m.alphaTest || m.emissiveMap || mutableMats.has(m) || m.vertexColors || m.normalMap || m.roughnessMap) return [mat, geo];
+  if (m.emissive.r + m.emissive.g + m.emissive.b > 0) return [mat, geo];
+  const key = `${m.roughness.toFixed(2)}|${m.metalness.toFixed(2)}|${m.side}|${m.flatShading}`;
+  let shared = pooled.get(key);
+  if (!shared) { shared = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: m.roughness, metalness: m.metalness, side: m.side, vertexColors: true, envMapIntensity: m.envMapIntensity }); pooled.set(key, shared); }
+  const n = geo.getAttribute('position').count;
+  const col = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) { col[i * 3] = m.color.r; col[i * 3 + 1] = m.color.g; col[i * 3 + 2] = m.color.b; }
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  return [shared, geo];
+}
+
 function piecesOf(m: THREE.Mesh): [THREE.Material, THREE.BufferGeometry][] {
+  return piecesRaw(m).map(([mat, geo]) => pool(mat, geo));
+}
+function piecesRaw(m: THREE.Mesh): [THREE.Material, THREE.BufferGeometry][] {
   const base = m.geometry;
   const clean = (geo: THREE.BufferGeometry) => {
     geo.applyMatrix4(m.matrixWorld);
@@ -334,9 +383,12 @@ function bakeStatic(g: THREE.Group, cutaway: WorldView['cutaway']) {
     for (const m of [...c.walls, ...c.roof]) special.add(m);
   }
   // everything else that never moves: per material and cell
-  const buckets = new Map<string, { mat: THREE.Material; geos: THREE.BufferGeometry[]; shadow: boolean }>();
+  const buckets = new Map<string, { mat: THREE.Material; geos: THREE.BufferGeometry[]; shadow: boolean; inside: boolean }>();
   const victims: THREE.Mesh[] = [];
-  const pieces: { mat: THREE.Material; geo: THREE.BufferGeometry; shadow: boolean; cx: number; cz: number }[] = [];
+  const pieces: { mat: THREE.Material; geo: THREE.BufferGeometry; shadow: boolean; cx: number; cz: number; inside: boolean }[] = [];
+  // what is inside a building is only ever seen from close by (through a door or a window, or in it)
+  const shells = getWorld().buildings.filter((b) => b.interior && !b.unit).map((b) => b.rect);
+  const indoors = (x: number, z: number) => shells.some((r) => x > r.x0 + 0.3 && x < r.x1 - 0.3 && z > r.z0 + 0.3 && z < r.z1 - 0.3);
   const trisOf = new Map<THREE.Material, number>();
   const box = new THREE.Box3(), c = new THREE.Vector3();
   g.traverse((o) => {
@@ -345,17 +397,19 @@ function bakeStatic(g: THREE.Group, cutaway: WorldView['cutaway']) {
     for (let q: THREE.Object3D | null = m.parent; q; q = q.parent) if (q.userData.dynamic) return;
     box.setFromObject(m).getCenter(c);
     for (const [mat, geo] of piecesOf(m)) {
-      pieces.push({ mat, geo, shadow: m.castShadow, cx: c.x, cz: c.z });
+      pieces.push({ mat, geo, shadow: m.castShadow, cx: c.x, cz: c.z, inside: indoors(c.x, c.z) });
       trisOf.set(mat, (trisOf.get(mat) ?? 0) + geo.getAttribute('position').count / 3);
     }
     victims.push(m);
   });
   for (const v of victims) v.parent?.remove(v);
-  // only materials carrying a lot of geometry are split into cells: for the rest, one call beats culling
+  // merged by cell, so that what is out of view (and out of the shadow box) is not drawn: heavy
+  // materials in small cells, light ones in big cells; insides apart from outsides, so a building's
+  // contents can be dropped from far off while its street front still shows
   for (const p of pieces) {
-    const cell = (trisOf.get(p.mat) ?? 0) > 15000 ? `${Math.floor(p.cx / CELL)},${Math.floor(p.cz / CELL)}` : 'all';
-    const key = `${p.mat.uuid}|${p.shadow}|${cell}`;
-    const b = buckets.get(key) ?? { mat: p.mat, geos: [], shadow: p.shadow };
+    const size = (trisOf.get(p.mat) ?? 0) > 15000 ? CELL : CELL * 3;
+    const key = `${p.mat.uuid}|${p.shadow}|${Math.floor(p.cx / size)},${Math.floor(p.cz / size)}|${p.inside}`;
+    const b = buckets.get(key) ?? { mat: p.mat, geos: [], shadow: p.shadow, inside: p.inside };
     b.geos.push(p.geo);
     buckets.set(key, b);
   }
@@ -363,8 +417,10 @@ function bakeStatic(g: THREE.Group, cutaway: WorldView['cutaway']) {
     const merged = mergeGeometries(b.geos, false);
     if (!merged) continue;
     const mesh = new THREE.Mesh(merged, b.mat);
-    mesh.castShadow = b.shadow;
+    // the sun does not reach the furniture under a roof: shadows from walls and floors are enough
+    mesh.castShadow = b.shadow && !b.inside;
     mesh.receiveShadow = true;
+    mesh.userData.far = b.inside ? FAR_INSIDE : FAR_OUTSIDE;
     g.add(mesh);
   }
   // drop the groups left empty
@@ -373,6 +429,29 @@ function bakeStatic(g: THREE.Group, cutaway: WorldView['cutaway']) {
   for (const o of empty) o.parent?.remove(o);
 }
 const PROXY_MAT = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
+
+// how far off things are still drawn: the contents of buildings, and everything outside them
+const FAR_INSIDE = 70, FAR_OUTSIDE = 420, FAR_THING = 110;
+interface FarEntry { meshes: THREE.Object3D[]; x: number; z: number; r: number; far: number; shown: boolean; exact?: boolean }
+/** everything in the world view, with where it is and how far off it may still be drawn */
+function farList(g: THREE.Group, shells: Set<THREE.Object3D>): FarEntry[] {
+  const out: FarEntry[] = [];
+  const bb = new THREE.Box3(), ctr = new THREE.Vector3(), sz = new THREE.Vector3();
+  for (const child of g.children) {
+    if ((child as THREE.Light).isLight) continue;
+    const meshes: THREE.Object3D[] = [];
+    child.traverse((o) => { if ((o as THREE.Mesh).isMesh || (o as THREE.Points).isPoints || (o as THREE.Line).isLine) meshes.push(o); });
+    if (!meshes.length) continue;
+    bb.setFromObject(child);
+    if (bb.isEmpty()) continue;
+    bb.getCenter(ctr); bb.getSize(sz);
+    const lod = child.userData.lod as { x: number; z: number } | undefined;
+    if (lod) { out.push({ meshes, x: lod.x, z: lod.z, r: 0, far: VENUE_LOD, shown: true, exact: true }); continue; }
+    const far = shells.has(child) ? FAR_OUTSIDE + 200 : (child.userData.far as number | undefined) ?? FAR_THING;
+    out.push({ meshes, x: ctr.x, z: ctr.z, r: Math.hypot(sz.x, sz.z) / 2, far, shown: true });
+  }
+  return out;
+}
 
 // ------------------------------------------------------------------ buildings
 function wallOutwardFace(r: Rect, b: BuildingDef): number {
@@ -565,7 +644,9 @@ function buildBuilding(g: THREE.Group, b: BuildingDef, cutaway: WorldView['cutaw
               const wh = balcony ? 2.1 : 1.4;
               const wy = balcony ? fy + 0.12 + wh / 2 : fy + 1.65;
               const rg = roomGlasses(windowsMat);
-              const win = windowMesh(balcony ? 1.6 : 1.4, wh, b.trim, rg[Math.abs(Math.floor(along * 7 + f * 13)) % rg.length]);
+              const glassOf = rg[Math.abs(Math.floor(along * 7 + f * 13)) % rg.length];
+              // high up, nobody sees the frames: one pane per window keeps a tower to a few thousand triangles
+              const win: THREE.Object3D = f > 3 && !balcony ? box(1.4, wh, 0.02, glassOf, 0, 0, 0, false) : windowMesh(balcony ? 1.6 : 1.4, wh, b.trim, glassOf);
               const off = WALL_T / 2 + 0.03;
               if (side === 'zmin') { win.position.set(along, wy, z0 - off); win.rotation.y = Math.PI; }
               if (side === 'zmax') win.position.set(along, wy, z1 + off);

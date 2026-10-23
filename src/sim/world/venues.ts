@@ -121,6 +121,7 @@ export function planVenues(city: City): Venue[] {
   }
   // the chosen buildings become proper buildings with insides: the generator's boxes go
   city.buildings = city.buildings.filter((b) => !taken.has(b));
+  city.opened = [...taken];
   cached = out;
   return out;
 }
