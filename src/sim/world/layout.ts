@@ -80,6 +80,9 @@ export type ObstacleKind =
   | 'rug'
   | 'stairs'
   | 'stairwell'
+  | 'cellbars'
+  | 'reception'
+  | 'celldoor'
   | 'unitdoor'
   | 'mailboxes'
   | 'flatdoor'
@@ -192,6 +195,9 @@ export type InteractKind =
   | 'housedoor'
   | 'shopdoor'
   | 'chop_shop'
+  | 'police_desk'
+  | 'cell_bench'
+  | 'beat_board'
   | 'valuables'
   | 'fishing'
   | 'bait_shop'
@@ -300,9 +306,19 @@ const B: BuildingDef[] = [
     doors: [{ side: 'zmax', a: -53, b: -49, open: true }], interior: true, floorColor: '#b9a68a',
   },
   {
-    id: 'chambers', name: 'Harbour Chambers', category: 'decorative', role: 'Office block (background, not yet in service)',
-    rect: { x0: 44, z0: -38, x1: 70, z1: -12 }, height: 16, floors: 5, color: '#8fa3b0', trim: '#33434f', roof: '#3a4148',
-    doors: [{ side: 'zmax', a: 55, b: 59, open: false }], interior: false,
+    id: 'police', name: 'Harbourside Police Station', category: 'functional', role: 'Police station - front desk, custody cells; jobs: Police Community Support Officer',
+    rect: { x0: 44, z0: -38, x1: 70, z1: -12 }, height: 8, floors: 2, color: '#c3c8ce', trim: '#1f3a68', roof: '#3a4148',
+    sign: { text: 'POLICE', side: 'zmax', color: '#ffffff', bg: '#1f3a68' },
+    doors: [{ side: 'zmax', a: 55, b: 59, open: true }],
+    interior: true, floorColor: '#b8bcc0',
+    internalWalls: [
+      // behind the front desk: the staff door at the east end
+      { x0: 44, z0: -19.3, x1: 63.8, z1: -19.0 }, { x0: 65.2, z0: -19.3, x1: 70, z1: -19.0 },
+      // custody suite (west) and the office (east)
+      { x0: 56.0, z0: -38, x1: 56.3, z1: -23.0 }, { x0: 56.0, z0: -21.8, x1: 56.3, z1: -19.3 },
+      // the cells: three along the back wall
+      { x0: 47.85, z0: -38, x1: 48.15, z1: -31.3 }, { x0: 51.85, z0: -38, x1: 52.15, z1: -31.3 },
+    ],
   },
   {
     id: 'terrace_w', name: 'Westway Terrace', category: 'decorative', role: 'Background housing',
@@ -699,6 +715,31 @@ function buildWorldData(homeDesign: HomeDesign): World {
     homeNodes = furnished.nodes;
     obstacles.push({ kind: 'unitdoor', rect: F({ x0: 16.4, z0: 15.0, x1: 16.7, z1: 16.2 }), height: 2.1, solid: false, ref: 'flat' });
   }
+  // ---- Harbourside Police Station: front desk and waiting area, custody desk and cells, the office
+  obstacles.push({ kind: 'reception', rect: { x0: 50, z0: -18.0, x1: 62, z1: -17.3 }, height: 1.05, solid: true, color: '#2c3e50' });
+  obstacles.push({ kind: 'waiting_chairs', rect: { x0: 44.4, z0: -16.4, x1: 45.0, z1: -13.0 }, height: 0.9, solid: true, rot: Math.PI / 2 });
+  obstacles.push({ kind: 'leaflet_stand', rect: { x0: 68.9, z0: -14.0, x1: 69.6, z1: -13.4 }, height: 1.5, solid: true });
+  obstacles.push({ kind: 'plant', rect: { x0: 52.6, z0: -13.0, x1: 53.1, z1: -12.5 }, height: 1.2, solid: true });
+  obstacles.push({ kind: 'plant', rect: { x0: 60.9, z0: -13.0, x1: 61.4, z1: -12.5 }, height: 1.2, solid: true });
+  add({ id: 'police_desk', kind: 'police_desk', label: 'Police front desk', pos: { x: 56, z: -16.3 }, facing: Math.PI, obj: { x: 56, z: -17.65 }, locationId: 'police', businessId: 'police', range: 1.8 });
+  obstacles.push({ kind: 'reception', rect: { x0: 49.5, z0: -25.6, x1: 53.5, z1: -24.8 }, height: 1.05, solid: true, color: '#3d4d5c' });
+  for (const [i, x0] of [44.15, 48.15, 52.15].entries()) {
+    const x1 = x0 + 3.7, door = x0 + 1.35;
+    obstacles.push({ kind: 'cellbars', rect: { x0, z0: -31.3, x1: door, z1: -31.1 }, height: 2.4, solid: true });
+    obstacles.push({ kind: 'cellbars', rect: { x0: door + 1.0, z0: -31.3, x1, z1: -31.1 }, height: 2.4, solid: true });
+    obstacles.push({ kind: 'celldoor', rect: { x0: door, z0: -31.3, x1: door + 1.0, z1: -31.1 }, height: 2.2, solid: false, ref: `cell_${i + 1}` });
+    obstacles.push({ kind: 'bench', rect: { x0: x0 + 0.3, z0: -37.85, x1: x1 - 0.3, z1: -37.2 }, height: 0.5, solid: true, rot: 0 });
+    add({ id: `cell_${i + 1}`, kind: 'cell_bench', label: `Cell ${i + 1}`, pos: { x: (x0 + x1) / 2, z: -36.4 }, facing: Math.PI, obj: { x: (x0 + x1) / 2, z: -37.5 }, locationId: 'police', range: 1.6 });
+  }
+  for (const [x0, z0] of [[58, -28], [62, -28], [58, -33], [62, -33]]) {
+    obstacles.push({ kind: 'desk', rect: { x0, z0, x1: x0 + 2, z1: z0 + 1 }, height: 0.75, solid: true, rot: 0 });
+    obstacles.push({ kind: 'laptop', rect: { x0: x0 + 0.8, z0: z0 + 0.3, x1: x0 + 1.2, z1: z0 + 0.6 }, height: 0.77, solid: false, rot: 0 });
+  }
+  obstacles.push({ kind: 'board', rect: { x0: 59, z0: -37.85, x1: 65, z1: -37.5 }, height: 2.2, solid: true });
+  add({ id: 'beat_board', kind: 'beat_board', label: 'Briefing board', pos: { x: 62, z: -36.3 }, facing: Math.PI, obj: { x: 62, z: -37.7 }, locationId: 'police', businessId: 'police', range: 2.0 });
+  for (let z = -37; z < -31; z += 1.1) obstacles.push({ kind: 'cupboard', rect: { x0: 69.2, z0: z, x1: 69.85, z1: z + 1.0 }, height: 2.0, solid: true, rot: -Math.PI / 2 });
+  obstacles.push({ kind: 'terminal', rect: { x0: 69.4, z0: -24.5, x1: 69.85, z1: -23.5 }, height: 1.4, solid: true });
+  add({ id: 'police_terminal', kind: 'terminal', label: 'Staff terminal', pos: { x: 68.6, z: -24 }, facing: Math.PI / 2, obj: { x: 69.6, z: -24 }, locationId: 'police', businessId: 'police' });
   // ---- Eastgate Motors' yard gate: stolen cars sold for parts
   add({ id: 'chop_shop', kind: 'chop_shop', label: 'Eastgate Motors (yard gate)', pos: { x: 84, z: -10.4 }, facing: Math.PI, obj: { x: 84, z: -12 }, locationId: 'outside', range: 1.6 });
   // ---- shop doors: after hours they are locked, and can be forced
@@ -1166,6 +1207,14 @@ function buildWorldData(homeDesign: HomeDesign): World {
   N('cf_term', -32.8, 22, 'cafe'); L('cf_kitchen', 'cf_term');
   N('cf_grill', -26, 24.4, 'cafe'); L('cf_back', 'cf_grill'); L('cf_kitchen', 'cf_grill');
   N('cf_pass', -24, 21.3, 'cafe'); L('cf_back', 'cf_pass');
+  // the police station: front door, round the end of the counter to the staff door, custody and office
+  N('pol_out', 57, -9.5); N('pol_in', 57, -14, 'police'); N('pol_desk', 56, -16.3, 'police'); N('pol_end', 64.5, -16.3, 'police'); N('pol_staff', 64.5, -20.3, 'police');
+  N('pol_hall', 60, -21.5, 'police'); N('pol_door', 56.15, -22.4, 'police'); N('pol_cust', 53, -22.4, 'police'); N('pol_cells', 50, -29.8, 'police');
+  N('pol_office', 61, -30.5, 'police'); N('pol_board', 62, -36.3, 'police'); N('pol_term', 68.6, -24, 'police');
+  L('ne_57', 'pol_out', 'pol_in', 'pol_desk'); N('pol_c2', 54.8, -24.0, 'police'); N('pol_c3', 54.8, -27.8, 'police');
+  L('pol_in', 'pol_end', 'pol_staff', 'pol_hall', 'pol_door', 'pol_cust', 'pol_c2', 'pol_c3', 'pol_cells');
+  L('pol_hall', 'pol_office', 'pol_board'); L('pol_hall', 'pol_term');
+  for (const [i, x] of [46.0, 50.0, 54.0].entries()) { N(`cell_in_${i + 1}`, x, -34.5, 'police'); N(`cell_front_${i + 1}`, x, -29.8, 'police'); L('pol_cells', `cell_front_${i + 1}`, `cell_in_${i + 1}`); }
   // Marlow Court: in at the street door, the lobby, and the stairs up through every floor
   N('fl_out', 16, 8.6); N('fl_in', 16, 11.0, 'marlow');
   L('se_16', 'fl_out', 'fl_in');

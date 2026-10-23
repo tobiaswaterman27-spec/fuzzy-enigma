@@ -15,7 +15,8 @@ import { cancelAction, focusInteractable, optionsFor, startAction, enforceLocati
 import { resolveCircle } from '../sim/world/nav';
 import { buildingAt, DWELLING_IDS, dwellingDoor, FLIGHTS, getWorld, publicDoors, setHomeDesign, shellAt, SHOP_IDS } from '../sim/world/layout';
 import { shopLocked } from '../sim/breakins';
-import { levelOf, planX, sceneOf } from '../sim/world/levels';
+import { onPcsoShift } from '../sim/station';
+import { LEVEL_DX, levelOf, planX, sceneOf } from '../sim/world/levels';
 import { houseOpen } from '../sim/houses';
 import { capability } from '../sim/needs';
 import { daylight, hourOfDay } from '../sim/clock';
@@ -78,6 +79,7 @@ export class Game {
   football: Football;
   fireworks: Fireworks;
   private cabMarker: THREE.Mesh | null = null;
+  private beatMarkers: THREE.Mesh[] = [];
   private seasonKey = '';
   private seasonTick = 0;
   private snowLayer: THREE.Mesh | null = null;
@@ -493,6 +495,13 @@ export class Game {
       this.cabMarker.visible = true;
       this.cabMarker.position.set(cab.pos.x, 0.15 + Math.sin(performance.now() / 300) * 0.05, cab.pos.z);
     } else if (this.cabMarker) this.cabMarker.visible = false;
+    // a PCSO's beat: a yellow ring at each point still to check in at
+    const beat = this.state.beat && this.state.beat.by === this.player.id && onPcsoShift(this.state, this.player.id) ? this.state.beat.points.filter((q) => !q.done) : [];
+    while (this.beatMarkers.length < beat.length) {
+      const m = new THREE.Mesh(new THREE.TorusGeometry(1.2, 0.06, 8, 40), new THREE.MeshStandardMaterial({ color: '#2f6fd6', emissive: '#4a8cff', emissiveIntensity: 1.4 }));
+      m.rotation.x = Math.PI / 2; this.scene.add(m); this.beatMarkers.push(m);
+    }
+    this.beatMarkers.forEach((m, i) => { const q = beat[i]; m.visible = !!q; if (q) m.position.set(q.x, 0.15 + Math.sin(performance.now() / 350 + i) * 0.05, q.z); });
     this.market.update(s, this.paused ? 0 : dt, this.player.pos);
     this.audio.update(s, this.paused ? 0 : dt, Math.hypot(this.vel.x, this.vel.z), this.drivingVan() ? this.vanSpeed : null);
     this.watchFrameRate(dt);
@@ -788,6 +797,15 @@ export class Game {
     this.raycaster.far = dist + 0.3;
     const hits = this.raycaster.intersectObjects(this.world.occluders, false);
     if (hits.length) dist = Math.max(0.35, hits[0].distance - 0.28);
+    // indoors the camera stays indoors: never out through an open doorway behind you
+    const shell = !van && !this.overview ? shellAt(p.pos) : null;
+    if (shell) {
+      const k = levelOf(shell.rect.x0), r = { x0: shell.rect.x0 - k * LEVEL_DX, x1: shell.rect.x1 - k * LEVEL_DX, z0: shell.rect.z0, z1: shell.rect.z1 };
+      let t = Infinity;
+      if (dir.x > 1e-4) t = Math.min(t, (r.x1 - origin.x) / dir.x); else if (dir.x < -1e-4) t = Math.min(t, (r.x0 - origin.x) / dir.x);
+      if (dir.z > 1e-4) t = Math.min(t, (r.z1 - origin.z) / dir.z); else if (dir.z < -1e-4) t = Math.min(t, (r.z0 - origin.z) / dir.z);
+      if (t < Infinity) dist = Math.max(0.35, Math.min(dist, t - 0.3));
+    }
     // the distance is smoothed rather than the position: quick to pull in when a wall comes between,
     // slow to ease back out, and no lag behind the player when running (which made the view swim)
     if (this.distCur <= 0 || this.camCur.distanceTo(origin) > 15) this.distCur = dist;

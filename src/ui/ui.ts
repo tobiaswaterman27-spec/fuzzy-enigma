@@ -979,7 +979,7 @@ function setBar(sel: string, v: number) {
 }
 
 const ACTION_LABELS: Record<string, string> = {
-  rob: 'Holding up the till', buy_pint: 'Having a pint', buy_tackle: 'Buying tackle', sell_catch: 'Selling your catch', buy_weapon: 'Buying', hire_boat: 'Hiring a boat', knock: 'Knocking', break_in: 'Forcing the door', loot_till: 'Prising the till open', pickpocket: 'Dipping a pocket', mug: 'Demanding the wallet', chop: 'Doing the deal', search: 'Going through the drawers', scratch: 'Scratching the card', lotto: 'Buying a ticket', buy_round: 'Getting a round in', grab: 'Grabbing them',
+  rob: 'Holding up the till', buy_pint: 'Having a pint', buy_tackle: 'Buying tackle', sell_catch: 'Selling your catch', buy_weapon: 'Buying', hire_boat: 'Hiring a boat', knock: 'Knocking', break_in: 'Forcing the door', loot_till: 'Prising the till open', pickpocket: 'Dipping a pocket', mug: 'Demanding the wallet', chop: 'Doing the deal', hand_in: 'Giving yourself up', read_beat: 'Reading the board', break_up: 'Stepping in', search: 'Going through the drawers', scratch: 'Scratching the card', lotto: 'Buying a ticket', buy_round: 'Getting a round in', grab: 'Grabbing them',
   clock_in: 'Clocking in…', clock_out: 'Clocking out…', take_case: 'Picking up a case…', return_case: 'Returning stock…', stock_shelf: 'Stocking the shelf…',
   serve_customer: 'Scanning items…', self_checkout: 'Scanning and paying…', take_mop: 'Getting the mop…', return_mop: 'Putting the mop away…', clean: 'Mopping…',
   check_in_delivery: 'Counting the delivery in…', pick_item: 'Taking item…', sleep: 'Sleeping… (time is fast-forwarding)', eat: 'Eating…', store_food: 'Putting shopping away…',

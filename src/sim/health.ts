@@ -2,6 +2,7 @@
 // work, illness), bleed, collapse, be taken by ambulance to St Mary's and recover, or die. Attacks
 // that are seen bring the police: officers come for you, and if they catch you it is a fine, a night
 // in the cells or prison, and a criminal record. Everything uses the state's random stream.
+import { cellSpot } from './station';
 import type { GameState, Id, Person, Vec2 } from './types';
 import { clamp, dist, fmtMoney, nextId, rand, randInt } from './core';
 import { lifeEvent, news } from './events';
@@ -196,6 +197,8 @@ export function sendAway(state: GameState, p: Person, place: 'hospital' | 'custo
   for (const v of Object.values(state.vehicles)) if (v.driverId === p.id && v.kind !== 'van') { v.driverId = null; v.state = 'parked'; }
   if (place === 'hospital') p.health = Math.max(healthOf(p), 25);
   if (p.npc) { p.npc.plan = []; p.npc.goal = 'offsite'; p.npc.nextDecision = p.away.until; }
+  // a night in the cells is spent where you can see it
+  if (place === 'custody' && p.isPlayer) { const c = cellSpot(state, p); if (c) { p.visible = true; p.where = 'police'; p.pos = c; p.facing = Math.PI; } }
   lifeEvent(state, p, place === 'hospital' ? `Admitted to ${HOSPITAL} (${reason})` : place === 'prison' ? `Sent to prison (${reason})` : `Held in a police cell (${reason})`);
 }
 
@@ -204,7 +207,7 @@ function release(state: GameState, p: Person) {
   p.away = null;
   if (a.place === 'hospital') { p.health = Math.max(healthOf(p), p.isPlayer ? 85 : 90); p.injured = null; }
   if (p.isPlayer) {
-    const n = getWorld().nodes[RELEASE_NODE];
+    const n = getWorld().nodes[a.place === 'custody' ? 'pol_out' : RELEASE_NODE];
     p.pos = n ? { x: n.x, z: n.z } : { x: 0, z: 0 };
     p.visible = true; p.where = 'outside';
     p.needs.energy = Math.max(p.needs.energy, 60); p.needs.satiety = Math.max(p.needs.satiety, 45);
@@ -247,7 +250,14 @@ function policeMinute(state: GameState) {
   const pool = Object.values(state.people).filter((o) => o.police);
   if (!w || w.level <= 0 || me.dead || me.away) {
     // officers go back to the station
-    for (const o of pool) if (o.visible && !o.move) { o.visible = false; o.where = 'offsite'; o.combat = null; }
+    // officers walk back to the station and go in (the sergeant stays at the desk)
+    const door = getWorld().nodes.pol_in;
+    for (const o of pool) {
+      if (!o.visible || o.move || o.fixedJob || o.away) continue;
+      o.combat = null;
+      if (door && dist(o.pos, door) > 2 && dist(o.pos, door) < 120 && !(o.npc as any)?.homing) { goTo(state, o, door, 'the station'); (o.npc as any).homing = true; continue; }
+      o.visible = false; o.where = 'offsite'; if (o.npc) (o.npc as any).homing = false;
+    }
     return;
   }
   const officers = officerPool(state);
@@ -255,9 +265,12 @@ function policeMinute(state: GameState) {
   const nodes = Object.values(getWorld().nodes).filter((n) => n.loc === 'outside');
   for (const o of officers.slice(0, need)) {
     if (o.visible || o.down || o.dead || o.away) continue;
-    const spot = nodes.filter((n) => { const d = Math.hypot(n.x - me.pos.x, n.z - me.pos.z); return d > 28 && d < 55; })[randInt(state, 0, 30)] ?? nodes[0];
+    // out of the station door if it is near, otherwise a car drops them off down the road
+    const st = getWorld().nodes.pol_out;
+    const near = st && Math.hypot(st.x - me.pos.x, st.z - me.pos.z) < 75;
+    const spot = near ? st : nodes.filter((n) => { const d = Math.hypot(n.x - me.pos.x, n.z - me.pos.z); return d > 28 && d < 55; })[randInt(state, 0, 30)] ?? nodes[0];
     o.pos = { x: spot.x, z: spot.z };
-    o.visible = true; o.where = 'outside'; o.health = 100;
+    o.visible = true; o.where = 'outside'; o.health = 100; if (o.npc) (o.npc as any).homing = false;
   }
   let sees = false;
   for (const o of officers) {

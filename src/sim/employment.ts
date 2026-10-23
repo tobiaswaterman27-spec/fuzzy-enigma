@@ -349,6 +349,7 @@ export function canApply(state: GameState, personId: Id, vacancyId: Id): string 
   const b = state.businesses[v.businessId];
   const pos = b.positions.find((x) => x.id === v.positionId)!;
   if (p.isPlayer && !pos.playable) return 'This role is not playable yet.';
+  if (b.id === 'police' && p.record?.length) return 'Not with a criminal record.';
   if (v.applicants.some((aid) => state.applications[aid].personId === personId)) return 'You have already applied.';
   if (p.contractId && state.contracts[p.contractId]?.businessId === b.id && state.contracts[p.contractId].positionId === pos.id) return 'You already hold this position.';
   for (const q of pos.quals ?? []) if (!p.quals?.includes(q)) return `Needs a ${COURSES[q]?.name ?? q} qualification (courses at the Job Centre: Phone > Jobs).`;

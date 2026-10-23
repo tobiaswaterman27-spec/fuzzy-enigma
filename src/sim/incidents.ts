@@ -1,6 +1,7 @@
 // Things that happen in the street, in front of you: two people who have a grudge, a couple under
 // strain, or a pair who have had a few too many stop and argue. Most storm off; some come to blows,
 // and then the police come for whoever started it.
+import { policeWork } from './station';
 import type { GameState, Id, Person } from './types';
 import { clamp, dist, rand } from './core';
 import { lifeEvent, news } from './events';
@@ -147,6 +148,7 @@ export function grabShoplifter(state: GameState, catcherId: Id, thiefId: Id): st
     if (r.ok) reward = ' The manager gives you a £25 reward.';
   }
   sendAway(state, p, 'custody', 8 * 60, 'shoplifting');
+  policeWork(state, me.id, `Caught ${p.name} shoplifting.`);
   news(state, 'good', 'You caught a shoplifter', `${p.name} was handed over to the police and the goods went back on the shelves.${reward}`, true);
   return `You grab ${p.name.split(' ')[0]} and get the goods back.${reward}`;
 }

@@ -2,6 +2,7 @@
 // Fine-grained movement/actions run in sub-steps; economic and scheduled
 // systems run once per whole game minute so nothing is skipped when the
 // clock is accelerated (sleeping, fast-forward).
+import { stationTick } from './station';
 import { lifeDaily } from './life';
 import { healthDaily, healthMinute, healthSubstep } from './health';
 import { doorTick, housesTick } from './houses';
@@ -82,6 +83,7 @@ function substep(state: GameState, dt: number, ev: StepEvents) {
   followTick(state);
   taxiTick(state);
   housesTick(state);
+  stationTick(state);
   if (!state.rescue) rescueDogs(state);
   doorTick(state);
   logisticsTick(state, dt);

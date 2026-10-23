@@ -1,6 +1,6 @@
 // SaveLoadSystem: versioned JSON, validation, migration, safe writes.
 import type { GameState } from './types';
-import { makeBusiness, SAVE_VERSION } from './newgame';
+import { makeBusiness, makePoliceStation, SAVE_VERSION } from './newgame';
 import { startConstruction } from './construction';
 import { auditLedger } from './ledger';
 import { npcQuals } from './training';
@@ -105,6 +105,10 @@ const MIGRATIONS: Record<number, (s: any) => void> = {
       s.containers.site_bricks = { id: 'site_bricks', kind: 'supplies', ownerId: 'builders', locationId: 'outside', capacity: 1000, filter: 'bricks', items: {} };
       startConstruction(s);
     }
+  },
+  11: (s) => {
+    // v11 -> v12: Harbour Chambers reopens as Harbourside Police Station
+    makePoliceStation(s);
   },
   10: (s) => {
     // v10 -> v11: Marlow Court has a ground-floor lobby and stairs; your flat moved up to the second floor

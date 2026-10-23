@@ -86,7 +86,7 @@ function facadeFor(b: BuildingDef): { mat: THREE.MeshStandardMaterial; tile: num
   let t: THREE.CanvasTexture;
   let key: string;
   if (id === 'marlow' || id === 'terrace_w' || id === 'homestore') { t = tex.brick(b.color); key = `brick${b.color}`; }
-  else if (id === 'jobcentre' || id === 'chambers' || id === 'unit4' || id === 'wholesale' || id === 'warehouse_e' || id === 'garage_e') { t = tex.cladding(b.color); key = `clad${b.color}`; }
+  else if (id === 'jobcentre' || id === 'police' || id === 'unit4' || id === 'wholesale' || id === 'warehouse_e' || id === 'garage_e') { t = tex.cladding(b.color); key = `clad${b.color}`; }
   else if (id.startsWith('house_')) { const hn = Number(id.slice(6)); if (hn % 2) { t = tex.brick(b.color); key = `brick${b.color}`; } else { t = tex.render(b.color); key = `render${b.color}`; } }
   else { t = tex.render(b.color); key = `render${b.color}`; }
   return { mat: texMat(t, 0.88), tile: TILE[key] };
@@ -99,6 +99,7 @@ const FLOOR: Record<string, () => { t: THREE.CanvasTexture; tile: number }> = {
   flat: () => ({ t: tex.wood('#a0784e'), tile: TILE['wood#a0784e'] }),
   pub: () => ({ t: tex.wood('#5a3a24'), tile: TILE['wood#5a3a24'] ?? 1.2 }),
   jobcentre: () => ({ t: tex.carpet('#5c6f86'), tile: TILE['carpet#5c6f86'] }),
+  police: () => ({ t: tex.tiles('#c9cdd2', '#b4b9bf'), tile: TILE['tiles#c9cdd2#b4b9bf'] ?? 1.2 }),
 };
 
 export function buildWorld(scene: THREE.Scene): WorldView {
@@ -1029,6 +1030,18 @@ function buildObstacle(o: Obstacle): THREE.Object3D {
       grp.add(box(0.05, 0.3, D * 0.7, M('#2e8b57', 0.5), cx, o.height + 0.3, cz));
       break;
     }
+    case 'reception': {
+      // a front desk: a panelled base, a worktop, and a glazed security screen along the public side
+      const base = M(o.color ?? '#2c3e50', 0.5), top = M('#d8d4cc', 0.4);
+      grp.add(box(W, o.height - 0.05, D, base, cx, (o.height - 0.05) / 2, cz));
+      grp.add(box(W + 0.06, 0.05, D + 0.1, top, cx, o.height - 0.025, cz));
+      for (let x = r.x0 + 0.3; x < r.x1 - 0.2; x += 1.6) grp.add(box(0.04, 0.02, D * 0.6, M('#9aa3a8', 0.6), x, o.height - 0.13, r.z1 + 0.005, false));
+      const glass = glassM();
+      const horiz = W > D;
+      grp.add(horiz ? box(W, 0.8, 0.02, glass, cx, o.height + 0.42, r.z1 - 0.04, false) : box(0.02, 0.8, D, glass, r.x1 - 0.04, o.height + 0.42, cz, false));
+      grp.add(horiz ? box(W, 0.04, 0.05, metal('#7a8288', 0.4), cx, o.height + 0.84, r.z1 - 0.04) : box(0.05, 0.04, D, metal('#7a8288', 0.4), r.x1 - 0.04, o.height + 0.84, cz));
+      break;
+    }
     case 'counter': {
       if (o.color && fit('cafe_counter', r, Math.PI)) return grp;
       if (!o.color && hasModel('checkout')) {
@@ -1242,6 +1255,16 @@ function buildObstacle(o: Obstacle): THREE.Object3D {
       }
       // the camera stays out of the flights
       occ.push(grp);
+      break;
+    }
+    case 'cellbars': case 'celldoor': {
+      // painted steel bars from floor to ceiling; the door has a frame and a lock box
+      const steel = metal(o.kind === 'celldoor' ? '#4a5560' : '#5a6570', 0.4);
+      const L = Math.max(W, D), along = W > D;
+      for (const y of [0.05, 1.1, o.height]) grp.add(along ? box(L, 0.06, 0.08, steel, cx, y, cz) : box(0.08, 0.06, L, steel, cx, y, cz));
+      for (let t = -L / 2 + 0.06; t < L / 2; t += 0.13) grp.add(along ? cyl(0.016, 0.016, o.height, steel, cx + t, o.height / 2, cz, 6) : cyl(0.016, 0.016, o.height, steel, cx, o.height / 2, cz + t, 6));
+      if (o.kind === 'celldoor') grp.add(box(0.16, 0.22, 0.12, metal('#2a2f35', 0.3), along ? r.x1 - 0.12 : cx, 1.1, along ? cz : r.z1 - 0.12));
+      if (o.kind === 'cellbars') { grp.add(box(W, 0.02, D, M('#7d8186', 0.9), cx, 3.15, cz)); }
       break;
     }
     case 'stairs': {

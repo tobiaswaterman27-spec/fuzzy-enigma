@@ -171,6 +171,9 @@ export type ActionType =
   | 'pickpocket'
   | 'mug'
   | 'chop'
+  | 'hand_in'
+  | 'read_beat'
+  | 'break_up'
   | 'search'
   | 'eat'
   | 'change_outfit'
@@ -729,6 +732,8 @@ export interface GameState {
   lotto?: { owner: Id; draw: number; numbers: number[]; checked?: boolean }[];
   /** a hold-up in progress */
   robbery?: { robber: Id; clerk: Id; business: Id } | null;
+  /** today's PCSO beat: the points to check in at */
+  beat?: { day: number; by: Id; points: { x: number; z: number; label: string; done: boolean }[] } | null;
   /** kerbside parked cars (world.parked indices) that have been stolen */
   takenParked?: number[];
   /** the player has died */

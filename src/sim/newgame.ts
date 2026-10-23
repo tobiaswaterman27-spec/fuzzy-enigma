@@ -21,7 +21,7 @@ import { rand, randInt, pick } from './core';
 import { news } from './events';
 import { spawnDirt, SHELF_CAPACITY, shelfId } from './retail';
 
-export const SAVE_VERSION = 11;
+export const SAVE_VERSION = 12;
 
 export interface PlayerSetup {
   name: string;
@@ -104,6 +104,23 @@ export function makePerson(state: GameState, id: Id, name: string, opts: { homeI
   return p;
 }
 
+/** Harbourside Police Station: the force's own officers come and go; the jobs for civilians are here */
+export function makePoliceStation(state: GameState) {
+  if (state.businesses.police) return;
+  const ALL = [0, 1, 2, 3, 4, 5, 6];
+  makeBusiness(state, {
+    id: 'police', name: 'Harbourside Police', kind: 'government', ownerId: 'public', locationId: 'police',
+    open: [sh(ALL, 0, 24)],
+    positions: [
+      pos({ id: 'pcso', title: 'Police Community Support Officer', wage: 1600, shifts: [sh(ALL, 8, 16)], uniform: 'uniform_police', playable: true, headcount: 2,
+        description: 'Walks a beat round Harbourside in uniform: checks in at the points on the briefing board, catches shoplifters, breaks up fights. Needs a clean record.',
+        duties: ['Read the briefing board and walk your beat', 'Catch shoplifters (grab them)', 'Break up fights in the street'] }),
+      pos({ id: 'detention', title: 'Detention Officer', wage: 1450, shifts: [sh(ALL, 14, 22)], description: 'Books prisoners in at the custody desk and looks after the cells.' }),
+    ],
+    prices: {}, reputation: 60, supplierId: null, reorder: {}, rentDue: 0, utilitiesPerDay: 1500, stockContainers: [], cashReserve: 0, cash: 4000000,
+  });
+}
+
 const pos = (p: Partial<Position> & Pick<Position, 'id' | 'title' | 'wage' | 'shifts'>): Position => ({
   payEvery: 'daily', headcount: 1, requires: {}, uniform: null, playable: false, description: '', duties: [], ...p,
 });
@@ -123,6 +140,7 @@ export function createNewGame(seed: number, setup: PlayerSetup): GameState {
     prices: {}, reputation: 60, supplierId: null, reorder: {}, rentDue: 0, utilitiesPerDay: 1200, stockContainers: [], cashReserve: 0, cash: 3000000,
   });
   void council;
+  makePoliceStation(state);
   const market = makeBusiness(state, {
     id: 'market', name: 'Corner Market', kind: 'retail', ownerId: 'p_harlan', locationId: 'market',
     open: [sh(MON_SAT, 7, 21), sh([6], 10, 16)],

@@ -4,6 +4,7 @@
 import { useEnergy } from './bills';
 import { buyWeapon, finishRob, startRob, WEAPONS } from './health';
 import { breakIn, houseOf, houseOpen, knock, searchValuables } from './houses';
+import { breakUp, handIn, onPcsoShift, readBeat } from './station';
 import { chopCandidate, chopPrice, mug, pickpocket, sellToChop } from './streetcrime';
 import { forceShop, lootTill, SHOP_IDS, shopLocked, shopOf, shopOpenNow } from './breakins';
 import { grabShoplifter } from './incidents';
@@ -342,6 +343,7 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
         out.push(opt('pickpocket', `Pick ${other.name.split(' ')[0]}'s pocket`));
         if (p.weapon) out.push(opt('mug', `Threaten ${other.name.split(' ')[0]} for their wallet (${p.weapon === 'knife' ? 'knife' : 'bat'} out)`));
       }
+      if (p.isPlayer && state.incident && state.incident.stage !== 'done' && (state.incident.a === other.id || state.incident.b === other.id)) out.unshift(opt('break_up', 'Step in and break it up'));
       if (p.isPlayer && (other.npc as any)?.shoplift) out.unshift(opt('grab', `Grab ${other.name.split(' ')[0]} (shoplifter!)`));
       out.push(opt('talk', p.isPlayer ? `Wave and say hello` : `Chat with ${other.name}`, other.action?.type === 'serve_customer' ? 'Busy serving' : undefined));
       if (p.isPlayer && !other.npc?.ambient) out.push({ type: 'ui', label: `Invite ${other.name.split(' ')[0]} for a coffee`, enabled: fam >= FRIEND_AT && !plannedMeetup(state), reason: fam < FRIEND_AT ? 'Get to know them better first (chat more)' : 'You already have a meet-up arranged', ui: 'invite', arg: other.id });
@@ -376,6 +378,16 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
       for (const k of ['bat', 'knife'] as const) out.push(opt('buy_weapon', `Buy a ${WEAPONS[k].label} · ${fmtMoney(WEAPONS[k].price)}`, !staffed ? 'Counter closed' : count(state.containers[p.bagId], WEAPONS[k].item) ? 'You already have one' : undefined, k));
       break;
     }
+    case 'police_desk': {
+      if (state.wanted) out.push(opt('hand_in', `Hand yourself in (${'★'.repeat(state.wanted.level)}: it goes easier)`));
+      out.push({ type: 'ui', label: 'Ask about jobs with the police', enabled: true, ui: 'jobs' });
+      break;
+    }
+    case 'beat_board':
+      out.push(opt('read_beat', onPcsoShift(state, actorId) ? "Read today's beat" : 'Wanted notices and the duty rota', onPcsoShift(state, actorId) ? undefined : 'For officers on shift'));
+      break;
+    case 'cell_bench':
+      break;
     case 'chop_shop': {
       const car = chopCandidate(state, it.pos);
       out.push(opt('chop', car ? `Sell the stolen ${car.name} for parts · ${fmtMoney(chopPrice(state, car.id))}` : 'Sell a stolen car for parts', car ? undefined : 'Bring a stolen car round to the yard gate'));
@@ -669,6 +681,10 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
     }
     case 'chop':
       begin(p, type, itId, { duration: 0.8 }, now); break;
+    case 'hand_in': case 'read_beat':
+      begin(p, type, itId, { duration: 0.6 }, now); break;
+    case 'break_up':
+      begin(p, type, itId, { duration: 0.5 }, now); break;
     case 'search':
       begin(p, type, itId, { duration: 1.5 }, now); break;
     case 'buy_round': {
@@ -964,6 +980,9 @@ export function tickAction(state: GameState, p: Person, dt: number): string | nu
     case 'buy_tackle': case 'sell_catch': msg = null; break;
     case 'lotto': msg = null; break;
     case 'break_in': msg = SHOP_IDS.includes(shopOf(a.target)) ? forceShop(state, p.id, shopOf(a.target)) : breakIn(state, p.id, houseOf(a.target)).msg || null; break;
+    case 'hand_in': msg = handIn(state, p.id) || null; break;
+    case 'read_beat': msg = readBeat(state, p.id); break;
+    case 'break_up': msg = breakUp(state, p.id) || null; break;
     case 'pickpocket': msg = pickpocket(state, p.id, a.target.slice(7)) || null; break;
     case 'mug': msg = mug(state, p.id, a.target.slice(7)) || null; break;
     case 'chop': { const car = chopCandidate(state, interactable(state, a.target)?.pos ?? p.pos); msg = car ? sellToChop(state, p.id, car.id) : null; break; }

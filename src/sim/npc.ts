@@ -1024,7 +1024,7 @@ export function npcJobSearch(state: GameState) {
     }
     if (p.contractId) continue;
     const options = Object.values(state.vacancies)
-      .filter((v) => v.status === 'open' && !canApplyNpc(state, p.id, v.id))
+      .filter((v) => v.status === 'open' && v.businessId !== 'police' && !canApplyNpc(state, p.id, v.id))
       .map((v) => {
         const pos = state.businesses[v.businessId].positions.find((x) => x.id === v.positionId)!;
         const match = Object.keys(pos.requires).length ? 1 : 0;
