@@ -7,6 +7,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import type { City, CityBuilding, CityProp, Ground, Style } from '../sim/world/city';
 import { AVENUES, CITY, ESPLANADE_Z, STREETS } from '../sim/world/city';
 import { tex, signTexture } from './textures';
+import { wettable } from './wet';
 import { boat } from './harbour';
 
 const CHUNK = 260;
@@ -212,7 +213,8 @@ export class CityView {
       car_park: new THREE.MeshStandardMaterial({ map: tex.asphalt(), color: '#9a9a9a', roughness: 0.95 }),
     };
     for (const m of Object.values(groundMats)) if (m.map) { m.map.wrapS = m.map.wrapT = THREE.RepeatWrapping; }
-    const asphalt = new THREE.MeshStandardMaterial({ map: tex.asphalt(), roughness: 0.95 });
+    const asphalt = wettable(new THREE.MeshStandardMaterial({ map: tex.asphalt(), roughness: 0.95 }));
+    wettable(groundMats.paving); wettable(groundMats.concrete);
     asphalt.map!.wrapS = asphalt.map!.wrapT = THREE.RepeatWrapping;
     const pave = groundMats.paving;
 

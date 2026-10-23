@@ -7,6 +7,7 @@ import { LEVEL_DX, LEVEL_H, levelOf } from '../sim/world/levels';
 import { shopLocked } from '../sim/breakins';
 import { flightsAt, MARLOW_LEVELS, type Flight, SHOP_IDS, getWorld, wallsFor, WALL_T, type BuildingDef, type Obstacle, type Rect } from '../sim/world/layout';
 import { VENUE_LOD } from './city';
+import { wettable } from './wet';
 import { fitModel, hasModel, modelInstance } from './models';
 import { FLOORS, WALLPAPERS } from '../sim/world/homes';
 import { tex, TILE, worldUV, planeUV, signTexture, normalOf } from './textures';
@@ -128,9 +129,9 @@ export function buildWorld(scene: THREE.Scene): WorldView {
   grass.position.set(0, -0.02, 1.5);
   grass.receiveShadow = true;
   g.add(grass);
-  const asphalt = texMat(tex.asphalt(), 0.95);
-  const paving = texMat(tex.paving(), 0.9);
-  const lane = texMat(tex.asphalt(), 0.95, '#d6d6d6');
+  const asphalt = wettable(texMat(tex.asphalt(), 0.95));
+  const paving = wettable(texMat(tex.paving(), 0.9));
+  const lane = wettable(texMat(tex.asphalt(), 0.95, '#d6d6d6'));
   const yard = texMat(tex.gravel(), 0.95, '#cfcfcf');
   const kerbM = M('#a8a59e', 0.8);
   for (const r of w.roads) {

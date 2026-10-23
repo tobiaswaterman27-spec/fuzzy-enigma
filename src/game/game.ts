@@ -33,6 +33,7 @@ import { houseOpen } from '../sim/houses';
 import { capability } from '../sim/needs';
 import { daylight, hourOfDay } from '../sim/clock';
 import { buildWorld, setCarLights, type WorldView } from '../render/world';
+import { setWet } from '../render/wet';
 import { Views } from '../render/views';
 import { CityView } from '../render/city';
 import { dogDies } from '../sim/rescue';
@@ -595,6 +596,7 @@ export class Game {
 
   private radioOn = false;
   private ambient!: THREE.AmbientLight;
+  private wetness = 0;
   private boltAt = 0;
   /** stars in the night sky: a shell of points round the camera */
   private stars: THREE.Points | null = (() => {
@@ -713,6 +715,9 @@ export class Game {
     this.world.cull(this.camera.position.x, this.camera.position.z);
     this.city.update(this.camera, this.nightLevel);
     setCarLights(this.nightLevel);
+    // the ground gets wet in the rain and dries slowly after
+    this.wetness += ((raining(s) > 0.1 && !snowing(s) ? Math.min(1, raining(s) * 1.4) : 0) - this.wetness) * Math.min(1, dt * (raining(s) > 0.1 ? 0.25 : 0.03));
+    setWet(this.wetness);
     if (this.stars) { this.stars.position.copy(this.camera.position); (this.stars.material as THREE.PointsMaterial).opacity = this.nightLevel * (1 - raining(s)); this.stars.visible = this.nightLevel > 0.05 && !this.insideId; }
     if (!this.freeCam) this.updateCamera(dt);
     this.updateLighting();
