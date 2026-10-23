@@ -250,11 +250,14 @@ function decide(state: GameState, p: Person) {
     startShopping(state, p, shop, groceryList(state, p, shop, 3 + randInt(state, 0, 3)));
     return;
   }
-  // 4. leisure
+  // 4. going out, but only for a reason: hungry with nothing in, fed up and wanting air, wanting
+  // company, or the Saturday market. They know why they went (it comes up when you talk to them)
   const market = marketOn(state);
-  if (freeFor > 120 && p.needs.energy > 35 && mod > 9 * 60 && mod < 20 * 60 && rand(state) < 0.08 + p.traits.sociability * 0.15 + (market ? 0.12 : 0)) {
+  const hungry = p.needs.satiety < 45 && pantryFood(state, p) < 2, low = p.needs.mood < 50, lonely = p.traits.sociability > 0.55 && p.needs.mood < 70;
+  if (freeFor > 120 && p.needs.energy > 35 && mod > 9 * 60 && mod < 20 * 60 && (market || hungry || low || lonely) && rand(state) < 0.3) {
     // Saturday market: most outings go there to browse and buy something fresh
     if (market && money > 1500 && rand(state) < 0.7) {
+      n.why = 'the Saturday market, to pick up something fresh';
       const st = pick(state, STALLS);
       setGoal(state, p, 'leisure', [
         { kind: 'move', to: { x: st.pos.x + (rand(state) - 0.5) * 1.2, z: st.pos.z - rand(state) * 0.4 }, label: 'the market' },
@@ -266,19 +269,22 @@ function decide(state: GameState, p: Person) {
     }
     const cafe = state.businesses.cafe;
     const cafeOk = isOpen(cafe, now) && staffOnDuty(state, 'cafe').length > 0 && money > 2500 && p.needs.satiety < 60;
-    if (cafeOk) {
+    if (cafeOk && (hungry || rand(state) < 0.3)) {
+      n.why = hungry ? 'getting something to eat, there is nothing in at home' : 'a cup of tea and something nice at the cafe';
       setGoal(state, p, 'leisure', [
         { kind: 'move', to: getWorld().interactables.cafe_counter.pos, label: 'cafe' },
         { kind: 'act', it: 'cafe_counter', type: 'buy_meal' },
         { kind: 'move', to: homeDoor(p.homeId), label: 'home' }, { kind: 'call', fn: 'arriveHome' },
       ]);
     } else {
-      // half the time, call on someone and meet them in the park for a chat
-      if (rand(state) < 0.5 && raining(state) < 0.05 && arrangeChat(state, p)) return;
+      // wanting company: call on someone and meet them in the park for a chat
+      if (lonely && raining(state) < 0.05 && arrangeChat(state, p)) { n.why = 'meeting a friend in the park for a chat'; return; }
+      if (!low) return;
       const bench = pick(state, ['bench_1', 'bench_2']);
       const busy = Object.values(state.people).some((o) => o.action?.target === bench);
       // nobody sits in the park in the rain
       if (!busy && raining(state) < 0.05) {
+        n.why = 'a sit in the park to clear your head';
         setGoal(state, p, 'leisure', [
           { kind: 'move', to: getWorld().interactables[bench].pos, label: 'park' },
           { kind: 'act', it: bench, type: 'sit' },
@@ -290,6 +296,7 @@ function decide(state: GameState, p: Person) {
     return;
   }
   // 5. otherwise be at home
+  n.why = undefined;
   if (!atHome(p) && n.goal !== 'go_home') setGoal(state, p, 'go_home', [{ kind: 'move', to: homeDoor(p.homeId), label: 'home' }, { kind: 'call', fn: 'arriveHome' }]);
 }
 

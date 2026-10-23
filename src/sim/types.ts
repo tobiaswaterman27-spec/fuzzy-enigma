@@ -281,6 +281,8 @@ export interface NpcState {
   homeOutfit: string;
   bedtime: number; // minute of day
   wake: number; // minute of day
+  /** why they are out (for their conversation): 'getting some lunch', 'clearing my head' */
+  why?: string;
   goalSince: number;
   nextDecision: number;
   /** a small plan step machine within the goal */

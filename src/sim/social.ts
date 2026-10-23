@@ -30,17 +30,26 @@ function freeAt(state: GameState, p: Person, minute: number): boolean {
   return m >= 9 * 60 && m <= 20 * 60;
 }
 
-/** invite a friend for a coffee: the next free hour, at least an hour from now */
-export function inviteForCoffee(state: GameState, playerId: Id, friendId: Id, agreed = false): { ok: boolean; msg: string } {
+/** a time that suits for coffee at the cafe: it is open (09:00-16:30, not Wednesdays), they are not at
+ * work, and there is time to get there (an hour from now at the soonest). A time asked for is kept when
+ * it works; otherwise the nearest one that does after it. */
+export function coffeeSlot(state: GameState, f: Person, want?: number): number | null {
+  const ok = (t: number) => freeAt(state, f, t) && minuteOfDay(t) < 16 * 60 + 30 && minuteOfDay(t) >= 9 * 60 && dayIndex(t) % 7 !== 2;
+  let t = Math.ceil(Math.max(state.minute + 60, want ?? 0) / 30) * 30;
+  for (let k = 0; k < 96 && !ok(t); k++) t += 30;
+  return ok(t) ? t : null;
+}
+
+/** invite a friend for a coffee: the next free half hour (or the time asked for, if it suits) */
+export function inviteForCoffee(state: GameState, playerId: Id, friendId: Id, agreed = false, want?: number): { ok: boolean; msg: string } {
   const p = state.people[playerId], f = state.people[friendId];
   if (!f || (!agreed && (p.relations[friendId] ?? 0) < FRIEND_AT)) return { ok: false, msg: 'You need to know them better first.' };
   if (state.meetups?.some((m) => m.status === 'planned')) return { ok: false, msg: 'You already have a meet-up arranged.' };
   if (!state.businesses.cafe) return { ok: false, msg: 'Nowhere to meet.' };
-  let t = Math.ceil((state.minute + 60) / 30) * 30;
-  for (let k = 0; k < 48 && !(freeAt(state, f, t) && minuteOfDay(t) < 16 * 60 + 30 && minuteOfDay(t) >= 9 * 60 && ![2].includes(dayIndex(t) % 7)); k++) t += 30;
-  if (!freeAt(state, f, t)) return { ok: false, msg: `${f.name.split(' ')[0]} is too busy this week.` };
+  const t = coffeeSlot(state, f, want);
+  if (t == null) return { ok: false, msg: `${f.name.split(' ')[0]} is too busy this week.` };
   (state.meetups ??= []).push({ friendId, at: t, status: 'planned' });
-  const day = dayIndex(t) === dayIndex(state.minute) ? 'today' : 'tomorrow';
+  const day = dayIndex(t) === dayIndex(state.minute) ? 'today' : dayIndex(t) === dayIndex(state.minute) + 1 ? 'tomorrow' : ['on Monday', 'on Tuesday', 'on Wednesday', 'on Thursday', 'on Friday', 'on Saturday', 'on Sunday'][dayIndex(t) % 7];
   news(state, 'info', `Coffee with ${f.name.split(' ')[0]}`, `Meet at Tidewater Cafe ${day} at ${fmtClock(t)}. Sit at the corner table by the window.`, true);
   return { ok: true, msg: `${f.name.split(' ')[0]}: "Lovely - see you at the cafe ${day} at ${fmtClock(t)}."` };
 }

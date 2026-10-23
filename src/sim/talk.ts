@@ -17,10 +17,56 @@ import { goTo } from './npc';
 import { fmtClock } from './clock';
 import { getWorld } from './world/layout';
 import { netWorth, wealthTitle } from './wealth';
+import { buildingAt } from './world/layout';
+import { DISTRICT_NAMES, districtAt, streetAt } from './world/city';
+import { planX } from './world/levels';
+import { currentShift, nextShift } from './employment';
+import { coffeeSlot } from './social';
+import { dayIndex, minuteOfDay } from './clock';
+
+const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+/** a moment, said the way someone would: "at 14:30 today", "tomorrow at 09:00", "on Friday at 18:00" */
+function when(state: GameState, t: number): string {
+  const d = dayIndex(t) - dayIndex(state.minute);
+  return d <= 0 ? `at ${fmtClock(t)} today` : d === 1 ? `tomorrow at ${fmtClock(t)}` : `on ${WEEKDAYS[dayIndex(t) % 7]} at ${fmtClock(t)}`;
+}
+
+/** where they are this minute, in words */
+function whereNow(p: Person): string {
+  if (p.where === 'vehicle') return 'driving';
+  if (p.homeId && p.where === p.homeId) return 'at home';
+  if (p.where === 'offsite' || p.away) return 'out of town';
+  const b = buildingAt(p.pos);
+  if (b) return `inside ${b.name}`;
+  const x = planX(p.pos.x);
+  return `outside, on ${streetAt(x, p.pos.z)} in ${DISTRICT_NAMES[districtAt(x, p.pos.z)]}`;
+}
+
+/** their day: work now or later, and when they turn in */
+function dayOf(state: GameState, p: Person): string {
+  const bits: string[] = [];
+  const c = p.contractId ? state.contracts[p.contractId] : null;
+  const b = c ? state.businesses[c.businessId] : null;
+  if (c && b) {
+    const now = currentShift(c, state.minute, 0);
+    const next = nextShift(c, state.minute);
+    if (now && now.start <= state.minute) bits.push(`you are on shift at ${b.name} until ${fmtClock(now.end)}`);
+    else if (next) bits.push(`your next shift at ${b.name} is ${when(state, next.start)} until ${fmtClock(next.end)}`);
+  }
+  const n = p.npc;
+  if (n) {
+    const bed = minuteOfDay(state.minute) > n.bedtime - 90 && minuteOfDay(state.minute) < n.bedtime;
+    bits.push(bed ? `it is nearly your bedtime (${fmtClock(n.bedtime)})` : `you usually go to bed about ${fmtClock(n.bedtime)}`);
+    const go = n.plan.find((s) => s.kind === 'move') as { label?: string } | undefined;
+    if (go?.label) bits.push(`you are on your way to ${go.label}${n.why ? ` (${n.why})` : ''}`);
+    else if (n.why) bits.push(`you came out for this: ${n.why}`);
+  }
+  return bits.join('; ');
+}
 
 export type Emotion = 'neutral' | 'happy' | 'laugh' | 'sad' | 'cry' | 'angry' | 'scared' | 'confused' | 'bored' | 'flirty' | 'shocked';
 export type DecisionType = 'date' | 'marry' | 'break_up' | 'lend' | 'gift' | 'meet' | 'move_in' | 'follow' | 'number' | 'let_in';
-export interface Decision { type: DecisionType; accept: boolean; amount?: number }
+export interface Decision { type: DecisionType; accept: boolean; amount?: number; /** for meet: the time agreed */ at?: number }
 export interface Turn { reply: string; emotion: Emotion; attitude: number; decision: Decision | null; action: 'none' | 'leave' | 'attack' | 'call_police' }
 
 /** the clip a feeling is acted out with, and for how many real seconds */
@@ -91,6 +137,8 @@ export function characterBrief(state: GameState, id: Id, remote = false, situati
     `Job: ${q.job}. Home: ${q.home}.${p.dog ? ` You have a dog called ${p.dog.name}.` : ''}${(p.fitness ?? 0) > 70 ? ' You keep fit and go jogging.' : ''} Money: ${q.money} (about ${fmtMoney(bal)} in the bank, which you would not tell a stranger). Family: ${q.family}. Health: ${q.health}.`,
     `Personality (0 to 1): sociability ${t.sociability.toFixed(2)}, conscientiousness ${t.conscientiousness.toFixed(2)}, ambition ${t.ambition.toFixed(2)}, patience ${t.patience.toFixed(2)}, thriftiness ${t.thrift.toFixed(2)}. In words: ${q.personality.join('; ')}.`,
     `Right now: ${q.mood}; ${situation || q.doing}. It is ${q.time}, ${q.weather}.${remote && !situation ? ' This conversation is by text message on your phone.' : ''}`,
+    `Where you are: ${whereNow(p)}. Your day: ${dayOf(state, p) || 'nothing planned'}.`,
+    (() => { const t = coffeeSlot(state, p); return t != null ? `If a coffee at Tidewater Cafe comes up: you are free ${when(state, t)} at the earliest (it opens 09:00-16:30, shut Wednesdays; you will not go while you are at work). Only ever suggest that time or later, never earlier, and say the day.` : 'You have no free time for a coffee this week.'; })(),
     q.recent.length ? `Recent things in your life: ${q.recent.join('; ')}.` : '',
     town.length ? `Talk of the town: ${town.join('; ')}.` : '',
     `The person talking to you: ${you.name.split(' ')[0]}${(p.knowsYou?.talks ?? 0) > 0 ? ` (${you.name})` : ''}.`,
@@ -98,8 +146,9 @@ export function characterBrief(state: GameState, id: Id, remote = false, situati
     ...appearanceOf(state, p, remote),
     'How to behave: talk like a real person from round here, in one to three short spoken sentences (British English, contractions, no lists, no stage directions). React to exactly what they say and how they say it. If it is nonsense or keyboard mashing, be confused, ask what they mean, and get annoyed or walk off if it keeps happening. If they repeat themselves, notice. If they shout or are rude, react as your patience allows. Strangers get polite but guarded answers; you open up as you get to know someone. You can refuse anything, change the subject, or end the conversation.',
     'Big questions are YOUR decision, made from your personality, how well and how long you have known them, what you have seen of them, and your own situation: going out together (date), marriage (marry; almost never with someone you have not been seeing for a while), breaking up (break_up), lending them money (lend, amount in pounds: only what you could spare and only if you trust them), accepting money they offer (gift, amount in pounds), meeting for coffee at Tidewater Cafe (meet), moving in together (move_in, only if together), coming along with them now for a while (follow), giving them your phone number (number), letting them into your home when they are at your door (let_in: think hard about who they are and what they want; strangers, and anyone at night, usually not). Say yes or no in your reply and record it in "decision". If they did not ask anything like that, decision is null.',
+    (p.knowsYou?.number ? 'You have already swapped phone numbers with them.' : 'You have not swapped phone numbers. If you have got on well a couple of times you might offer yours or ask for theirs (that is decision "number", accept true); with a stranger, only if there is a reason.'),
     'Your "action": "leave" if you walk away now, "attack" if you are so angry or threatened you hit them, "call_police" if you call the police on them, otherwise "none".',
-    'Reply ONLY as JSON: {"reply": "<what you say>", "emotion": "neutral|happy|laugh|sad|cry|angry|scared|confused|bored|flirty|shocked", "attitude": <integer -3..3, how this exchange changed how you feel about them>, "decision": null or {"type": "date|marry|break_up|lend|gift|meet|move_in|follow|number|let_in", "accept": true|false, "amount": <pounds, for lend/gift>}, "action": "none|leave|attack|call_police"}',
+    'Reply ONLY as JSON: {"reply": "<what you say>", "emotion": "neutral|happy|laugh|sad|cry|angry|scared|confused|bored|flirty|shocked", "attitude": <integer -3..3, how this exchange changed how you feel about them>, "decision": null or {"type": "date|marry|break_up|lend|gift|meet|move_in|follow|number|let_in", "accept": true|false, "amount": <pounds, for lend/gift>, "when": "<for meet: the day and time you agreed, e.g. tomorrow 14:00>"}, "action": "none|leave|attack|call_police"}',
   ].filter(Boolean).join('\n');
 }
 
@@ -125,12 +174,29 @@ export function speechNotes(text: string, previous: string[], msSinceLast: numbe
   return out;
 }
 
+/** "HH:MM" or "tomorrow HH:MM" or "Friday 14:00" -> minutes from now's day start (relative, resolved by the caller via nowRef) */
+let nowRef = 0;
+function parseWhen(v: unknown): number | undefined {
+  if (typeof v !== 'string') return undefined;
+  const m = v.match(/(\d{1,2})[:.](\d{2})/) ?? v.match(/(\d{1,2})\s*(am|pm)/i);
+  if (!m) return undefined;
+  let h = Number(m[1]); const min = /am|pm/i.test(m[2] ?? '') ? 0 : Number(m[2]);
+  if (/pm/i.test(v) && h < 12) h += 12;
+  const today = Math.floor(nowRef / 1440) * 1440;
+  let day = today;
+  if (/tomorrow/i.test(v)) day += 1440;
+  else { const i = WEEKDAYS.findIndex((w) => v.toLowerCase().includes(w.toLowerCase())); if (i >= 0) { const cur = dayIndex(nowRef) % 7; day += (((i - cur) + 7) % 7 || 7) * 1440; } }
+  const t = day + h * 60 + min;
+  return t > nowRef ? t : t + 1440;
+}
+
 /** parse the model's JSON defensively */
-export function parseTurn(raw: unknown): Turn {
+export function parseTurn(raw: unknown, now = nowRef): Turn {
+  nowRef = now;
   const o = (raw ?? {}) as Record<string, any>;
   const emotions: Emotion[] = ['neutral', 'happy', 'laugh', 'sad', 'cry', 'angry', 'scared', 'confused', 'bored', 'flirty', 'shocked'];
   const types: DecisionType[] = ['date', 'marry', 'break_up', 'lend', 'gift', 'meet', 'move_in', 'follow', 'number', 'let_in'];
-  const d = o.decision && types.includes(o.decision.type) ? { type: o.decision.type as DecisionType, accept: !!o.decision.accept, amount: Math.max(0, Math.round(Number(o.decision.amount) || 0)) } : null;
+  const d = o.decision && types.includes(o.decision.type) ? { type: o.decision.type as DecisionType, accept: !!o.decision.accept, amount: Math.max(0, Math.round(Number(o.decision.amount) || 0)), at: parseWhen(o.decision.when) } : null;
   return {
     reply: String(o.reply ?? '').slice(0, 500),
     emotion: emotions.includes(o.emotion) ? o.emotion : 'neutral',
@@ -208,7 +274,7 @@ export function applyTurn(state: GameState, id: Id, turn: Turn, remote = false):
         break;
       }
       case 'meet': {
-        const r = inviteForCoffee(state, you.id, p.id, true);
+        const r = inviteForCoffee(state, you.id, p.id, true, d.at);
         fact = r.ok ? (state.meetups?.slice(-1)[0] ? `Coffee at Tidewater Cafe at ${fmtClock(state.meetups!.slice(-1)[0].at)}.` : null) : r.msg;
         break;
       }

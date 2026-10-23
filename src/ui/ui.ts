@@ -503,7 +503,7 @@ export class UI {
       const job = c ? `${c.title} at ${s.businesses[c.businessId]?.name ?? ''}` : o.npc?.retired ? 'Retired' : 'Looking for work';
       const seen = p.lastSeen?.[id];
       h += `<div class="card"><b>${esc(o.name)}</b> <span class="tag">${relationLabel(v)}</span><br><span class="muted">${esc(job)}${seen ? ` · last seen ${fmtDate(seen).split(',')[1]} ${fmtClock(seen)}` : ''}</span>
-        <div class="bar"><i style="width:${Math.round(v)}%"></i></div><div class="row">${this.s.people[id]?.knowsYou?.number ? `<button data-msg="${id}">Message</button>` : ''}${v >= FRIEND_AT && !m ? `<button data-invite="${id}">Invite for a coffee</button>` : ''}</div></div>`;
+        <div class="bar"><i style="width:${Math.round(v)}%"></i></div><div class="row">${this.s.people[id]?.knowsYou?.number ? `<button data-msg="${id}">Message</button><button data-call="${id}">Call</button>` : ''}${v >= FRIEND_AT && !m ? `<button data-invite="${id}">Invite for a coffee</button>` : ''}</div></div>`;
     }
     return h;
   }
@@ -727,6 +727,7 @@ export class UI {
     if (d.buyhome) { this.toast(buyHomeProperty(s, this.p.id).msg); this.lastBody = ''; this.renderPhone(); return; }
     if (d.sellhome) { if (btn.dataset.confirm) { this.toast(sellHome(s, this.p.id).msg); this.lastBody = ''; this.renderPhone(); } else { btn.dataset.confirm = '1'; btn.textContent = 'Click again to confirm the sale'; } return; }
     if (d.msg) { this.closePhone(); this.openChat(d.msg, true); return; }
+    if (d.call) { this.closePhone(); this.ring(d.call); return; }
     if (d.cab) {
       if (d.cab === 'on') this.toast(startTaxi(s, this.p.id).msg);
       else if (d.cab === 'off') this.toast(stopTaxi(s));
@@ -777,9 +778,34 @@ export class UI {
   private openers = new Map<string, string>();
 
   /** talk to someone, face to face or (remote) by text on your phone. Needs the player's OpenAI key */
-  openChat(npcId: string, remote = false, situation = '') {
+  /** ring someone: asleep, they do not pick up; at work, they keep it short; otherwise a proper chat */
+  ring(npcId: string) {
+    const s = this.s, o = s.people[npcId];
+    if (!o) return;
+    const first = o.name.split(' ')[0];
+    this.game.audio.phone(true);
+    if (o.dead || o.left) { this.toast('The number is not recognised.'); return; }
+    if (o.sleeping || o.away) { this.toast(`It rings and rings. ${first} must be ${o.sleeping ? 'asleep' : 'busy'}.`); return; }
+    const c = o.contractId ? s.contracts[o.contractId] : null;
+    const working = o.npc?.goal === 'work' && c;
+    const situation = `${this.p.name.split(' ')[0]} has just phoned you and you answered${working ? `. You are at work at ${s.businesses[c!.businessId]?.name}, so you can only talk for a moment` : ''}. It is a phone call: you can hear each other, you are not texting. Say hello the way you answer the phone`;
+    this.openChat(npcId, true, situation, true);
+  }
+  /** a friend rings you: answer or not */
+  incomingCall(npcId: string) {
+    const o = this.s.people[npcId];
+    if (!o || this.phoneOpen || !$('#dialog').hidden) return;
+    this.game.audio.phone(true); window.setTimeout(() => this.game.audio.phone(true), 450);
+    this.dialog(`<h3>📞 ${esc(o.name)} is calling</h3><div class="row"><button class="primary" data-answer="1">Answer</button><button data-answer="0">Decline</button></div>`, (b) => {
+      this.closeDialog();
+      if (b.dataset.answer === '1') this.openChat(npcId, true, `You rang ${this.p.name.split(' ')[0]} and they have just picked up. It is a phone call: you can hear each other. Say why you are ringing: something going on in your life, to ask how they are, or to meet up`, true);
+      else { const r = this.s.people[npcId]?.relations; if (r) r[this.p.id] = Math.max(0, (r[this.p.id] ?? 0) - 0.5); }
+    });
+  }
+  openChat(npcId: string, remote = false, situation = '', call = false) {
     const s = this.s, me = this.p, o = s.people[npcId];
     if (!o) return;
+    if (call) me.gesture = { clip: 'phone', until: s.minute + 600 };
     if (!hasAi()) { this.toast('To talk to people, add your OpenAI API key (Menu > AI conversations).'); return; }
     const hold = () => {
       if (remote) return;
@@ -799,12 +825,14 @@ export class UI {
     const say = (who: 'you' | 'them' | 'fact', text: string) => {
       log.push({ who, text });
       if (!remote && who === 'them') this.game.say(npcId, text, Math.min(9, 3 + text.length / 18));
+      if (call && who === 'them') voice.say(npcId, text, o.appearance?.frame === 'f', 2, this.game.audio.muted);
       if (!remote && who === 'you') { this.game.say(me.id, text, Math.min(7, 2 + text.length / 20)); gesture(s, me, 'talk', 2); }
     };
     const finish = () => {
       if (ended) return;
       ended = true;
       this.closeDialog();
+      if (call) { if (me.gesture?.clip === 'phone') me.gesture = null; this.game.audio.phone(false); }
       $('#dialog').classList.remove('chatmode');
       if (!remote) this.game.frameTalk(null);
       if (o.npc) o.npc.plan = o.npc.plan.filter((x) => x.kind !== 'wait');
@@ -821,7 +849,7 @@ export class UI {
       busy = false;
       if (ended) return;
       if ('error' in r) { say('fact', r.error); this.toast(r.error); render(); return; }
-      const turn = parseTurn(r.data);
+      const turn = parseTurn(r.data, this.s.minute);
       history.push({ role: 'assistant', content: JSON.stringify(r.data) });
       exchanges++;
       hold();
@@ -883,9 +911,11 @@ export class UI {
     const last = (s.inbox ?? []).filter((x) => x.from === o.id).pop();
     const close = (o.relations[me.id] ?? 0) / 100 + (me.partnerId === o.id ? 0.5 : 0);
     if (Math.random() > 0.25 + close * 0.5 || (last && s.minute - last.at < 180)) return;
+    // now and then a close friend rings instead of texting
+    if (close > 0.45 && Math.random() < 0.3 && !me.where.startsWith('vehicle')) { this.incomingCall(o.id); return; }
     void aiJson([{ role: 'system', content: characterBrief(s, o.id, true) }, { role: 'user', content: `[You decide to text ${me.name.split(' ')[0]} out of the blue. Write the text message you send, in character: maybe about something going on in your life, some gossip, asking how they are or to meet up, or about something that happened between you. Keep it short, like a real text.]` }], 120).then((r) => {
       if (!('data' in r)) return;
-      const t = parseTurn(r.data);
+      const t = parseTurn(r.data, this.s.minute);
       if (!t.reply) return;
       (s.inbox ??= []).push({ from: o.id, text: t.reply, at: s.minute, read: false });
       if (s.inbox.length > 40) s.inbox.splice(0, s.inbox.length - 40);
@@ -939,7 +969,7 @@ export class UI {
     const id = c.answerer, me = this.p.name.split(' ')[0];
     void aiJson([{ role: 'system', content: characterBrief(this.s, id) }, { role: 'user', content: `[${me} knocked on your front door and you have just opened it. ${c.letIn ? 'You are happy to let them in.' : 'You are NOT letting them in, and are about to close the door.'} Say what you say at the door.]` }]).then((r) => {
       if (!('data' in r)) return;
-      const t = parseTurn(r.data);
+      const t = parseTurn(r.data, this.s.minute);
       if (t.reply) this.game.say(id, t.reply, 5);
     });
   }
@@ -952,7 +982,7 @@ export class UI {
     gesture(s, o, 'wave', 2.2);
     const r = await aiJson([{ role: 'system', content: characterBrief(s, npcId) }, { role: 'user', content: `[You have stopped ${this.p.name.split(' ')[0]} in the street because you want to talk to them. Say your opening line.]` }]);
     if (!('data' in r)) return;
-    const t = parseTurn(r.data);
+    const t = parseTurn(r.data, this.s.minute);
     if (!t.reply) return;
     this.openers.set(npcId, t.reply);
     this.game.say(npcId, t.reply, 6);
