@@ -13,7 +13,7 @@ import type { GameState } from '../sim/types';
 import { step } from '../sim/sim';
 import { cancelAction, focusInteractable, optionsFor, startAction, enforceLocationRules, type ActionOption } from '../sim/actions';
 import { resolveCircle } from '../sim/world/nav';
-import { buildingAt, DWELLING_IDS, dwellingDoor, FLIGHTS, getWorld, publicDoors, setHomeDesign, shellAt, SHOP_IDS } from '../sim/world/layout';
+import { buildingAt, collidersIn, DWELLING_IDS, dwellingDoor, FLIGHTS, getWorld, publicDoors, setHomeDesign, shellAt, SHOP_IDS } from '../sim/world/layout';
 import { shopLocked } from '../sim/breakins';
 import { onPcsoShift } from '../sim/station';
 import { LEVEL_DX, levelOf, planX, sceneOf } from '../sim/world/levels';
@@ -22,6 +22,7 @@ import { capability } from '../sim/needs';
 import { daylight, hourOfDay } from '../sim/clock';
 import { buildWorld, type WorldView } from '../render/world';
 import { Views } from '../render/views';
+import { CityView } from '../render/city';
 import { dogDies } from '../sim/rescue';
 import { Traffic } from '../render/traffic';
 import { PoliceCar } from '../render/police';
@@ -79,6 +80,14 @@ export class Game {
   football: Football;
   fireworks: Fireworks;
   private cabMarker: THREE.Mesh | null = null;
+  city!: CityView;
+  private nightLevel = 0;
+  private lampCache: { at: { x: number; z: number }; list: { x: number; z: number }[] } | null = null;
+  /** the city's street lamps within reach of the light pool (refreshed as you move) */
+  private cityLampsNear(p: { x: number; z: number }) {
+    if (!this.lampCache || Math.hypot(this.lampCache.at.x - p.x, this.lampCache.at.z - p.z) > 20) this.lampCache = { at: { x: p.x, z: p.z }, list: getWorld().city.props.filter((q) => q.kind === 'lamp' && Math.abs(q.x - p.x) < 80 && Math.abs(q.z - p.z) < 80) };
+    return this.lampCache.list;
+  }
   private beatMarkers: THREE.Mesh[] = [];
   private seasonKey = '';
   private seasonTick = 0;
@@ -180,7 +189,7 @@ export class Game {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     // a near plane of 0.2 m doubles depth precision over 0.1 (less flicker between close surfaces)
-    this.camera = new THREE.PerspectiveCamera(55, 1, 0.2, 500);
+    this.camera = new THREE.PerspectiveCamera(55, 1, 0.2, 2200);
     this.hemi = new THREE.HemisphereLight('#cfe6ff', '#5d6b4a', 0.9);
     this.scene.add(this.hemi);
     this.scene.add(new THREE.AmbientLight('#fff6ea', 0.35));
@@ -192,10 +201,10 @@ export class Game {
     this.sun.shadow.bias = -0.0005;
     this.sun.shadow.normalBias = 0.03; // removes saw-tooth acne on surfaces at grazing angles
     this.scene.add(this.sun, this.sun.target);
-    this.scene.fog = new THREE.Fog('#bcd4e6', 110, 380);
+    this.scene.fog = new THREE.Fog('#bcd4e6', 200, 950);
     // physically based sky, image-based lighting for reflections, and a post-processing chain
     this.sky = new Sky();
-    this.sky.scale.setScalar(450);
+    this.sky.scale.setScalar(1000);
     const su = this.sky.material.uniforms;
     su.turbidity.value = 4; su.rayleigh.value = 1.2; su.mieCoefficient.value = 0.004; su.mieDirectionalG.value = 0.8;
     this.scene.add(this.sky);
@@ -205,6 +214,7 @@ export class Game {
     this.quality = (() => { try { return (localStorage.getItem('bigshot.gfx') as 'high' | 'medium' | 'low') ?? 'high'; } catch { return 'high'; } })();
     this.setupComposer();
     this.world = buildWorld(this.scene);
+    this.city = new CityView(this.scene, getWorld().city);
     this.views = new Views(this.scene);
     this.traffic = new Traffic(this.scene);
     this.police = new PoliceCar(this.scene);
@@ -475,7 +485,7 @@ export class Game {
     if (s.wanted || this.police.active) {
       // the patrol car steers round everything, the car you are driving included
       const mine = this.drivingVan();
-      const cols = this.collidersWithCars(undefined, true);
+      const cols = this.collidersWithCars(undefined, true, this.player.pos, 60);
       if (mine) cols.push({ x0: mine.pos.x - 1.6, z0: mine.pos.z - 1.6, x1: mine.pos.x + 1.6, z1: mine.pos.z + 1.6 });
       this.police.update(s, this.paused ? 0 : dt, mine ? this.vanSpeed : Math.hypot(this.vel.x, this.vel.z), cols);
     }
@@ -506,6 +516,7 @@ export class Game {
     this.audio.update(s, this.paused ? 0 : dt, Math.hypot(this.vel.x, this.vel.z), this.drivingVan() ? this.vanSpeed : null);
     this.watchFrameRate(dt);
     this.world.update(s, dt);
+    this.city.update(this.camera, this.nightLevel);
     if (!this.freeCam) this.updateCamera(dt);
     this.updateLighting();
     if (this.composer && !this.freeCam) this.composer.render(); else this.renderer.render(this.scene, this.camera);
@@ -561,9 +572,10 @@ export class Game {
   }
 
   /** the static colliders plus any privately owned parked cars (they move, so they are not in the layout) */
-  private collidersWithCars(except?: string, noPolice = false) {
+  private collidersWithCars(except?: string, noPolice = false, at: { x: number; z: number } = this.player.pos, reach = 14) {
     const taken = new Set((this.state.takenParked ?? []).map((i) => getWorld().obstacles.filter((o) => o.kind === 'car')[i]?.rect));
-    const base = taken.size ? getWorld().colliders.filter((r) => !taken.has(r)) : getWorld().colliders;
+    const near = collidersIn(at.x - reach, at.z - reach, at.x + reach, at.z + reach);
+    const base = taken.size ? near.filter((r) => !taken.has(r)) : near;
     // parked private cars, the delivery van and the forklift when nobody is driving them, and traffic
     const cars = Object.values(this.state.vehicles).filter((v) => v.id !== except && (v.state === 'parked' || v.state === 'loaded' || (v.driverId && v.driverId !== this.player.id)));
     const pc = noPolice ? null : this.police?.rect();
@@ -609,7 +621,7 @@ export class Game {
     v.heading += steer * Math.sign(this.vanSpeed) * Math.min(Math.abs(this.vanSpeed), 3.5) * dt * 0.22;
     const nx = v.pos.x + Math.sin(v.heading) * this.vanSpeed * dt, nz = v.pos.z + Math.cos(v.heading) * this.vanSpeed * dt;
     // a boat keeps to the water: the quay wall on one side, open sea (within reason) on the other
-    const res = boat ? { x: Math.max(WATER.x0, Math.min(WATER.x1, nx)), z: Math.max(WATER.z0, Math.min(WATER.z1, nz)) } : resolveCircle({ x: nx, z: nz }, fork ? 0.8 : 1.15, this.collidersWithCars(v.id));
+    const res = boat ? { x: Math.max(WATER.x0, Math.min(WATER.x1, nx)), z: Math.max(WATER.z0, Math.min(WATER.z1, nz)) } : resolveCircle({ x: nx, z: nz }, fork ? 0.8 : 1.15, this.collidersWithCars(v.id, false, { x: nx, z: nz }, 16));
     if (boat) for (const [mx, mz] of MOORED) {
       const dx = res.x - mx, dz = res.z - mz, d = Math.hypot(dx, dz);
       if (d < 3.4 && d > 1e-3) { res.x = mx + (dx / d) * 3.4; res.z = mz + (dz / d) * 3.4; }
@@ -844,8 +856,8 @@ export class Game {
     const horizon = d > 0.5 ? dusk.clone().lerp(day, (d - 0.5) * 2) : night.clone().lerp(dusk, d * 2);
     if (r > 0) horizon.lerp(new THREE.Color(d > 0.3 ? '#8f979e' : '#1a1f26'), 0.75 * r);
     (this.scene.fog as THREE.Fog).color = horizon;
-    (this.scene.fog as THREE.Fog).near = 110 - 80 * r;
-    (this.scene.fog as THREE.Fog).far = 380 - 230 * r;
+    (this.scene.fog as THREE.Fog).near = 200 - 140 * r;
+    (this.scene.fog as THREE.Fog).far = 950 - 650 * r;
     const su = this.sky.material.uniforms;
     su.turbidity.value = 4 + 14 * r; su.rayleigh.value = 1.2 + 1.5 * r;
     // an overcast sky replaces the clear one as the rain sets in
@@ -855,6 +867,7 @@ export class Game {
     this.scene.environmentIntensity = (this.insideId ? 0.25 : 0.15 + 0.55 * d) * (1 - 0.45 * r);
     this.hemi.intensity = (0.25 + 0.75 * d) * (this.insideId ? 0.45 : 1) * (1 - 0.25 * r);
     const lit = d < 0.45;
+    this.nightLevel = Math.max(0, Math.min(1, (0.5 - d) / 0.35));
     this.world.lampBulbs.emissiveIntensity = lit ? 1.6 : 0;
     // buildings in a power cut stay dark
     const dark = new Set(Object.values(s.businesses).filter((b) => inOutage(b, s.minute)).map((b) => b.locationId));
@@ -865,6 +878,7 @@ export class Game {
     const cands = [
       ...this.world.lightSpots.filter((l) => !dark.has(l.bid)).map((l) => ({ x: l.x, y: l.y, z: l.z, i: l.intensity, d: l.distance, c: '#fff1dc', score: near(l.x, l.z) - (l.bid === inside ? 1000 : 0) })),
       ...(lit ? getWorld().lamps.map((l) => ({ x: l.x, y: 4.6, z: l.z, i: 18, d: 18, c: '#ffcf80', score: near(l.x, l.z) + (inside ? 30 : 0) })) : []),
+      ...(lit ? this.cityLampsNear(ps).map((l) => ({ x: l.x, y: 4.6, z: l.z, i: 18, d: 18, c: '#ffcf80', score: near(l.x, l.z) + (inside ? 30 : 0) })) : []),
     ].sort((a, b) => a.score - b.score);
     this.world.lampLights.forEach((l, i) => {
       const c = cands[i];

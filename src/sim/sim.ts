@@ -3,6 +3,7 @@
 // systems run once per whole game minute so nothing is skipped when the
 // clock is accelerated (sleeping, fast-forward).
 import { stationTick } from './station';
+import { crowdTick } from './crowd';
 import { lifeDaily } from './life';
 import { healthDaily, healthMinute, healthSubstep } from './health';
 import { doorTick, housesTick } from './houses';
@@ -84,6 +85,7 @@ function substep(state: GameState, dt: number, ev: StepEvents) {
   taxiTick(state);
   housesTick(state);
   stationTick(state);
+  crowdTick(state);
   if (!state.rescue) rescueDogs(state);
   doorTick(state);
   logisticsTick(state, dt);

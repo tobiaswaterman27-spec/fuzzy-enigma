@@ -1,5 +1,7 @@
 // UIController: every panel reads authoritative state and requests changes
 // through simulation functions; it never computes money or outcomes itself.
+import { AVENUE_NAMES, CITY, DISTRICT_NAMES, districtAt, STREET_NAMES, streetAt } from '../sim/world/city';
+import { planX } from '../sim/world/levels';
 import type { Game } from '../game/game';
 import type { Business, GameState, Person } from '../sim/types';
 import { fmtClock, fmtDate, fmtDuration, dayIndex } from '../sim/clock';
@@ -413,19 +415,36 @@ export class UI {
     return this.s.news.slice(0, 60).map((n) => `<div class="news ${n.kind}"><span class="muted">${fmtDate(n.time).split(',')[1]} ${fmtClock(n.time)}${n.personal ? ' · you' : ''}</span><b>${esc(n.title)}</b>${n.body ? `<p>${esc(n.body)}</p>` : ''}</div>`).join('');
   }
 
+  private mapZoom = true;
   tab_map(): string {
     const w = getWorld();
     const p = this.p;
-    const sx = (x: number) => ((x - w.bounds.x0) / (w.bounds.x1 - w.bounds.x0)) * 300;
-    const sz = (z: number) => ((z - w.bounds.z0) / (w.bounds.z1 - w.bounds.z0)) * 193;
-    const rect = (r: { x0: number; z0: number; x1: number; z1: number }) => `x="${sx(r.x0)}" y="${sz(r.z0)}" width="${sx(r.x1) - sx(r.x0)}" height="${sz(r.z1) - sz(r.z0)}"`;
+    const c = w.city;
+    // drawn in metres: the whole city, or the streets round you
+    const px = planX(p.pos.x), pz = p.pos.z;
+    const R = 170;
+    const vb = this.mapZoom ? `${px - R} ${pz - R * 0.64} ${R * 2} ${R * 1.28}` : `${CITY.x0} ${CITY.z0} ${CITY.x1 - CITY.x0} ${CITY.z1 + 60 - CITY.z0}`;
+    const rect = (r: { x0: number; z0: number; x1: number; z1: number }) => `x="${r.x0}" y="${r.z0}" width="${r.x1 - r.x0}" height="${r.z1 - r.z0}"`;
     const cat = { functional: '#2e8b57', simplified: '#c48a2c', decorative: '#8c949c' };
-    let svg = `<svg viewBox="0 0 300 193" class="map">`;
-    for (const r of w.roads) svg += `<rect ${rect(r.rect)} fill="${r.kind === 'road' || r.kind === 'lane' ? '#4a4f55' : r.kind === 'grass' ? '#7fae63' : '#b9b6ae'}"/>`;
-    for (const b of w.buildings) svg += `<rect ${rect(b.rect)} fill="${cat[b.category]}" stroke="#222" stroke-width=".3"><title>${b.name}</title></rect>`;
-    svg += `<circle cx="${sx(p.pos.x)}" cy="${sz(p.pos.z)}" r="2.6" fill="#ff3b30" stroke="#fff" stroke-width=".8"/></svg>`;
-    const legend = w.buildings.filter((b) => b.category !== 'decorative' && !b.id.startsWith('house_')).map((b) => `<div class="line"><span><i class="sw" style="background:${cat[b.category]}"></i>${esc(b.name)}</span><span class="muted">${esc(b.role)}</span></div>`).join('');
-    return `${svg}<p class="muted"><i class="sw" style="background:#2e8b57"></i>usable &nbsp; <i class="sw" style="background:#c48a2c"></i>simulated, limited access &nbsp; <i class="sw" style="background:#8c949c"></i>background only</p>${legend}`;
+    const GROUND: Record<string, string> = { paving: '#d6d2c8', grass: '#9cc283', garden: '#a9cf8f', concrete: '#c4c4bf', sand: '#eadcb2', water: '#7fb2c4', gravel: '#ddd4c2', pitch: '#6fae5f', car_park: '#a7a7a7' };
+    let svg = `<svg viewBox="${vb}" class="map" preserveAspectRatio="xMidYMid meet"><rect x="${CITY.x0}" y="${CITY.z0}" width="${CITY.x1 - CITY.x0}" height="${CITY.z1 - CITY.z0}" fill="#b7c9a2"/><rect x="${CITY.x0 - 50}" y="${CITY.z1}" width="${CITY.x1 - CITY.x0 + 100}" height="200" fill="#7fb2c4"/>`;
+    for (const g of c.ground) svg += `<rect ${rect(g.rect)} fill="${GROUND[g.kind]}"/>`;
+    for (const r of [...c.roads, ...w.roads]) svg += `<rect ${rect(r.rect)} fill="${r.kind === 'road' || r.kind === 'lane' ? '#55595f' : r.kind === 'grass' ? '#8fbf73' : '#c9c5bc'}"/>`;
+    for (const b of c.buildings) svg += `<rect ${rect(b.rect)} fill="${b.name ? '#6d7f99' : '#9aa0a6'}" stroke="#555" stroke-width="${this.mapZoom ? 0.3 : 0}">${b.name ? `<title>${esc(b.name)}</title>` : ''}</rect>`;
+    for (const b of w.buildings) if (!b.unit && !b.level) svg += `<rect ${rect(b.rect)} fill="${cat[b.category]}" stroke="#222" stroke-width=".4"><title>${esc(b.name)}</title></rect>`;
+    // names: landmarks and districts (the whole city), streets (close up)
+    const fs = this.mapZoom ? 6 : 22;
+    if (!this.mapZoom) for (const [d, x, z] of [['harbourside', 0, 40], ['centre', 0, -330], ['midtown', 320, -200], ['oldtown', -500, -200], ['industrial', 520, -200], ['docks', 500, 45], ['beach', -520, 45], ['uptown', -560, -520], ['suburbs', 300, -900], ['park', 0, -650]] as const) svg += `<text x="${x}" y="${z}" font-size="${fs * 1.4}" text-anchor="middle" fill="#1d2630" opacity=".75" font-weight="700">${DISTRICT_NAMES[d]}</text>`;
+    for (const b of c.buildings) if (b.name) svg += `<text x="${(b.rect.x0 + b.rect.x1) / 2}" y="${b.rect.z1 + fs}" font-size="${fs}" text-anchor="middle" fill="#13314f">${esc(b.name)}</text>`;
+    if (this.mapZoom) {
+      for (const [z, n] of Object.entries(STREET_NAMES)) if (Math.abs(Number(z) - pz) < R) svg += `<text x="${px - R * 0.6}" y="${Number(z) + 1.6}" font-size="4" fill="#fff">${esc(n)}</text>`;
+      for (const [x, n] of Object.entries(AVENUE_NAMES)) if (Math.abs(Number(x) - px) < R) svg += `<text x="${Number(x) + 1.4}" y="${pz - R * 0.4}" font-size="4" fill="#fff" transform="rotate(90 ${Number(x) + 1.4} ${pz - R * 0.4})">${esc(n)}</text>`;
+      for (const b of w.buildings) if (!b.unit && !b.level && b.category === 'functional') svg += `<text x="${(b.rect.x0 + b.rect.x1) / 2}" y="${(b.rect.z0 + b.rect.z1) / 2}" font-size="3.6" text-anchor="middle" fill="#fff">${esc(b.name)}</text>`;
+    }
+    svg += `<circle cx="${px}" cy="${pz}" r="${this.mapZoom ? 2.6 : 12}" fill="#ff3b30" stroke="#fff" stroke-width="${this.mapZoom ? 0.8 : 3}"/></svg>`;
+    const where = `${DISTRICT_NAMES[districtAt(px, pz)]} · ${streetAt(px, pz)}`;
+    const legend = w.buildings.filter((b) => b.category !== 'decorative' && !b.id.startsWith('house_') && !b.unit && !b.level).map((b) => `<div class="line"><span><i class="sw" style="background:${cat[b.category]}"></i>${esc(b.name)}</span><span class="muted">${esc(b.role)}</span></div>`).join('');
+    return `<div class="row"><b>${esc(where)}</b><button data-mapzoom="1">${this.mapZoom ? 'Whole city' : 'Close up'}</button></div>${svg}<p class="muted"><i class="sw" style="background:#2e8b57"></i>usable &nbsp; <i class="sw" style="background:#c48a2c"></i>simulated, limited access &nbsp; <i class="sw" style="background:#6d7f99"></i>landmark</p>${legend}`;
   }
 
   tab_shop(): string {
@@ -595,6 +614,7 @@ export class UI {
       else if (d.cab === 'talk' && s.taxi?.job) { this.closePhone(); this.openChat(s.taxi.job.passenger, true, `sitting in the back of ${this.p.name.split(' ')[0]}'s car, who is your HarbourCabs driver, on the way to ${s.taxi.job.to}`); return; }
       this.lastBody = ''; this.renderPhone(); return;
     }
+    if (d.mapzoom) { this.mapZoom = !this.mapZoom; this.lastBody = ''; this.renderPhone(); return; }
     if (d['999']) { this.toast(call999(s, this.p.id, d['999'] as 'ambulance' | 'police')); this.closePhone(); return; }
     if (d.reply) {
       const msg = s.inbox?.find((x) => x.from === d.reply && String(x.at) === d.at);

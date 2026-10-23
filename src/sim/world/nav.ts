@@ -1,6 +1,6 @@
 // NavigationAndTransport: A* over the pedestrian graph plus collision helpers.
 import type { Vec2 } from '../types';
-import { getWorld, segIntersectsRect, type Rect } from './layout';
+import { collidersIn, getWorld, segIntersectsRect, type Rect } from './layout';
 import { navDist, sameLevel } from './levels';
 
 const d = navDist;
@@ -8,51 +8,59 @@ const d = navDist;
 /** line of sight between two points against all colliders (with an agent radius) */
 export function clearLine(a: Vec2, b: Vec2, radius = 0.25): boolean {
   if (!sameLevel(a, b)) return false;
-  for (const r of getWorld().colliders) if (segIntersectsRect(a, b, r, radius)) return false;
+  for (const r of collidersIn(Math.min(a.x, b.x) - radius - 1, Math.min(a.z, b.z) - radius - 1, Math.max(a.x, b.x) + radius + 1, Math.max(a.z, b.z) + radius + 1)) if (segIntersectsRect(a, b, r, radius)) return false;
   return true;
+}
+
+/** graph nodes bucketed by 30 m cells */
+let nodeGridOf: unknown = null;
+let nodeGrid = new Map<string, string[]>();
+function nodesNear(p: Vec2, r: number): string[] {
+  const w = getWorld();
+  if (nodeGridOf !== w) {
+    nodeGrid = new Map();
+    for (const n of Object.values(w.nodes)) { const k = `${Math.floor(n.x / 30)},${Math.floor(n.z / 30)}`; const l = nodeGrid.get(k); if (l) l.push(n.id); else nodeGrid.set(k, [n.id]); }
+    nodeGridOf = w;
+  }
+  const out: string[] = [];
+  for (let i = Math.floor((p.x - r) / 30); i <= Math.floor((p.x + r) / 30); i++) for (let j = Math.floor((p.z - r) / 30); j <= Math.floor((p.z + r) / 30); j++) out.push(...(nodeGrid.get(`${i},${j}`) ?? []));
+  return out;
 }
 
 /** nearest graph node that can be reached in a straight line from p */
 export function nearestNode(p: Vec2, preferLoc?: string): string | null {
   const w = getWorld();
-  let best: string | null = null;
-  let bestD = Infinity;
-  for (const n of Object.values(w.nodes)) {
-    let dd = d(p, n);
-    if (preferLoc && n.loc !== preferLoc) dd += 30;
-    if (dd < bestD && dd < 60 && clearLine(p, n, 0.15)) {
-      bestD = dd;
-      best = n.id;
-    }
-  }
-  return best;
+  // nearest first, so the line-of-sight checks stop at the first that is clear
+  const cands = nodesNear(p, 60).map((id) => { const n = w.nodes[id]; let dd = d(p, n); if (preferLoc && n.loc !== preferLoc) dd += 30; return { id, dd, n }; }).filter((c) => c.dd < 60).sort((a, b) => a.dd - b.dd);
+  for (const c of cands) if (clearLine(p, c.n, 0.15)) return c.id;
+  return null;
 }
 
 export function astar(start: string, goal: string): string[] | null {
   const w = getWorld();
   if (!w.nodes[start] || !w.nodes[goal]) return null;
-  const open = new Set<string>([start]);
+  // a binary heap keeps this quick over the whole city's pavements
+  const heap: [number, string][] = [];
+  const push = (f: number, id: string) => { heap.push([f, id]); let i = heap.length - 1; while (i > 0) { const p = (i - 1) >> 1; if (heap[p][0] <= heap[i][0]) break; [heap[p], heap[i]] = [heap[i], heap[p]]; i = p; } };
+  const pop = () => { const top = heap[0]; const last = heap.pop()!; if (heap.length) { heap[0] = last; let i = 0; for (;;) { const l = i * 2 + 1, r = l + 1; let m = i; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === i) break; [heap[m], heap[i]] = [heap[i], heap[m]]; i = m; } } return top; };
   const came: Record<string, string> = {};
   const g: Record<string, number> = { [start]: 0 };
-  const f: Record<string, number> = { [start]: d(w.nodes[start], w.nodes[goal]) };
-  while (open.size) {
-    let cur = '';
-    let best = Infinity;
-    for (const id of open) if ((f[id] ?? Infinity) < best) { best = f[id]; cur = id; }
+  const done = new Set<string>();
+  push(d(w.nodes[start], w.nodes[goal]), start);
+  while (heap.length) {
+    const [, cur] = pop();
+    if (done.has(cur)) continue;
     if (cur === goal) {
       const path = [cur];
-      while (came[cur]) { cur = came[cur]; path.unshift(cur); }
+      let c = cur;
+      while (came[c]) { c = came[c]; path.unshift(c); }
       return path;
     }
-    open.delete(cur);
+    done.add(cur);
     for (const nb of w.edges[cur] ?? []) {
+      if (done.has(nb)) continue;
       const tg = g[cur] + d(w.nodes[cur], w.nodes[nb]);
-      if (tg < (g[nb] ?? Infinity)) {
-        came[nb] = cur;
-        g[nb] = tg;
-        f[nb] = tg + d(w.nodes[nb], w.nodes[goal]);
-        open.add(nb);
-      }
+      if (tg < (g[nb] ?? Infinity)) { came[nb] = cur; g[nb] = tg; push(tg + d(w.nodes[nb], w.nodes[goal]), nb); }
     }
   }
   return null;
@@ -83,7 +91,8 @@ export function routeLength(from: Vec2, pts: Vec2[]): number {
 }
 
 /** Resolve a circle against all colliders (used by the player controller). */
-export function resolveCircle(p: Vec2, radius: number, colliders: Rect[] = getWorld().colliders): Vec2 {
+export function resolveCircle(p: Vec2, radius: number, colliders?: Rect[]): Vec2 {
+  colliders ??= collidersIn(p.x - radius - 1, p.z - radius - 1, p.x + radius + 1, p.z + radius + 1);
   let x = p.x, z = p.z;
   for (let iter = 0; iter < 3; iter++) {
     let moved = false;

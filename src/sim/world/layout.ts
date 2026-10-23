@@ -8,6 +8,7 @@ import { PLOTS } from './plots';
 // Coordinate system: metres, x = east, z = south (so -z is "north").
 // Facing angle θ: forward direction = (sin θ, cos θ); θ = 0 faces +z.
 import { LEVEL_DX } from './levels';
+import { buildCity, CITY, type City } from './city';
 import type { Vec2 } from '../types';
 import { PRODUCTS } from '../items';
 
@@ -251,6 +252,10 @@ export interface World {
   bayParking: Vec2;
   dropZone: Vec2;
   playerSpawn: Vec2;
+  /** the generated city round Harbourside */
+  city: City;
+  /** colliders bucketed by 16 m cells, for quick lookups near a point */
+  grid: Map<string, Rect[]>;
   spawnPoints: string[]; // node ids where commuters/ambient shoppers appear
   bounds: Rect;
   lamps: Vec2[];
@@ -1043,12 +1048,19 @@ function buildWorldData(homeDesign: HomeDesign): World {
     else colliders.push(b.rect);
   }
   for (const o of obstacles) if (o.solid) colliders.push(o.rect);
-  // world boundary
-  const bounds = { x0: -98, z0: -50, x1: 98, z1: QUAY_EDGE - 0.4 };
+  // the city round about: its buildings, and the containers on the docks
+  const city = buildCity(B.filter((b) => !b.unit && !b.level).map((b) => b.rect));
+  for (const cb of city.buildings) colliders.push(cb.rect);
+  for (const pr of city.props) if (pr.kind === 'container') colliders.push(pr.rot === 0 ? box(pr.x, pr.z, 6.1, 2.5) : box(pr.x, pr.z, 2.5, 6.1));
+  // world boundary: the edge of the city, and the sea
+  const bounds = { x0: CITY.x0, z0: CITY.z0, x1: CITY.x1, z1: QUAY_EDGE - 0.4 };
   colliders.push({ x0: bounds.x0 - 1, z0: bounds.z0, x1: bounds.x0, z1: bounds.z1 });
   colliders.push({ x0: bounds.x1, z0: bounds.z0, x1: bounds.x1 + 1, z1: bounds.z1 });
   colliders.push({ x0: bounds.x0, z0: bounds.z0 - 1, x1: bounds.x1, z1: bounds.z0 });
   colliders.push({ x0: bounds.x0, z0: bounds.z1, x1: bounds.x1, z1: bounds.z1 + 1 });
+
+  const cgrid = colliderGrid(colliders);
+  const near = (x0: number, z0: number, x1: number, z1: number) => collidersIn(x0, z0, x1, z1, { grid: cgrid } as World);
 
   // ---- pedestrian navigation graph
   const nodes: Record<string, NavNode> = {};
@@ -1064,6 +1076,9 @@ function buildWorldData(homeDesign: HomeDesign): World {
       if (!edges[b].includes(a)) edges[b].push(a);
     }
   };
+  // the city's pavements and crossings
+  for (const n of city.nodes) N(n.id, n.x, n.z);
+  for (const [a, b] of city.edges) L(a, b);
   // north sidewalk (z=-6.5)
   const nS = [-88, -70, -50, -24, -6.5];
   nS.forEach((x) => N(`nw_${x}`, x, -6.5));
@@ -1253,8 +1268,8 @@ function buildWorldData(homeDesign: HomeDesign): World {
   {
     const H = shiftX({ x0: 12.2, z0: 10.2, x1: 29.8, z1: 25.8 }, 2 * LEVEL_DX);
     const step = 0.6;
-    const blocked = (x: number, z: number) => colliders.some((r) => x > r.x0 - 0.28 && x < r.x1 + 0.28 && z > r.z0 - 0.28 && z < r.z1 + 0.28);
-    const clear = (a: Vec2, b: Vec2) => !colliders.some((r) => segIntersectsRect(a, b, r, 0.2));
+    const blocked = (x: number, z: number) => near(x - 1, z - 1, x + 1, z + 1).some((r) => x > r.x0 - 0.28 && x < r.x1 + 0.28 && z > r.z0 - 0.28 && z < r.z1 + 0.28);
+    const clear = (a: Vec2, b: Vec2) => !near(Math.min(a.x, b.x) - 1, Math.min(a.z, b.z) - 1, Math.max(a.x, b.x) + 1, Math.max(a.z, b.z) + 1).some((r) => segIntersectsRect(a, b, r, 0.2));
     const grid: string[] = [];
     for (let i = 0; H.x0 + 0.3 + i * step < H.x1; i++) for (let j = 0; H.z0 + 0.3 + j * step < H.z1; j++) {
       const x = H.x0 + 0.3 + i * step, z = H.z0 + 0.3 + j * step;
@@ -1327,6 +1342,8 @@ function buildWorldData(homeDesign: HomeDesign): World {
   N('bus_w', -88, -6.5 + 0.01); L('nw_-88', 'bus_w');
   N('bus_e', 88, 6.6); L('se_88', 'bus_e');
 
+  for (const [a, b] of city.joins) if (nodes[a] && nodes[b]) L(a, b);
+
   // ---- roads & ground
   const roads: RoadDef[] = [
     { rect: { x0: -98, z0: -5, x1: 98, z1: 5 }, kind: 'road' },
@@ -1363,7 +1380,7 @@ function buildWorldData(homeDesign: HomeDesign): World {
     vanRouteOut, vanRouteBack, depot, bayParking, dropZone: { x: 24, z: -38.7 },
     playerSpawn: { x: 2 * LEVEL_DX + 21, z: 15.6 },
     spawnPoints: ['bus_w', 'bus_e', 'nend', 'hs_e_72'],
-    bounds, lamps, parked,
+    bounds, lamps, parked, city, grid: cgrid,
   };
   return cached;
 }
@@ -1381,6 +1398,27 @@ export function dwellingDoor(id: string): { out: Vec2; inside: Vec2; lock: Rect 
   if (!b) return null;
   const zc = (b.rect.z0 + b.rect.z1) / 2, x = b.rect.x0 > 0 ? b.rect.x0 : b.rect.x1;
   return { out: o, inside: i, lock: { x0: x - 0.15, z0: zc - 0.65, x1: x + 0.15, z1: zc + 0.65 } };
+}
+
+const CELL = 16;
+function colliderGrid(colliders: Rect[]): Map<string, Rect[]> {
+  const g = new Map<string, Rect[]>();
+  for (const r of colliders) {
+    for (let i = Math.floor(r.x0 / CELL); i <= Math.floor(r.x1 / CELL); i++) for (let j = Math.floor(r.z0 / CELL); j <= Math.floor(r.z1 / CELL); j++) {
+      const k = `${i},${j}`;
+      const list = g.get(k);
+      if (list) list.push(r); else g.set(k, [r]);
+    }
+  }
+  return g;
+}
+/** the colliders touching an area (each once) */
+export function collidersIn(x0: number, z0: number, x1: number, z1: number, w: World = getWorld()): Rect[] {
+  const i0 = Math.floor(x0 / CELL), i1 = Math.floor(x1 / CELL), j0 = Math.floor(z0 / CELL), j1 = Math.floor(z1 / CELL);
+  if (i0 === i1 && j0 === j1) return w.grid.get(`${i0},${j0}`) ?? [];
+  const out = new Set<Rect>();
+  for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) for (const r of w.grid.get(`${i},${j}`) ?? []) out.add(r);
+  return [...out];
 }
 
 export function buildingAt(p: Vec2): BuildingDef | null {

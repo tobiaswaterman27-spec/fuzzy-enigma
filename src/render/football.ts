@@ -3,7 +3,6 @@
 import * as THREE from 'three';
 import type { GameState } from '../sim/types';
 import { resolveCircle } from '../sim/world/nav';
-import { getWorld } from '../sim/world/layout';
 import { gesture } from '../sim/talk';
 
 const R = 0.11;
@@ -97,7 +96,7 @@ export class Football {
     this.vel.x *= fr; this.vel.z *= fr;
     // walls, trees and benches: bounce off
     if (next.y < 1.2) {
-      const r = resolveCircle({ x: next.x, z: next.z }, R, getWorld().colliders);
+      const r = resolveCircle({ x: next.x, z: next.z }, R);
       if (Math.abs(r.x - next.x) > 1e-4) { this.vel.x *= -0.6; next.x = r.x; }
       if (Math.abs(r.z - next.z) > 1e-4) { this.vel.z *= -0.6; next.z = r.z; }
     }

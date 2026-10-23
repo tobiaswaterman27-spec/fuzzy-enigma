@@ -1,10 +1,10 @@
 // Storeys. The simulation is flat (x, z), so each upper floor of a building lives in its own copy of
-// the plane, LEVEL_DX metres east per storey: floor k of a block at (x, z) is simulated at
+// the plane, LEVEL_DX metres east per storey (well clear of the city): floor k of a block at (x, z) is simulated at
 // (x + k * LEVEL_DX, z) and drawn at (x, k * LEVEL_H, z). Walking, colliders and rooms work unchanged;
 // stairs are graph edges between the copies, climbed over STAIR_RUN metres of walking.
 import type { Vec2 } from '../types';
 
-export const LEVEL_DX = 1000;
+export const LEVEL_DX = 10000;
 export const LEVEL_H = 3.2;
 /** how far a flight of stairs counts as, in metres walked */
 export const STAIR_RUN = 5.5;

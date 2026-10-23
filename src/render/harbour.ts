@@ -73,9 +73,9 @@ export class Harbour {
 
   constructor(scene: THREE.Scene) {
     this.normals = waterNormals();
-    this.water = new THREE.Mesh(new THREE.PlaneGeometry(900, 400), new THREE.MeshStandardMaterial({ color: '#2f5868', roughness: 0.14, metalness: 0.35, normalMap: this.normals, normalScale: new THREE.Vector2(0.55, 0.55) }));
+    this.water = new THREE.Mesh(new THREE.PlaneGeometry(2600, 700), new THREE.MeshStandardMaterial({ color: '#2f5868', roughness: 0.14, metalness: 0.35, normalMap: this.normals, normalScale: new THREE.Vector2(0.55, 0.55) }));
     this.water.rotation.x = -Math.PI / 2;
-    this.water.position.set(0, -1.05, QUAY_EDGE + 200);
+    this.water.position.set(0, -1.05, QUAY_EDGE + 350);
     this.water.receiveShadow = false;
     this.group.add(this.water);
     // the harbour wall: dressed stone face from the quay down into the water, with a capping course

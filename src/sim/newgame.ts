@@ -21,7 +21,7 @@ import { rand, randInt, pick } from './core';
 import { news } from './events';
 import { spawnDirt, SHELF_CAPACITY, shelfId } from './retail';
 
-export const SAVE_VERSION = 12;
+export const SAVE_VERSION = 13;
 
 export interface PlayerSetup {
   name: string;
@@ -353,7 +353,7 @@ export function createNewGame(seed: number, setup: PlayerSetup): GameState {
 
 const FIRST = ['Jamie', 'Chris', 'Pat', 'Morgan', 'Robin', 'Taylor', 'Jordan', 'Casey', 'Ellis', 'Noor', 'Kai', 'Rowan', 'Avery', 'Sasha', 'Remy', 'Lior'];
 const LAST = ['Hughes', 'Patel', 'Kowalski', 'Nguyen', 'Murphy', 'Silva', 'Evans', 'Ahmed', 'Brooks', 'Fraser', 'Moreau', 'Okoye', 'Lund', 'Reid'];
-function ambientName(state: GameState) {
+export function ambientName(state: GameState) {
   return `${pick(state, FIRST)} ${pick(state, LAST)}`;
 }
 

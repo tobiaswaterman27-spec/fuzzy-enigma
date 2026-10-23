@@ -106,6 +106,14 @@ const MIGRATIONS: Record<number, (s: any) => void> = {
       startConstruction(s);
     }
   },
+  12: (s) => {
+    // v12 -> v13: the city grew round Harbourside, so the upper storeys moved out from 1 km to 10 km east
+    for (const p of Object.values<any>(s.people ?? {})) {
+      const k = Math.round(p.pos.x / 1000);
+      if (k >= 1 && k <= 3 && Math.abs(p.pos.x - k * 1000) < 100) { p.pos = { x: p.pos.x + k * 9000, z: p.pos.z }; p.move = null; }
+    }
+    if (s.beat) s.beat = null;
+  },
   11: (s) => {
     // v11 -> v12: Harbour Chambers reopens as Harbourside Police Station
     makePoliceStation(s);

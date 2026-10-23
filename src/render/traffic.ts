@@ -1,30 +1,32 @@
-// Ambient traffic: cars driving the main roads on the left, keeping their distance and
-// stopping for people and vehicles in front of them. Presentation only (not simulated).
+// Ambient traffic: cars driving the city's streets on the left, keeping their distance, stopping for
+// people and vehicles in front of them and waiting at junctions while a crossing car is in the box.
+// Presentation only (not simulated). A pool of cars is kept around the player: one that falls far
+// behind is moved to a street out ahead, so the whole city seems busy at the cost of a few dozen.
 import * as THREE from 'three';
 import type { GameState } from '../sim/types';
+import { getWorld } from '../sim/world/layout';
+import type { Lane } from '../sim/world/city';
 import { buildCar } from './world';
 
-interface Lane { from: THREE.Vector2; to: THREE.Vector2 }
 interface Car { obj: THREE.Object3D; lane: number; t: number; speed: number; cruise: number; color: string; body: string }
 const BODIES = ['car', 'saloon', 'suv', 'car', 'sports', 'saloon', 'suv'];
-
-// drive on the left: eastbound on the north side of the high street, southbound on the east side of the cross road
-const LANES: Lane[] = [
-  { from: new THREE.Vector2(-98, 2.0), to: new THREE.Vector2(98, 2.0) },
-  { from: new THREE.Vector2(98, -2.0), to: new THREE.Vector2(-98, -2.0) },
-  { from: new THREE.Vector2(2.5, 76), to: new THREE.Vector2(2.5, -48) },
-  { from: new THREE.Vector2(-2.5, -48), to: new THREE.Vector2(-2.5, 76) },
-];
-const COLORS = ['#b8232a', '#2b4f8c', '#e8e8e8', '#1c1c1c', '#5f7f3f', '#c4a14a', '#7a7f86', '#3d6f8f'];
+const COLORS = ['#b8232a', '#2b4f8c', '#e8e8e8', '#1c1c1c', '#5f7f3f', '#c4a14a', '#7a7f86', '#3d6f8f', '#8e44ad', '#f0f0f0'];
+const KEEP = 230;
 
 export class Traffic {
   cars: Car[] = [];
+  private lanes: Lane[];
+  private len: number[];
+  private dir: THREE.Vector2[];
+  private junctions: { x: number; z: number }[];
+  private seed = 7;
+  private rnd() { this.seed = (this.seed * 16807) % 2147483647; return this.seed / 2147483647; }
 
   /** the cars as axis-aligned boxes (they drive along the roads), for collisions */
   rects(): { x0: number; z0: number; x1: number; z1: number }[] {
     return this.cars.map((c) => {
       const p = c.obj.position;
-      const alongX = c.lane < 2;
+      const alongX = this.lanes[c.lane].axis === 'x';
       const hx = alongX ? 2.15 : 0.95, hz = alongX ? 0.95 : 2.15;
       return { x0: p.x - hx, z0: p.z - hz, x1: p.x + hx, z1: p.z + hz };
     });
@@ -46,52 +48,81 @@ export class Traffic {
   }
   private respawnAt = 0;
 
-  constructor(private scene: THREE.Scene, count = 14) {
-    for (let i = 0; i < count; i++) {
-      const lane = i % LANES.length;
-      const body = BODIES[i % BODIES.length];
-      const obj = buildCar(COLORS[i % COLORS.length], 0, 0, 0, false, body);
-      scene.add(obj);
-      const cruise = 7 + ((i * 37) % 5) + (body === 'sports' ? 2 : 0);
-      this.cars.push({ obj, lane, t: ((i * 0.37) % 1), speed: cruise, cruise, color: COLORS[i % COLORS.length], body });
+  constructor(private scene: THREE.Scene, count = 34) {
+    const w = getWorld();
+    this.lanes = w.city.lanes;
+    this.len = this.lanes.map((l) => Math.hypot(l.to.x - l.from.x, l.to.z - l.from.z));
+    this.dir = this.lanes.map((l, i) => new THREE.Vector2((l.to.x - l.from.x) / this.len[i], (l.to.z - l.from.z) / this.len[i]));
+    this.junctions = w.city.junctions;
+    for (let i = 0; i < count; i++) this.add({ x: 0, z: 0 });
+  }
+
+  private add(near: { x: number; z: number }) {
+    const i = this.cars.length + this.taken;
+    const body = BODIES[i % BODIES.length], color = COLORS[(i * 3) % COLORS.length];
+    const obj = buildCar(color, 0, 0, 0, false, body);
+    this.scene.add(obj);
+    const cruise = 8 + ((i * 37) % 5) + (body === 'sports' ? 2 : 0);
+    const c: Car = { obj, lane: 0, t: 0, speed: cruise, cruise, color, body };
+    this.place(c, near, 0, KEEP * 0.9);
+    this.cars.push(c);
+  }
+
+  /** put a car on a street somewhere between two distances from a point */
+  private place(c: Car, p: { x: number; z: number }, dmin: number, dmax: number) {
+    for (let tries = 0; tries < 40; tries++) {
+      const lane = Math.floor(this.rnd() * this.lanes.length);
+      const L = this.lanes[lane], len = this.len[lane];
+      // the point on this lane nearest p, then a random way along from there
+      const d = this.dir[lane];
+      const tn = Math.max(0, Math.min(len, (p.x - L.from.x) * d.x + (p.z - L.from.z) * d.y));
+      const off = (this.rnd() - 0.5) * 2 * dmax;
+      const t = Math.max(0, Math.min(len, tn + off));
+      const x = L.from.x + d.x * t, z = L.from.z + d.y * t;
+      const dist = Math.hypot(x - p.x, z - p.z);
+      if (dist < dmin || dist > dmax) continue;
+      if (this.cars.some((o) => o !== c && o.lane === lane && Math.abs(o.t - t / len) * len < 12)) continue;
+      c.lane = lane; c.t = t / len; c.speed = c.cruise * 0.6;
+      c.obj.position.set(x, 0, z);
+      return;
     }
   }
 
   update(state: GameState, dt: number) {
-    // a replacement for a taken car joins at the edge of the map after a while
-    if (this.taken > 0 && (this.respawnAt += dt) > 30) {
-      this.respawnAt = 0; this.taken--;
-      const lane = this.cars.length % LANES.length, color = COLORS[(this.cars.length * 3) % COLORS.length];
-      const body = BODIES[this.cars.length % BODIES.length];
-      const obj = buildCar(color, 0, 0, 0, false, body);
-      this.scene.add(obj);
-      this.cars.push({ obj, lane, t: 0, speed: 8, cruise: 8, color, body });
-    }
-    const people = Object.values(state.people).filter((p) => p.visible);
+    const me = state.people[state.playerId];
+    const p = { x: me.pos.x, z: me.pos.z };
+    // a replacement for a taken car joins the traffic after a while
+    if (this.taken > 0 && (this.respawnAt += dt) > 30) { this.respawnAt = 0; this.taken--; this.add(p); }
+    const people = Object.values(state.people).filter((q) => q.visible && Math.abs(q.pos.x - p.x) < KEEP + 20 && Math.abs(q.pos.z - p.z) < KEEP + 20);
     const vans = Object.values(state.vehicles);
+    const inBox = (x: number, z: number, j: { x: number; z: number }) => Math.abs(x - j.x) < 6 && Math.abs(z - j.z) < 6;
     for (const c of this.cars) {
-      const L = LANES[c.lane];
-      const len = L.from.distanceTo(L.to);
-      const dir = new THREE.Vector2().subVectors(L.to, L.from).normalize();
-      const pos = new THREE.Vector2().copy(L.from).addScaledVector(dir, c.t * len);
+      const L = this.lanes[c.lane], dir = this.dir[c.lane], len = this.len[c.lane];
+      const pos = new THREE.Vector2(L.from.x + dir.x * c.t * len, L.from.z + dir.y * c.t * len);
+      // fallen far behind: move it to a street out ahead of the player, out of sight
+      if (Math.hypot(pos.x - p.x, pos.y - p.z) > KEEP) { this.place(c, p, 140, KEEP - 10); continue; }
       // anything in the lane ahead: people crossing, vans, the car in front
       let gap = Infinity;
       const ahead = (x: number, z: number, wide: number) => {
         const dx = x - pos.x, dz = z - pos.y;
         const along = dx * dir.x + dz * dir.y, side = Math.abs(-dx * dir.y + dz * dir.x);
-        if (along > 0 && side < wide) gap = Math.min(gap, along);
+        if (along > 0 && along < 30 && side < wide) gap = Math.min(gap, along);
       };
-      for (const p of people) ahead(p.pos.x, p.pos.z, 2.0);
+      for (const q of people) ahead(q.pos.x, q.pos.z, 2.0);
       for (const v of vans) ahead(v.pos.x, v.pos.z, 2.4);
       for (const o of this.cars) if (o !== c && o.lane === c.lane) ahead(o.obj.position.x, o.obj.position.z, 1.5);
-      // the junction of the two roads: wait outside it while a crossing car is in it
-      const inBox = (x: number, z: number) => Math.abs(x) < 6 && Math.abs(z) < 6;
-      const toBox = (() => { for (let d = 0; d < 12; d += 1) { const x = pos.x + dir.x * d, z = pos.y + dir.y * d; if (inBox(x, z)) return d; } return Infinity; })();
-      if (toBox > 0 && toBox < 12 && !inBox(pos.x, pos.y) && this.cars.some((o) => o !== c && Math.abs(new THREE.Vector2().subVectors(LANES[o.lane].to, LANES[o.lane].from).normalize().dot(dir)) < 0.5 && inBox(o.obj.position.x, o.obj.position.z))) gap = Math.min(gap, toBox + 5);
+      // the next junction: wait outside it while a car on the cross street is in it
+      for (const j of this.junctions) {
+        const dx = j.x - pos.x, dz = j.z - pos.y;
+        const along = dx * dir.x + dz * dir.y;
+        if (along < 6 || along > 18 || Math.abs(-dx * dir.y + dz * dir.x) > 6) continue;
+        if (this.cars.some((o) => o !== c && Math.abs(this.dir[o.lane].dot(dir)) < 0.5 && inBox(o.obj.position.x, o.obj.position.z, j))) gap = Math.min(gap, along - 1);
+      }
       const want = gap < 6 ? 0 : gap < 14 ? c.cruise * ((gap - 6) / 8) : c.cruise;
       c.speed += Math.max(-9 * dt, Math.min(3 * dt, want - c.speed));
       c.t += (c.speed * dt) / len;
-      if (c.t > 1) c.t -= 1; // off the edge of the map, back on at the other end
+      // the end of the street: on to another one near the player
+      if (c.t > 1) { this.place(c, p, 140, KEEP - 10); continue; }
       c.obj.position.set(pos.x, 0, pos.y);
       c.obj.rotation.y = Math.atan2(dir.x, dir.y);
     }
