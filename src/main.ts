@@ -13,7 +13,30 @@ import { hasHumanBuild } from './render/humanAsset';
 import { buildRig, loadMocap } from './render/character';
 import { hasAi, initClaudeAi, setApiKey } from './ai/openai';
 
-await Promise.all([loadHumanAsset(), loadMocap(), loadModels(['car', 'van', 'car_lod', 'van_lod', 'saloon', 'saloon_lod', 'suv', 'suv_lod', 'sports', 'sports_lod', 'gondola_bay', 'checkout', 'sofa', 'bed', 'wardrobe', 'table', 'chair', 'tvunit', 'kitchen_base', 'cooker', 'fridge', 'coffee_table', 'bookcase', 'drawers', 'armchair', 'desk', 'sideboard', 'bedside', 'basin', 'baler', 'dumpster', 'shopbin', 'washer', 'binbag', 'carton', 'storage_shelf', 'ironing_board', 'laundry_basket', 'drying_rack', 'bike', 'vacuum', 'rack_bay', 'pallet_load', 'pallet', 'forklift', 'roller_door', 'terminal', 'locker', 'kiosk', 'notice_board', 'office_desk', 'tree', 'park_bench', 'street_bin', 'bus_shelter', 'house_plant', 'floor_lamp', 'cafe_counter', 'bistro_set', 'waiting_chairs', 'water_cooler', 'leaflet_stand', 'shoe_trainer', 'shoe_oxford', 'shoe_boot', 'site_cabin', 'cement_mixer', 'heras_panel', 'wheelbarrow', 'tool_spade', 'tool_shovel', 'tool_hammer', 'tool_drill', 'tool_roller'])]);
+// the loading screen: a real progress bar (each part ticks it on), and tips while you wait
+const TIPS = [
+  'The police lose interest if you stay out of sight long enough. Hide in an alley, change your clothes, or lie low indoors.',
+  'Hit a ramp fast enough and you might land a Unique Stunt Bonus.',
+  'Vince is always at the other end of a red phone box. He pays well. He also remembers.',
+  'Pigeons scatter if you run at them. Sit on a bench and feed them instead.',
+  'Rain makes the roads slippery and the streets quieter. Thunder means stay in.',
+  'Everyone in Harbourside has a job, a family and a memory. Be nice, or don\'t, and they will remember.',
+  'Hands up (H) and they might go easier on you.',
+  'A Harbour Bikes hire is the quickest way round the old town. Leave it at any dock.',
+  'Drive with the radio on: R changes station.',
+  'Money in the bank is safe. Money in your pocket can be nicked.',
+];
+const bootFill = document.getElementById('boot-fill'), bootStep = document.getElementById('boot-step'), bootTip = document.getElementById('boot-tip');
+let tipN = Math.floor(Math.random() * TIPS.length);
+const nextTip = () => { if (bootTip) bootTip.textContent = `Tip: ${TIPS[tipN++ % TIPS.length]}`; };
+nextTip();
+const tipTimer = window.setInterval(nextTip, 6000);
+let bootDone = 0;
+const bootTick = (label: string, parts = 5) => { bootDone++; if (bootFill) bootFill.style.width = `${Math.min(100, (bootDone / parts) * 100)}%`; if (bootStep) bootStep.textContent = label; };
+const ticked = <T,>(p: Promise<T>, label: string) => p.then((v) => { bootTick(label); return v; });
+await Promise.all([ticked(loadHumanAsset(), 'Fitting the townspeople'), ticked(loadMocap(), 'Teaching them to walk'), ticked(loadModels(['car', 'van', 'car_lod', 'van_lod', 'saloon', 'saloon_lod', 'suv', 'suv_lod', 'sports', 'sports_lod', 'gondola_bay', 'checkout', 'sofa', 'bed', 'wardrobe', 'table', 'chair', 'tvunit', 'kitchen_base', 'cooker', 'fridge', 'coffee_table', 'bookcase', 'drawers', 'armchair', 'desk', 'sideboard', 'bedside', 'basin', 'baler', 'dumpster', 'shopbin', 'washer', 'binbag', 'carton', 'storage_shelf', 'ironing_board', 'laundry_basket', 'drying_rack', 'bike', 'vacuum', 'rack_bay', 'pallet_load', 'pallet', 'forklift', 'roller_door', 'terminal', 'locker', 'kiosk', 'notice_board', 'office_desk', 'tree', 'park_bench', 'street_bin', 'bus_shelter', 'house_plant', 'floor_lamp', 'cafe_counter', 'bistro_set', 'waiting_chairs', 'water_cooler', 'leaflet_stand', 'shoe_trainer', 'shoe_oxford', 'shoe_boot', 'site_cabin', 'cement_mixer', 'heras_panel', 'wheelbarrow', 'tool_spade', 'tool_shovel', 'tool_hammer', 'tool_drill', 'tool_roller']), 'Parking the cars')]);
+bootTick('Building the city');
+await new Promise((r) => setTimeout(r, 30));
 const canvas = document.getElementById('view') as HTMLCanvasElement;
 const seed = (Date.now() % 100000) + 1;
 const appearance = { frame: 'm', skin: SKIN_TONES[2], hair: 'short', hairColor: HAIR_COLORS[1], build: 'average' } as Omit<Appearance, 'outfit' | 'height'>;
@@ -30,7 +53,8 @@ for (const p of Object.values(state.people)) {
 const game = new Game(canvas, state);
 const ui = new UI(game);
 (window as any).__bigshot = { game, ui, sim, THREE, buildRig, buildRealHuman, bodies: { workerActive, hasHumanBuild } };
-document.getElementById('boot')!.remove();
+bootTick('Ready');
+window.clearInterval(tipTimer);
 
 const EYE_COLORS = ['#4a6b8a', '#5a4632', '#3b2a1c', '#4f6b3a', '#6b7f8c', '#7a5a2a'] as const;
 const GAITS = [['walk', 'normal'], ['walk_b', 'relaxed'], ['walk_c', 'casual'], ['walk_brisk', 'brisk'], ['walk_proud', 'confident']] as const;
@@ -75,6 +99,7 @@ function creator() {
       const key = (document.getElementById('cc-ai') as HTMLInputElement).value.trim();
       if (key) setApiKey(key);
       el.hidden = true;
+      game.audio.theme.play(false);
       document.body.classList.remove('creating');
       game.uiOpen = false;
       game.camDist = 4.2;
@@ -95,5 +120,21 @@ function creator() {
 }
 
 const params = new URLSearchParams(location.search);
-if (!params.has('skipcreator')) creator();
+const boot = document.getElementById('boot')!;
+if (params.has('skipcreator')) boot.remove();
+else {
+  // press any key: the music starts, the loading screen fades into the character creator
+  creator();
+  document.getElementById('boot-step')!.hidden = true;
+  (boot.querySelector('.boot-bar') as HTMLElement).hidden = true;
+  document.getElementById('boot-press')!.hidden = false;
+  const go = () => {
+    window.removeEventListener('keydown', go); boot.removeEventListener('pointerdown', go);
+    game.audio.start();
+    game.audio.theme.play(true);
+    boot.classList.add('gone');
+    window.setTimeout(() => boot.remove(), 1000);
+  };
+  window.addEventListener('keydown', go); boot.addEventListener('pointerdown', go);
+}
 game.start();

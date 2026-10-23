@@ -3,30 +3,30 @@
 // improvises over the chords but repeats its phrases, so it sounds like a song rather than noise.
 // Notes are scheduled a fraction of a second ahead of the audio clock so the timing stays tight.
 
-type Voice = { ctx: AudioContext; out: AudioNode; noise: AudioBuffer };
-const mtof = (m: number) => 440 * Math.pow(2, (m - 69) / 12);
+export type Voice = { ctx: AudioContext; out: AudioNode; noise: AudioBuffer };
+export const mtof = (m: number) => 440 * Math.pow(2, (m - 69) / 12);
 
-function tone(v: Voice, midi: number, t: number, dur: number, type: OscillatorType, vol: number, cutoff = 4000, attack = 0.005) {
+export function tone(v: Voice, midi: number, t: number, dur: number, type: OscillatorType, vol: number, cutoff = 4000, attack = 0.005) {
   const o = v.ctx.createOscillator(); o.type = type; o.frequency.value = mtof(midi);
   const f = v.ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff;
   const g = v.ctx.createGain();
   g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + attack); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
   o.connect(f).connect(g).connect(v.out); o.start(t); o.stop(t + dur + 0.05);
 }
-function kick(v: Voice, t: number, vol = 0.5) {
+export function kick(v: Voice, t: number, vol = 0.5) {
   const o = v.ctx.createOscillator(); o.type = 'sine';
   o.frequency.setValueAtTime(140, t); o.frequency.exponentialRampToValueAtTime(42, t + 0.12);
   const g = v.ctx.createGain(); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
   o.connect(g).connect(v.out); o.start(t); o.stop(t + 0.32);
 }
-function hiss(v: Voice, t: number, dur: number, freq: number, vol: number, type: BiquadFilterType = 'highpass') {
+export function hiss(v: Voice, t: number, dur: number, freq: number, vol: number, type: BiquadFilterType = 'highpass') {
   const s = v.ctx.createBufferSource(); s.buffer = v.noise;
   const f = v.ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq;
   const g = v.ctx.createGain(); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
   s.connect(f).connect(g).connect(v.out); s.start(t, Math.random() * 0.5); s.stop(t + dur + 0.02);
 }
-const snare = (v: Voice, t: number, vol = 0.18) => { hiss(v, t, 0.18, 1800, vol, 'bandpass'); tone(v, 50, t, 0.08, 'triangle', vol * 0.6); };
-const hat = (v: Voice, t: number, vol = 0.05) => hiss(v, t, 0.04, 7000, vol);
+export const snare = (v: Voice, t: number, vol = 0.18) => { hiss(v, t, 0.18, 1800, vol, 'bandpass'); tone(v, 50, t, 0.08, 'triangle', vol * 0.6); };
+export const hat = (v: Voice, t: number, vol = 0.05) => hiss(v, t, 0.04, 7000, vol);
 
 /** the same few phrases for each bar of the cycle: seeded by the bar, so they come round again */
 function phrase(seed: number, n: number): number[] {

@@ -937,7 +937,9 @@ export class Game {
       if (a.y <= 0) {
         const impact = -a.vy;
         if (impact > 6) { damageCar(this.state, v, impact * 0.55, 0); this.audio.crash(impact); }
-        this.onToast(landedJump(this.state, this.player.id, a.ramp, Math.hypot(v.pos.x - a.x0, v.pos.z - a.z0), a.t));
+        const said = landedJump(this.state, this.player.id, a.ramp, Math.hypot(v.pos.x - a.x0, v.pos.z - a.z0), a.t);
+        this.onToast(said);
+        if (said.startsWith('UNIQUE')) this.audio.theme.passed();
         this.air = null; v.lift = 0; v.pitch = 0;
         return;
       }
@@ -1187,6 +1189,8 @@ export class Game {
       // a fresh start or a jump (a load, a teleport): put the camera straight behind you
       if (!this.camAt || Math.hypot(this.camAt.x - p.pos.x, this.camAt.z - p.pos.z) > 12) this.camYaw = behind;
       this.camAt = { x: p.pos.x, z: p.pos.z };
+      // the character creator: a three-quarter view of your face
+      if (document.body.classList.contains('creating')) this.camYaw = p.facing + 0.55;
       const moving = Math.hypot(this.vel.x, this.vel.z) > 0.5;
       if (moving && Math.abs(dYaw) < 2.4) this.camYaw += dYaw * Math.min(1, dt * 1.6);
       // in a small room the walls pull the camera in: look down from higher up instead
@@ -1208,7 +1212,7 @@ export class Game {
     const dir = new THREE.Vector3(Math.sin(this.camYaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(this.camYaw) * Math.cos(pitch));
     // over-the-shoulder offset to the right of the view direction
     const right = new THREE.Vector3(-Math.cos(this.camYaw), 0, Math.sin(this.camYaw));
-    const shoulder = this.overview || van ? 0 : 0.42;
+    const shoulder = document.body.classList.contains('creating') ? -0.9 : this.overview || van ? 0 : 0.42;
     const origin = pivot.clone().addScaledVector(right, -shoulder);
     let dist = this.camDist;
     // keep the camera out of walls: five rays (the middle and the corners of a small box round the

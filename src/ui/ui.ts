@@ -151,10 +151,13 @@ export class UI {
     // the moment it all goes wrong: WASTED when you go down for good (or die), BUSTED when they take you in
     const fate = p.dead ? 'dead' : p.away?.place === 'hospital' ? 'hospital' : p.away?.place === 'custody' || p.away?.place === 'prison' ? 'nicked' : '';
     if (fate !== this.lastFate) {
-      if (fate === 'dead' || fate === 'hospital') this.bigTitle('WASTED', 'wasted');
-      else if (fate === 'nicked') this.bigTitle('BUSTED', 'busted');
+      if (fate === 'dead' || fate === 'hospital') { this.bigTitle('WASTED', 'wasted'); this.game.audio.theme.wasted(); }
+      else if (fate === 'nicked') { this.bigTitle('BUSTED', 'busted'); this.game.audio.theme.busted(); }
       this.lastFate = fate;
     }
+    // a job for Vince done
+    if ((s.vinceRep ?? 0) > this.lastRep) { this.bigTitle('JOB DONE', 'passed'); this.game.audio.theme.passed(); }
+    this.lastRep = s.vinceRep ?? 0;
     const w = s.wanted;
     $('#wanted').hidden = !w;
     // the stars flash while they are searching for you (out of sight), and stay solid when you are seen
@@ -236,6 +239,7 @@ export class UI {
     this.syncModal();
   }
   private lastFate = '';
+  private lastRep = Infinity;
   private bigTitle(text: string, cls: string) {
     const el = $('#bigtitle');
     el.textContent = text; el.className = cls; el.hidden = false;
