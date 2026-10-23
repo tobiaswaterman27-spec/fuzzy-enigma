@@ -400,8 +400,12 @@ export class CityView {
     const head = new THREE.BoxGeometry(0.3, 0.1, 0.5); head.translate(0, 5.05, 1.05);
     inst(head, this.bulbs, lamps, (p, m) => place(p, m, 0), false);
     // benches and bins
-    const bench = new THREE.BoxGeometry(1.8, 0.45, 0.5); bench.translate(0, 0.45, 0);
-    inst(bench, new THREE.MeshStandardMaterial({ color: '#7a5a3a', roughness: 0.9 }), of('bench'), (p, m) => place(p, m, 0));
+    // a park bench: slatted seat and back on cast-iron ends (the seat faces +z)
+    const part = (w: number, h: number, d: number, x: number, y: number, z: number, rx = 0) => { const g = new THREE.BoxGeometry(w, h, d); g.rotateX(rx); g.translate(x, y, z); return g; };
+    const slats = mergeGeometries([0, 1, 2].map((k) => part(1.8, 0.04, 0.12, 0, 0.45, 0.16 - k * 0.15)).concat([0, 1].map((k) => part(1.8, 0.1, 0.03, 0, 0.62 + k * 0.15, -0.24 - k * 0.03, -0.25))))!;
+    const ends = mergeGeometries([-0.82, 0.82].flatMap((x) => [part(0.06, 0.45, 0.06, x, 0.225, 0.17), part(0.06, 0.85, 0.06, x, 0.42, -0.2, -0.12), part(0.06, 0.05, 0.45, x, 0.43, -0.02)]))!;
+    inst(slats, new THREE.MeshStandardMaterial({ color: '#8a6440', roughness: 0.9 }), of('bench'), (p, m) => place(p, m, 0));
+    inst(ends, new THREE.MeshStandardMaterial({ color: '#2b2f33', roughness: 0.6, metalness: 0.4 }), of('bench'), (p, m) => place(p, m, 0));
     // shipping containers in their colours
     const cont = new THREE.BoxGeometry(6, 2.6, 2.4); cont.translate(0, 1.3, 0);
     const containers = of('container');
