@@ -4,6 +4,7 @@
 // actually say; they can be confused by nonsense, irritated by repetition, and they decide big
 // questions (go out with you, marry you, lend you money, come along with you) themselves. What they
 // decide really happens. Without a key there are no conversations.
+import { letIn, shutDoor } from './houses';
 import type { GameState, Id, Person } from './types';
 import { clamp, dist, fmtMoney } from './core';
 import { lifeEvent, news } from './events';
@@ -18,7 +19,7 @@ import { getWorld } from './world/layout';
 import { netWorth, wealthTitle } from './wealth';
 
 export type Emotion = 'neutral' | 'happy' | 'laugh' | 'sad' | 'cry' | 'angry' | 'scared' | 'confused' | 'bored' | 'flirty' | 'shocked';
-export type DecisionType = 'date' | 'marry' | 'break_up' | 'lend' | 'gift' | 'meet' | 'move_in' | 'follow' | 'number';
+export type DecisionType = 'date' | 'marry' | 'break_up' | 'lend' | 'gift' | 'meet' | 'move_in' | 'follow' | 'number' | 'let_in';
 export interface Decision { type: DecisionType; accept: boolean; amount?: number }
 export interface Turn { reply: string; emotion: Emotion; attitude: number; decision: Decision | null; action: 'none' | 'leave' | 'attack' | 'call_police' }
 
@@ -63,6 +64,8 @@ function appearanceOf(state: GameState, p: Person, remote: boolean): string[] {
   if (you.partnerId && you.partnerId !== p.id && known) out.push(`They are with ${state.people[you.partnerId]?.name}.`);
   if (you.record?.length) out.push(`Everyone in town knows they have a criminal record (${you.record.join('; ')}).`);
   if (state.wanted) out.push('The police are looking for them right now.');
+  const dc = state.doorCall;
+  if (!remote && dc && dc.answerer === p.id && dc.stage !== 'done') out.push('They knocked at your front door and you have opened it: they are on your doorstep and you are standing in the doorway of your home.');
   if (!remote) {
     if (you.weapon) out.push(`They are holding a ${you.weapon === 'bat' ? 'cricket bat' : 'kitchen knife'} in front of you. That is frightening.`);
     if ((you.drunk ?? 0) > 40) out.push('They are obviously drunk.');
@@ -94,9 +97,9 @@ export function characterBrief(state: GameState, id: Id, remote = false, situati
     ...knowledgeOf(state, p),
     ...appearanceOf(state, p, remote),
     'How to behave: talk like a real person from round here, in one to three short spoken sentences (British English, contractions, no lists, no stage directions). React to exactly what they say and how they say it. If it is nonsense or keyboard mashing, be confused, ask what they mean, and get annoyed or walk off if it keeps happening. If they repeat themselves, notice. If they shout or are rude, react as your patience allows. Strangers get polite but guarded answers; you open up as you get to know someone. You can refuse anything, change the subject, or end the conversation.',
-    'Big questions are YOUR decision, made from your personality, how well and how long you have known them, what you have seen of them, and your own situation: going out together (date), marriage (marry; almost never with someone you have not been seeing for a while), breaking up (break_up), lending them money (lend, amount in pounds: only what you could spare and only if you trust them), accepting money they offer (gift, amount in pounds), meeting for coffee at Tidewater Cafe (meet), moving in together (move_in, only if together), coming along with them now for a while (follow), giving them your phone number (number). Say yes or no in your reply and record it in "decision". If they did not ask anything like that, decision is null.',
+    'Big questions are YOUR decision, made from your personality, how well and how long you have known them, what you have seen of them, and your own situation: going out together (date), marriage (marry; almost never with someone you have not been seeing for a while), breaking up (break_up), lending them money (lend, amount in pounds: only what you could spare and only if you trust them), accepting money they offer (gift, amount in pounds), meeting for coffee at Tidewater Cafe (meet), moving in together (move_in, only if together), coming along with them now for a while (follow), giving them your phone number (number), letting them into your home when they are at your door (let_in: think hard about who they are and what they want; strangers, and anyone at night, usually not). Say yes or no in your reply and record it in "decision". If they did not ask anything like that, decision is null.',
     'Your "action": "leave" if you walk away now, "attack" if you are so angry or threatened you hit them, "call_police" if you call the police on them, otherwise "none".',
-    'Reply ONLY as JSON: {"reply": "<what you say>", "emotion": "neutral|happy|laugh|sad|cry|angry|scared|confused|bored|flirty|shocked", "attitude": <integer -3..3, how this exchange changed how you feel about them>, "decision": null or {"type": "date|marry|break_up|lend|gift|meet|move_in|follow|number", "accept": true|false, "amount": <pounds, for lend/gift>}, "action": "none|leave|attack|call_police"}',
+    'Reply ONLY as JSON: {"reply": "<what you say>", "emotion": "neutral|happy|laugh|sad|cry|angry|scared|confused|bored|flirty|shocked", "attitude": <integer -3..3, how this exchange changed how you feel about them>, "decision": null or {"type": "date|marry|break_up|lend|gift|meet|move_in|follow|number|let_in", "accept": true|false, "amount": <pounds, for lend/gift>}, "action": "none|leave|attack|call_police"}',
   ].filter(Boolean).join('\n');
 }
 
@@ -126,7 +129,7 @@ export function speechNotes(text: string, previous: string[], msSinceLast: numbe
 export function parseTurn(raw: unknown): Turn {
   const o = (raw ?? {}) as Record<string, any>;
   const emotions: Emotion[] = ['neutral', 'happy', 'laugh', 'sad', 'cry', 'angry', 'scared', 'confused', 'bored', 'flirty', 'shocked'];
-  const types: DecisionType[] = ['date', 'marry', 'break_up', 'lend', 'gift', 'meet', 'move_in', 'follow', 'number'];
+  const types: DecisionType[] = ['date', 'marry', 'break_up', 'lend', 'gift', 'meet', 'move_in', 'follow', 'number', 'let_in'];
   const d = o.decision && types.includes(o.decision.type) ? { type: o.decision.type as DecisionType, accept: !!o.decision.accept, amount: Math.max(0, Math.round(Number(o.decision.amount) || 0)) } : null;
   return {
     reply: String(o.reply ?? '').slice(0, 500),
@@ -215,6 +218,11 @@ export function applyTurn(state: GameState, id: Id, turn: Turn, remote = false):
       case 'follow':
         if (!remote) { p.following = { target: you.id, until: state.minute + 120 }; fact = `${first} comes along with you.`; }
         break;
+      case 'let_in': {
+        const c = state.doorCall;
+        if (!remote && c && c.answerer === p.id && c.stage !== 'done') { letIn(state, c.house); fact = `${first} steps back and holds the door open for you.`; }
+        break;
+      }
       case 'number':
         if (p.knowsYou) p.knowsYou.number = true;
         fact = `You have ${first}'s number now (People tab on your phone).`;
@@ -222,6 +230,8 @@ export function applyTurn(state: GameState, id: Id, turn: Turn, remote = false):
     }
   }
   if (!remote) {
+    // at their own front door, walking off means shutting the door on you
+    if (turn.action === 'leave' && state.doorCall?.answerer === p.id && state.doorCall.stage !== 'done') { shutDoor(state); return `${first} shuts the door on you.`; }
     if (turn.action === 'leave') {
       p.following = null;
       const away = Object.values(getWorld().nodes).filter((n) => n.loc === 'outside' && dist(n, p.pos) > 12 && dist(n, p.pos) < 30)[0];

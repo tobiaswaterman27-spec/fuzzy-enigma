@@ -173,6 +173,8 @@ export type ActionType =
   | 'chop'
   | 'hand_in'
   | 'ae'
+  | 'barge_in'
+  | 'punch'
   | 'read_beat'
   | 'break_up'
   | 'search'

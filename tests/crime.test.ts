@@ -91,3 +91,23 @@ describe('Buses', () => {
     expect(auditLedger(s)).toEqual([]);
   });
 });
+
+import { bargeIn, houseOpen } from '../src/sim/houses';
+import { dwellingDoor } from '../src/sim/world/layout';
+describe('At the door', () => {
+  it('whoever answers stays in the doorway while you are on the step; you can push past them', () => {
+    const s = createNewGame(7, setup);
+    const me = s.people.player;
+    const olu = s.people.p_olu;
+    olu.where = 'mc_0a'; olu.visible = false; olu.sleeping = false; olu.relations[me.id] = 0;
+    const d = dwellingDoor('mc_0a')!;
+    me.pos = { x: d.out.x, z: d.out.z }; me.where = 'marlow'; me.visible = true;
+    knock(s, me.id, 'mc_0a');
+    for (let i = 0; i < 4 * 6; i++) { step(s, 0.25); me.pos = { x: d.out.x, z: d.out.z }; }
+    expect(s.doorCall?.stage).toBe('open');
+    expect(olu.visible).toBe(true);
+    expect(bargeIn(s, me.id)).toMatch(/push past|shove past/);
+    expect(houseOpen(s, 'mc_0a')).toBe(true);
+    expect(s.wanted?.level ?? 0).toBeGreaterThan(0);
+  });
+});

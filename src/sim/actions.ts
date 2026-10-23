@@ -3,10 +3,10 @@
 // unit callbacks or on completion - never because an animation finished.
 import { useEnergy } from './bills';
 import { buyWeapon, finishRob, startRob, WEAPONS } from './health';
-import { breakIn, houseOf, houseOpen, knock, searchValuables } from './houses';
+import { bargeIn, breakIn, houseOf, houseOpen, knock, searchValuables } from './houses';
 import { breakUp, handIn, onPcsoShift, readBeat } from './station';
 import { BUS_FARE } from './bus';
-import { goToAandE } from './health';
+import { attack, goToAandE } from './health';
 import { chopCandidate, chopPrice, mug, pickpocket, sellToChop } from './streetcrime';
 import { forceShop, lootTill, SHOP_IDS, shopLocked, shopOf, shopOpenNow } from './breakins';
 import { grabShoplifter } from './incidents';
@@ -343,6 +343,7 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
       if (p.isPlayer && !other.police && !other.npc?.ambient && !openFavour(state, other.id)) out.push(opt('favour_ask', `Ask ${other.name.split(' ')[0]} if they need a hand with anything`));
       if (p.isPlayer && !other.police && !other.isPlayer) {
         out.push(opt('pickpocket', `Pick ${other.name.split(' ')[0]}'s pocket`));
+        out.push(opt('punch', p.weapon ? `Hit ${other.name.split(' ')[0]} with the ${p.weapon === 'knife' ? 'knife' : 'bat'} (F)` : `Punch ${other.name.split(' ')[0]} (F)`));
         if (p.weapon) out.push(opt('mug', `Threaten ${other.name.split(' ')[0]} for their wallet (${p.weapon === 'knife' ? 'knife' : 'bat'} out)`));
       }
       if (p.isPlayer && state.incident && state.incident.stage !== 'done' && (state.incident.a === other.id || state.incident.b === other.id)) out.unshift(opt('break_up', 'Step in and break it up'));
@@ -409,6 +410,8 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
     }
     case 'housedoor': {
       const h = houseOf(it.id);
+      const dc = state.doorCall;
+      if (dc && dc.house === h && dc.stage === 'open' && !dc.letIn && dc.answerer) out.push(opt('barge_in', `Push past ${state.people[dc.answerer].name.split(' ')[0]} and go in`));
       if (houseOpen(state, h)) break;
       out.push(opt('knock', 'Knock on the door', state.doorCall && state.doorCall.house === h && state.doorCall.stage !== 'done' ? 'Someone is coming to the door' : undefined));
       out.push(opt('break_in', 'Force the door (break in)'));
@@ -678,6 +681,10 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
       return { ok: true, msg: grabShoplifter(state, p.id, itId.slice(7)) };
     case 'break_in':
       begin(p, type, itId, { duration: 1.2 }, now); break;
+    case 'punch':
+      return { ok: true, msg: attack(state, p.id, itId.slice(7)) || '' };
+    case 'barge_in':
+      return { ok: true, msg: bargeIn(state, p.id) };
     case 'loot_till':
       begin(p, type, itId, { duration: 1.4 }, now); break;
     case 'pickpocket': case 'mug': {

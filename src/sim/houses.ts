@@ -59,6 +59,9 @@ export function doorTick(state: GameState) {
     c.stage = 'open';
     if (c.letIn) { open(state, c.house, 45); p.relations[c.by] = clamp((p.relations[c.by] ?? 0) + 2, 0, 100); }
     p.gesture = { clip: c.letIn ? 'wave' : night(state) ? 'argue' : 'shrug', until: state.minute + 1 };
+  } else if (c.stage === 'open' && !c.letIn && t < 12 && onDoorstep(state, c.by, door)) {
+    // while you are on the doorstep they stay in the doorway (talk to them, or try something)
+    if (p.npc) p.npc.plan = [{ kind: 'wait', until: state.minute + 1 }];
   } else if (c.stage === 'open' && t > (c.letIn ? 2.2 : 2.6)) {
     // let in: they step back into the front room; not: they close the door and go back inside
     c.stage = 'done';
@@ -66,6 +69,52 @@ export function doorTick(state: GameState) {
     if (c.letIn) goTo(state, p, { x: inside.x + ix * 2.4 - iz * 1, z: inside.z + iz * 2.4 + ix * 1 }, 'front room');
     else { p.visible = false; (p.npc as any).shownIn = undefined; p.pos = { x: door.x, z: door.z }; }
   }
+}
+
+const onDoorstep = (state: GameState, id: Id, door: { x: number; z: number }) => { const q = state.people[id]; return !!q && q.visible && dist(q.pos, door) < 3; };
+
+/** whoever answered lets you in (they decided to, talking on the doorstep) */
+export function letIn(state: GameState, houseId: Id) {
+  const c = state.doorCall;
+  open(state, houseId, 45);
+  if (c && c.house === houseId) { c.letIn = true; c.at = state.minute - 2.3; }
+}
+
+/** they have had enough: the door closes and they go back inside */
+export function shutDoor(state: GameState) {
+  const c = state.doorCall;
+  if (!c || !c.answerer) return;
+  const p = state.people[c.answerer];
+  const dd = dwellingDoor(c.house);
+  c.stage = 'done';
+  if (p && dd) { p.visible = false; (p.npc as any).shownIn = undefined; p.pos = { ...dd.out }; if (p.npc) p.npc.plan = []; }
+}
+
+/** shove past whoever opened the door and walk into their home */
+export function bargeIn(state: GameState, personId: Id): string {
+  const c = state.doorCall;
+  const me = state.people[personId];
+  if (!c || !c.answerer || c.stage === 'done') return '';
+  const p = state.people[c.answerer];
+  const dd = dwellingDoor(c.house);
+  open(state, c.house, 60);
+  c.stage = 'done';
+  if (!p || !dd) return '';
+  const ux = dd.inside.x - dd.out.x, uz = dd.inside.z - dd.out.z, ul = Math.hypot(ux, uz) || 1;
+  // they stagger back into the hall
+  p.pos = { x: dd.inside.x + (ux / ul) * 1.2, z: dd.inside.z + (uz / ul) * 1.2 };
+  p.relations[me.id] = 0;
+  p.needs.mood = clamp(p.needs.mood - 25, 0, 100);
+  lifeEvent(state, p, `${me.name} forced their way into the house`);
+  if (p.traits.patience < 0.4 && (p.health ?? 100) > 50) {
+    p.combat = { target: me.id, until: state.minute + 3, next: state.minute + 0.5 };
+    crime(state, 'forcing entry to a home', 2, p.id);
+    return `You shove past ${p.name.split(' ')[0]}, who comes straight back at you!`;
+  }
+  p.gesture = { clip: 'scared', until: state.minute + 1.5 };
+  if (p.npc) p.npc.plan = [{ kind: 'wait', until: state.minute + 2 }];
+  crime(state, 'forcing entry to a home', 2, p.id);
+  return `You push past ${p.name.split(' ')[0]} into the hall. They back away, phone in hand.`;
 }
 
 /** force the door: noisy; anyone home or nearby calls the police */
