@@ -2,12 +2,13 @@
 // 19:45: turn up at the turnstiles from an hour before kick-off, pay at the gate, and maybe put a
 // little on the result with the bookie's kiosk. The match passes quickly; the score is fixed by the
 // day (so everyone in the city saw the same game), and you come out of the gate at full time.
-import type { GameState, Id, Vec2 } from './types';
+import type { GameState, Id } from './types';
 import { clamp, fmtMoney } from './core';
 import { dayIndex, dayOfWeek, minuteOfDay } from './clock';
 import { lifeEvent, news } from './events';
 import { transfer } from './ledger';
 import { getWorld } from './world/layout';
+import { turnstilesOf } from './world/spots';
 
 export const TICKET = 3500;
 export const STAKE = 2000;
@@ -16,11 +17,7 @@ export type Pick = keyof typeof ODDS;
 const RIVALS = ['Northfield Rovers', 'Westbay Athletic', 'Eastgate United', 'Saltmarsh Town', 'Port Ellis City', 'Kingsmoor Albion', 'Docklands Wanderers', 'Ashby Vale'];
 
 /** the turnstiles: in front of the south stand, facing the street */
-export function turnstiles(city: { buildings: { style: string; rect: { x0: number; z0: number; x1: number; z1: number } }[] } = getWorld().city): Vec2 {
-  const st = city.buildings.filter((b) => b.style === 'stadium');
-  const s = st.reduce((a, b) => (b.rect.z1 > a.rect.z1 ? b : a), st[0]);
-  return { x: (s.rect.x0 + s.rect.x1) / 2, z: s.rect.z1 + 1.4 };
-}
+export const turnstiles = () => turnstilesOf(getWorld().city);
 
 /** today's kick-off (minute of the day), or null if there is no match today */
 export function kickOff(minute: number): number | null {

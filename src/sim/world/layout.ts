@@ -1,7 +1,5 @@
 // Static world definition for the Harbourside starting district.
-import { HALTS } from '../train';
-import { turnstiles } from '../stadium';
-import { phoneBoxes } from '../missions';
+import { HALTS, phoneBoxesOf, turnstilesOf } from './spots';
 import { STALLS } from '../streetmarket';
 import { defaultDesign, furnish, type HomeDesign, type PlacedItem } from './homes';
 import { PLOTS } from './plots';
@@ -837,12 +835,12 @@ function buildWorldData(homeDesign: HomeDesign): World {
     obstacles.push({ kind: 'halt_sign', rect: { x0: h.pos.x - 1.4, z0: h.pos.z - 1.5, x1: h.pos.x + 1.4, z1: h.pos.z - 1.2 }, height: 3.0, solid: false });
   }
   // ---- red phone boxes (Vince is always at the other end)
-  phoneBoxes(buildCity(B.filter((b) => !b.unit && !b.level).map((b) => b.rect))).forEach((b, i) => {
+  phoneBoxesOf(buildCity(B.filter((b) => !b.unit && !b.level).map((b) => b.rect))).forEach((b, i) => {
     obstacles.push({ kind: 'phonebox', rect: { x0: b.x - 0.5, z0: b.z - 0.5, x1: b.x + 0.5, z1: b.z + 0.5 }, height: 2.5, solid: false });
     add({ id: `payphone_${i}`, kind: 'payphone', label: 'Phone box', pos: { x: b.x, z: b.z + 1.0 }, facing: Math.PI, obj: { x: b.x, z: b.z }, locationId: 'outside', range: 1.8 });
   });
   // ---- the stadium's turnstiles
-  { const t = turnstiles(buildCity(B.filter((b) => !b.unit && !b.level).map((b) => b.rect))); add({ id: 'turnstile', kind: 'turnstile', label: 'Harbour City Stadium turnstiles', pos: t, facing: Math.PI, obj: { x: t.x, z: t.z - 1.2 }, locationId: 'outside', range: 2.5 }); for (const dx of [-2.2, 1.4]) obstacles.push({ kind: 'kiosk', rect: { x0: t.x + dx, z0: t.z - 1.4, x1: t.x + dx + 0.8, z1: t.z - 0.7 }, height: 1.2, solid: true }); }
+  { const t = turnstilesOf(buildCity(B.filter((b) => !b.unit && !b.level).map((b) => b.rect))); add({ id: 'turnstile', kind: 'turnstile', label: 'Harbour City Stadium turnstiles', pos: t, facing: Math.PI, obj: { x: t.x, z: t.z - 1.2 }, locationId: 'outside', range: 2.5 }); for (const dx of [-2.2, 1.4]) obstacles.push({ kind: 'kiosk', rect: { x0: t.x + dx, z0: t.z - 1.4, x1: t.x + dx + 0.8, z1: t.z - 0.7 }, height: 1.2, solid: true }); }
   // ---- Eastgate Motors' yard gate: stolen cars sold for parts
   add({ id: 'chop_shop', kind: 'chop_shop', label: 'Eastgate Motors (yard gate)', pos: { x: 84, z: -10.4 }, facing: Math.PI, obj: { x: 84, z: -12 }, locationId: 'outside', range: 1.6 });
   // ---- the city's venues, fitted out

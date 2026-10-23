@@ -28,10 +28,6 @@ export interface Mission {
 
 const BODY_NAMES: Record<string, string> = { suv: 'an SUV', sports: 'a sports coupe', saloon: 'a saloon', car: 'a hatchback' };
 
-/** where the phone boxes stand: beside some of the bus shelters */
-export function phoneBoxes(city: { props: { kind: string; x: number; z: number }[] } = getWorld().city): Vec2[] {
-  return city.props.filter((p) => p.kind === 'bus_stop').filter((_, i) => i % 3 === 0).map((p) => ({ x: p.x + 4.5, z: p.z + 0.6 }));
-}
 
 const placeName = (p: Vec2) => `${streetAt(p.x, p.z)}, ${DISTRICT_NAMES[districtAt(p.x, p.z)]}`;
 function streetSpot(state: GameState, near: Vec2, min: number, max: number): Vec2 {

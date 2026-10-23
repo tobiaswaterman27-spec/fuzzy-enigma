@@ -4,18 +4,12 @@
 import type { GameState, Id, Vec2 } from './types';
 import { dist, fmtMoney } from './core';
 import { transfer } from './ledger';
-import { ESPLANADE_Z, ROAD_HALF, WALK_W } from './world/city';
+import { HALTS, type TrainStop } from './world/spots';
 import { planVenues } from './world/venues';
 import { getWorld } from './world/layout';
 
-export interface TrainStop { id: string; name: string; pos: Vec2 }
+export type { TrainStop } from './world/spots';
 export const TRAIN_FARE = 420;
-const C = ROAD_HALF + WALK_W / 2;
-/** the halts, on the pavement by the line's footbridge */
-export const HALTS: TrainStop[] = [
-  { id: 'halt_west', name: 'Westbay (seafront)', pos: { x: -630, z: ESPLANADE_Z - C } },
-  { id: 'halt_north', name: 'Northfield Parkway', pos: { x: -200, z: -1040 - C } },
-];
 
 let stops: TrainStop[] | null = null;
 export function trainStops(): TrainStop[] {
