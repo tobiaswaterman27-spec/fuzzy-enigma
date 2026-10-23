@@ -20,7 +20,7 @@ import { finishRace, RACES } from '../sim/races';
 import { missionGoal } from '../sim/missions';
 import { walletSpots } from '../sim/collect';
 import { planRoute } from '../sim/world/nav';
-import { LEVEL_DX, levelOf, planX, sceneOf } from '../sim/world/levels';
+import { LEVEL_DX, levelOf, planX, sceneOf , LEVEL_H } from '../sim/world/levels';
 import { houseOpen } from '../sim/houses';
 import { capability } from '../sim/needs';
 import { daylight, hourOfDay } from '../sim/clock';
@@ -67,6 +67,29 @@ export interface Focus {
   id: string;
   label: string;
   options: ActionOption[];
+}
+
+/** how far along a ray it is to the first city building (a box from the ground to its roof) */
+function cityBlock(o: THREE.Vector3, d: THREE.Vector3, max: number): number {
+  let best = max;
+  const city = getWorld().city;
+  for (const list of [city.buildings, city.opened ?? []]) for (const b of list) {
+    const r = b.rect;
+    if (r.x1 < o.x - max - 1 || r.x0 > o.x + max + 1 || r.z1 < o.z - max - 1 || r.z0 > o.z + max + 1) continue;
+    // the building you are in (an opened venue) is the world view's business
+    if (o.x > r.x0 - 0.3 && o.x < r.x1 + 0.3 && o.z > r.z0 - 0.3 && o.z < r.z1 + 0.3 && o.y < b.height) continue;
+    // slab test against the box, a little fattened
+    let t0 = 0, t1 = best;
+    for (const [oo, dd, lo, hi] of [[o.x, d.x, r.x0 - 0.2, r.x1 + 0.2], [o.y, d.y, -1, b.height + 0.5], [o.z, d.z, r.z0 - 0.2, r.z1 + 0.2]]) {
+      if (Math.abs(dd) < 1e-6) { if (oo < lo || oo > hi) { t0 = Infinity; break; } continue; }
+      let a = (lo - oo) / dd, c = (hi - oo) / dd;
+      if (a > c) [a, c] = [c, a];
+      t0 = Math.max(t0, a); t1 = Math.min(t1, c);
+      if (t0 > t1) break;
+    }
+    if (t0 <= t1 && t0 < best) best = t0;
+  }
+  return best;
 }
 
 export class Game {
@@ -229,7 +252,7 @@ export class Game {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     // a near plane of 0.2 m doubles depth precision over 0.1 (less flicker between close surfaces)
-    this.camera = new THREE.PerspectiveCamera(55, 1, 0.2, 2200);
+    this.camera = new THREE.PerspectiveCamera(55, 1, 0.12, 2200);
     this.hemi = new THREE.HemisphereLight('#cfe6ff', '#5d6b4a', 0.9);
     this.scene.add(this.hemi);
     this.scene.add(new THREE.AmbientLight('#fff6ea', 0.35));
@@ -912,7 +935,9 @@ export class Game {
       if (moving && Math.abs(dYaw) < 2.4) this.camYaw += dYaw * Math.min(1, dt * 1.6);
       // in a small room the walls pull the camera in: look down from higher up instead
       const cramped = inside && this.distCur > 0 && this.distCur < 1.6;
-      const wantPitch = p.sleeping ? 0.75 : cramped ? 0.6 : inside ? 0.42 : 0.24;
+      // in a stairwell there is only room above: look down the flight from over your shoulder
+      const onStairs = stairY(p.pos) > 0.05;
+      const wantPitch = p.sleeping ? 0.75 : onStairs ? 0.85 : cramped ? 0.7 : inside ? 0.42 : 0.24;
       const wantDist = (p.sleeping ? 3.4 : inside ? 3.3 : 4.4) * this.zoom;
       this.camPitch += (wantPitch - this.camPitch) * Math.min(1, dt * 2);
       this.camDist += (wantDist - this.camDist) * Math.min(1, dt * 2);
@@ -930,11 +955,31 @@ export class Game {
     const shoulder = this.overview || van ? 0 : 0.42;
     const origin = pivot.clone().addScaledVector(right, -shoulder);
     let dist = this.camDist;
-    // ray-cast against walls and buildings so the camera never ends up inside geometry
-    this.raycaster.set(origin, dir);
-    this.raycaster.far = dist + 0.3;
-    const hits = this.raycaster.intersectObjects(this.world.occluders, false);
-    if (hits.length) dist = Math.max(0.35, hits[0].distance - 0.28);
+    // keep the camera out of walls: five rays (the middle and the corners of a small box round the
+    // lens), so the edges of the view do not poke through a wall the middle ray just misses
+    const near = this.world.occludersNear(origin.x, origin.z);
+    const up = new THREE.Vector3().crossVectors(dir, right).normalize();
+    let blocked = false;
+    for (const [a, b] of [[0, 0], [0.22, 0.16], [-0.22, 0.16], [0.22, -0.16], [-0.22, -0.16]]) {
+      const o = origin.clone().addScaledVector(right, a).addScaledVector(up, b);
+      this.raycaster.set(o, dir);
+      this.raycaster.far = dist + 0.3;
+      const h = this.raycaster.intersectObjects(near, false)[0];
+      if (h) { dist = Math.max(0.3, Math.min(dist, h.distance - 0.22)); blocked = true; }
+    }
+    // the city's buildings (drawn by the city view, not the world) are solid to the camera too
+    if (!this.overview) {
+      const t = cityBlock(origin, dir, dist + 0.3);
+      if (t < dist + 0.3) { dist = Math.max(0.3, t - 0.3); blocked = true; }
+    }
+    // indoors, keep under the ceiling and over the floor of the storey the head is in (on the stairs too)
+    if (!van && !this.overview && shellAt(p.pos)) {
+      const storey = Math.floor((origin.y - 0.2) / LEVEL_H);
+      const ceil = storey * LEVEL_H + 3.2 - 0.22, floor = storey * LEVEL_H + 0.3;
+      if (dir.y > 1e-3 && origin.y < ceil) { const t = (ceil - origin.y) / dir.y; if (t < dist) { dist = Math.max(0.3, t); blocked = true; } }
+      if (dir.y < -1e-3 && origin.y > floor) { const t = (floor - origin.y) / dir.y; if (t < dist) { dist = Math.max(0.3, t); blocked = true; } }
+    }
+    const hits = blocked ? [true] : [];
     // indoors the camera stays indoors: never out through an open doorway behind you
     const shell = !van && !this.overview ? shellAt(p.pos) : null;
     if (shell) {

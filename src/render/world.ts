@@ -77,6 +77,8 @@ export interface WorldView {
   /** ceiling lights inside buildings: drawn by the pool when near */
   lightSpots: { x: number; y: number; z: number; intensity: number; distance: number; bid: string }[];
   occluders: THREE.Object3D[];
+  /** the camera's walls near a point (from a 16 m grid, so the camera only tests what is close) */
+  occludersNear: (x: number, z: number) => THREE.Object3D[];
   doors: AnimDoor[];
   parkedCars: THREE.Object3D[];
   update: (state: GameState, dt: number) => void;
@@ -270,7 +272,26 @@ export function buildWorld(scene: THREE.Scene): WorldView {
       }
     }
   };
-  return { group: g, cutaway, windowsMat, lampBulbs, lampLights, lightSpots, occluders: occ, doors, parkedCars, update, cull };
+  const occGrid = new Map<string, THREE.Object3D[]>();
+  {
+    const bb = new THREE.Box3();
+    for (const o of occ) {
+      const m = o as THREE.Mesh;
+      if (!m.geometry) continue;
+      if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
+      bb.copy(m.geometry.boundingBox!).applyMatrix4(m.matrixWorld);
+      for (let i = Math.floor(bb.min.x / 16); i <= Math.floor(bb.max.x / 16); i++) for (let j = Math.floor(bb.min.z / 16); j <= Math.floor(bb.max.z / 16); j++) {
+        const k = `${i},${j}`; let l = occGrid.get(k); if (!l) occGrid.set(k, (l = [])); l.push(o);
+      }
+    }
+  }
+  const occludersNear = (x: number, z: number) => {
+    const out = new Set<THREE.Object3D>();
+    const i0 = Math.floor(x / 16), j0 = Math.floor(z / 16);
+    for (let i = i0 - 1; i <= i0 + 1; i++) for (let j = j0 - 1; j <= j0 + 1; j++) for (const o of occGrid.get(`${i},${j}`) ?? []) out.add(o);
+    return [...out];
+  };
+  return { group: g, cutaway, windowsMat, lampBulbs, lampLights, lightSpots, occluders: occ, occludersNear, doors, parkedCars, update, cull };
 }
 
 /** world-space pieces of a mesh, one per material (multi-material boxes are split by their groups) */
