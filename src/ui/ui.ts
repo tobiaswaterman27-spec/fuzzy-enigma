@@ -396,8 +396,34 @@ export class UI {
       <h3>Dog</h3>${d ? `<div class="card"><b>${esc(d.name)}</b> · with you since day ${dayIndex(d.since) + 1} · ${d.happy >= 70 ? 'happy' : d.happy >= 40 ? 'all right' : 'fed up'} (${Math.round(d.happy)})<br><span class="muted">${d.walkedDay === dayIndex(s.minute) ? 'Walked today.' : 'Not walked yet today: be out and about together for half an hour.'} Food ${fmtMoney(DOG_FOOD_WEEK)} a week.</span></div>`
       : `<div class="card">Harbourside Dog Rescue (past Unit 4, by the park) has dogs looking for a home. Go in and meet them in the kennels. Adoption fee ${fmtMoney(ADOPTION)}, then ${fmtMoney(DOG_FOOD_WEEK)} a week for food. They go everywhere with you and need a walk every day.</div>`}
       <h3>Lottery</h3><div class="card">${tickets.length ? tickets.map((t) => `Ticket for ${fmtDate(t.draw).split(',')[0]}: <b>${t.numbers.join(' ')}</b>`).join('<br>') : 'No ticket for this week.'}<br><span class="muted">Tickets and scratchcards at the Corner Market self-checkout. Draw Saturday 20:00: 3 numbers ${fmtMoney(3000)}, 4 ${fmtMoney(14000)}, 5 ${fmtMoney(175000)}, all 6 ${fmtMoney(200000000)}.</span></div>
+      <h3>Stats</h3><div class="card">${this.stats().map(([k, v]) => `<div class="line"><span>${esc(k)}</span><span><b>${v}</b></span></div>`).join('')}</div>
       <h3>Achievements (${Object.keys(s.achievements ?? {}).length}/${ACHIEVEMENTS.length})</h3><div class="card">${ACHIEVEMENTS.map((a) => `<div class="line"><span>${s.achievements?.[a.id] !== undefined ? '★' : '☆'} <b>${esc(a.title)}</b></span><span class="muted">${esc(a.how)}</span></div>`).join('')}</div>
       <h3>Emergency</h3><div class="row"><button data-999="ambulance">Call 999: ambulance</button><button data-999="police">Call 999: police</button></div>`;
+  }
+
+  /** your life in numbers, worked out from the records (the ledger and your history) */
+  private stats(): [string, string | number][] {
+    const s = this.s, p = this.p;
+    const mine = s.ledger.txns.filter((t) => t.to === p.accountId || t.from === p.accountId);
+    const into = (re: RegExp) => mine.filter((t) => t.to === p.accountId && re.test(t.memo ?? '')).reduce((a, t) => a + t.amount, 0);
+    const outOf = (re: RegExp) => mine.filter((t) => t.from === p.accountId && re.test(t.memo ?? '')).length;
+    const hist = (re: RegExp) => p.history.filter((e) => re.test(e.text)).length;
+    const wages = mine.filter((t) => t.to === p.accountId && t.reason === 'wage').reduce((a, t) => a + t.amount, 0);
+    const dirty = into(/^(Cash from|Cash off the pavement|A lost wallet|Street race|Unique stunt|Winning bet|A thank-you|Pawned|Sold the|Cash from a broken)/);
+    return [
+      ['Days in the city', dayIndex(s.minute) + 1],
+      ['Earned in wages', fmtMoney(wages)],
+      ['Made other ways', fmtMoney(dirty)],
+      ['Cars stolen', hist(/^Stole a /)],
+      ['Unique stunt jumps', `${s.stunts?.length ?? 0}/8`],
+      ['Lost wallets found', `${s.wallets?.length ?? 0}`],
+      ['Jobs for Vince', s.vinceRep ?? 0],
+      ['Gang corners taken', hist(/off their corner/)],
+      ['Times arrested', p.record?.length ?? 0],
+      ['Bus rides · train trips · bike hires', `${outOf(/^Bus fare/)} · ${outOf(/^Train ticket/)} · ${outOf(/^Harbour Bikes/)}`],
+      ['Fish caught', p.fishCaught ?? 0],
+      ['Goals scored', p.goals ?? 0],
+    ];
   }
 
   tab_car(): string {
