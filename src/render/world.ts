@@ -1394,6 +1394,21 @@ function buildObstacle(o: Obstacle): THREE.Object3D {
       grp.traverse((x) => (x.userData.dynamic = true));
       break;
     }
+    case 'bike_rack': {
+      // a row of steel hoops, a blue totem with the scheme's sign, and a couple of docked bikes
+      const steel = metal('#8d949a', 0.35), blue = M('#1f6fd1', 0.4);
+      for (let x = r.x0 + 0.3; x < r.x1 - 0.2; x += 0.7) {
+        const hoop = new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.025, 6, 16, Math.PI), steel);
+        hoop.position.set(x, 0.05, cz); hoop.rotation.y = Math.PI / 2; grp.add(hoop);
+      }
+      grp.add(box(0.25, 2.0, 0.25, blue, r.x1 + 0.2, 1.0, cz));
+      grp.add(box(0.27, 0.4, 0.27, M('#ffffff', 0.4, { emissive: new THREE.Color('#9cc3ff'), emissiveIntensity: 0.4 }), r.x1 + 0.2, 1.75, cz, false));
+      for (const x of [r.x0 + 0.65, r.x0 + 1.35]) {
+        for (const dz of [-0.5, 0.5]) { const w = new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.03, 6, 18), M('#151515', 0.8)); w.position.set(x, 0.34, cz + dz); w.rotation.y = Math.PI / 2; grp.add(w); }
+        grp.add(box(0.05, 0.05, 1.0, blue, x, 0.6, cz)); grp.add(box(0.05, 0.45, 0.05, blue, x, 0.62, cz - 0.2)); grp.add(box(0.05, 0.4, 0.05, blue, x, 0.6, cz + 0.4));
+      }
+      break;
+    }
     case 'phonebox': {
       // the red K6 box: a domed roof, glazed doors and the crown sign
       const red = M('#c8102e', 0.45), glazing = M('#cfe3ea', 0.1, { transparent: true, opacity: 0.35 });

@@ -184,6 +184,8 @@ export type ActionType =
   | 'match'
   | 'vince'
   | 'garage'
+  | 'hire_bike'
+  | 'ride_bike'
   | 'prison_meal'
   | 'prison_work'
   | 'escape'
@@ -631,7 +633,7 @@ export interface Vehicle {
   id: Id;
   name: string;
   ownerId: Id;
-  kind: 'van' | 'car' | 'forklift' | 'boat';
+  kind: 'van' | 'car' | 'forklift' | 'boat' | 'bike';
   /** cars: model id, paint colour and what was paid */
   model?: string;
   color?: string;

@@ -22,3 +22,6 @@ export function turnstilesOf(city: CityLike): Vec2 {
 
 /** the red phone boxes: beside some of the bus shelters */
 export const phoneBoxesOf = (city: CityLike): Vec2[] => city.props.filter((p) => p.kind === 'bus_stop').filter((_, i) => i % 3 === 0).map((p) => ({ x: p.x + 4.5, z: p.z + 0.6 }));
+
+/** Harbour Bikes docks: beside some of the bus shelters */
+export const bikeDocksOf = (city: CityLike): Vec2[] => city.props.filter((p) => p.kind === 'bus_stop').filter((_, i) => i % 4 === 2).map((p) => ({ x: p.x - 5, z: p.z + 0.4 }));

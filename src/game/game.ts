@@ -19,6 +19,7 @@ import { onPcsoShift } from '../sim/station';
 import { finishRace, RACES } from '../sim/races';
 import { missionGoal } from '../sim/missions';
 import { CarSeq } from '../render/carseq';
+import { leaveBike } from '../sim/bikes';
 import { BusSeq } from '../render/busseq';
 import { STREETS } from '../sim/world/city';
 import { busStops, canRideBus, rideBus } from '../sim/bus';
@@ -447,7 +448,12 @@ export class Game {
       if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
       this.keys.add(e.code);
       if (this.uiOpen) return;
-      if (e.code === 'KeyR' && this.drivingVan()) { this.onToast(this.audio.radio.cycle()); return; }
+      if (e.code === 'KeyE' && this.drivingVan()?.kind === 'bike') {
+        if (Math.abs(this.vanSpeed) > 2.5) { this.onToast('Slow down first.'); return; }
+        this.onToast(leaveBike(this.state, this.player.id));
+        return;
+      }
+      if (e.code === 'KeyR' && this.drivingVan() && this.drivingVan()!.kind !== 'bike') { this.onToast(this.audio.radio.cycle()); return; }
       if (e.code === 'KeyE' && this.drivingVan()?.kind === 'forklift') {
         if (Math.abs(this.vanSpeed) > 1) { this.onToast('Stop first.'); return; }
         this.onToast(forkliftAction(this.state, this.player.id).msg);
@@ -764,10 +770,10 @@ export class Game {
     const car = v.kind === 'car' ? CAR_MODELS.find((m) => m.id === v.model) : undefined;
     const thr = canDrive ? (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0) : 0;
     const steer = canDrive ? (k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0) - (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) : 0;
-    const fork = v.kind === 'forklift', boat = v.kind === 'boat';
+    const fork = v.kind === 'forklift', boat = v.kind === 'boat', bike = v.kind === 'bike';
     // a battered engine loses its power; a burning or burnt-out car goes nowhere
     const tired = v.kind === 'car' ? (v.condition < 25 ? 0.55 : v.condition < 50 ? 0.85 : 1) : 1;
-    const MAX = (fork ? 4.5 : boat ? 7.5 : car?.topSpeed ?? 11) * (v.wrecked || v.burning != null ? 0 : tired), REV = fork ? 2.5 : 3;
+    const MAX = (fork ? 4.5 : boat ? 7.5 : bike ? 7 : car?.topSpeed ?? 11) * (v.wrecked || v.burning != null ? 0 : tired), REV = fork ? 2.5 : bike ? 1 : 3;
     if (v.burning != null && !this.fireWarned) { this.fireWarned = true; this.onToast('The engine is on fire! Get out (E) before it goes up!'); }
     if (v.burning == null) this.fireWarned = false;
     if (boat && this.player.action?.type === 'fish' && thr !== 0) cancelAction(this.state, this.player, 'moved');
@@ -779,7 +785,7 @@ export class Game {
     v.heading += steer * Math.sign(this.vanSpeed) * Math.min(Math.abs(this.vanSpeed), 3.5) * dt * 0.22;
     const nx = v.pos.x + Math.sin(v.heading) * this.vanSpeed * dt, nz = v.pos.z + Math.cos(v.heading) * this.vanSpeed * dt;
     // a boat keeps to the water: the quay wall on one side, open sea (within reason) on the other
-    const res = boat ? { x: Math.max(WATER.x0, Math.min(WATER.x1, nx)), z: Math.max(WATER.z0, Math.min(WATER.z1, nz)) } : resolveCircle({ x: nx, z: nz }, fork ? 0.8 : 1.15, this.collidersWithCars(v.id, false, { x: nx, z: nz }, 16));
+    const res = boat ? { x: Math.max(WATER.x0, Math.min(WATER.x1, nx)), z: Math.max(WATER.z0, Math.min(WATER.z1, nz)) } : resolveCircle({ x: nx, z: nz }, fork ? 0.8 : bike ? 0.45 : 1.15, this.collidersWithCars(v.id, false, { x: nx, z: nz }, 16));
     if (boat) for (const [mx, mz] of MOORED) {
       const dx = res.x - mx, dz = res.z - mz, d = Math.hypot(dx, dz);
       if (d < 3.4 && d > 1e-3) { res.x = mx + (dx / d) * 3.4; res.z = mz + (dz / d) * 3.4; }
@@ -803,10 +809,10 @@ export class Game {
         if (o.isPlayer || !o.visible || o.dead || o.where === 'vehicle') continue;
         const dx = o.pos.x - res.x, dz = o.pos.z - res.z;
         const along = dx * fx + dz * fz, side = dx * fz - dz * fx;
-        if (Math.abs(along) > (fork ? 1.3 : 2.3) || Math.abs(side) > (fork ? 0.8 : 1.05)) continue;
+        if (Math.abs(along) > (fork ? 1.3 : bike ? 0.9 : 2.3) || Math.abs(side) > (fork ? 0.8 : bike ? 0.45 : 1.05)) continue;
         if ((this.hitCooldown.get(o.id) ?? 0) > now) continue;
         this.hitCooldown.set(o.id, now + 1500);
-        hitByVehicle(this.state, o.id, p.id, Math.abs(this.vanSpeed));
+        hitByVehicle(this.state, o.id, p.id, Math.abs(this.vanSpeed) * (bike ? 0.45 : 1));
         o.pos = resolveCircle({ x: o.pos.x + Math.sign(side || 1) * fz * 1.2 + fx * Math.sign(this.vanSpeed) * 0.8, z: o.pos.z - Math.sign(side || 1) * fx * 1.2 + fz * Math.sign(this.vanSpeed) * 0.8 }, 0.3);
         this.vanSpeed *= 0.7;
         this.onToast(`You hit ${o.name}!`);
@@ -1005,10 +1011,10 @@ export class Game {
       const behind = van.heading + Math.PI;
       const dYaw = ((behind - this.camYaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
       this.camYaw += dYaw * Math.min(1, dt * 2.5);
-      const fk = van.kind === 'forklift';
-      this.camPitch += ((fk ? 0.45 : 0.3) - this.camPitch) * Math.min(1, dt * 2);
-      if (!fk) this.camDist = Math.max(this.camDist, 7.5);
-      this.camDist += ((fk ? 5 : 9) - this.camDist) * Math.min(1, dt * 2);
+      const fk = van.kind === 'forklift', bk = van.kind === 'bike';
+      this.camPitch += ((fk ? 0.45 : bk ? 0.28 : 0.3) - this.camPitch) * Math.min(1, dt * 2);
+      if (!fk && !bk) this.camDist = Math.max(this.camDist, 7.5);
+      this.camDist += ((fk ? 5 : bk ? 4.2 : 9) - this.camDist) * Math.min(1, dt * 2);
     } else if (!this.camLocked && performance.now() < this.manualUntil) {
       // the player is looking around with the mouse: leave the angle alone, keep the distance
       const wantDist = (p.sleeping ? 3.4 : inside ? 3.3 : 4.4) * this.zoom;
@@ -1037,7 +1043,7 @@ export class Game {
     const climbing = (p.move?.climb ?? 0) > 0;
     const drawn = p.action || climbing ? this.views.people.get(p.id)?.rig.root.getWorldPosition(new THREE.Vector3()) : null;
     const sp = sceneOf(p.pos, stairY(p.pos));
-    const pivot = new THREE.Vector3(drawn?.x ?? sp.x, (drawn ? drawn.y : sp.y) + (van ? (van.kind === 'forklift' ? 2.0 : van.kind === 'boat' ? 1.0 : 2.7) : p.sleeping ? 1.0 : 1.62), drawn?.z ?? p.pos.z);
+    const pivot = new THREE.Vector3(drawn?.x ?? sp.x, (drawn ? drawn.y : sp.y) + (van ? (van.kind === 'forklift' ? 2.0 : van.kind === 'boat' ? 1.0 : van.kind === 'bike' ? 1.7 : 2.7) : p.sleeping ? 1.0 : 1.62), drawn?.z ?? p.pos.z);
     const pitch = this.camPitch;
     const dir = new THREE.Vector3(Math.sin(this.camYaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(this.camYaw) * Math.cos(pitch));
     // over-the-shoulder offset to the right of the view direction

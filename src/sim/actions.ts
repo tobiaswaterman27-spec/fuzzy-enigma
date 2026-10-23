@@ -7,6 +7,7 @@ import { bargeIn, breakIn, houseOf, houseOpen, knock, searchValuables } from './
 import { breakUp, handIn, onPcsoShift, readBeat } from './station';
 import { BUS_FARE } from './bus';
 import { TRAIN_FARE } from './train';
+import { BIKE_FARE, hireBike, mountBike } from './bikes';
 import { laundryShift, mealNow, nextMeal, prisonMeal, tryEscape } from './prison';
 import { callVince, dropMission, missionText } from './missions';
 import { fixture, gateOpen, goToMatch, ODDS, STAKE, TICKET, type Pick } from './stadium';
@@ -84,6 +85,10 @@ export function interactable(state: GameState, id: Id): Interactable | null {
       return { id, kind: 'vehicle', label: v.stolen ? `${v.name} (stolen)` : `Your ${v.name}`, pos: door, facing: v.heading + Math.PI / 2, obj: v.pos, locationId: locationOf(door), range: 2.6 };
     }
   }
+  if (id.startsWith('bike:')) {
+    const v = state.vehicles[id.slice(5)];
+    if (v && v.state === 'parked') return { id, kind: 'vehicle', label: 'Your hire bike', pos: v.pos, facing: v.heading, obj: v.pos, locationId: locationOf(v.pos), range: 1.8 };
+  }
   if (id.startsWith('person:')) {
     const o = state.people[id.slice(7)];
     if (o && o.visible) return { id, kind: 'person', label: o.name, pos: o.pos, facing: 0, obj: o.pos, locationId: locationOf(o.pos), range: 1.9 };
@@ -98,6 +103,7 @@ export function allInteractables(state: GameState): Interactable[] {
   for (const v of Object.values(state.vehicles)) if (v.kind === 'van' && v.state === 'loaded') out.push(interactable(state, `van:${v.id}`)!);
   for (const v of Object.values(state.vehicles)) if (v.kind === 'car' && v.state === 'parked') out.push(interactable(state, `car:${v.id}`)!);
   for (const v of Object.values(state.vehicles)) if (v.kind === 'forklift' && v.state === 'parked') out.push(interactable(state, `forklift:${v.id}`)!);
+  for (const v of Object.values(state.vehicles)) if (v.kind === 'bike' && v.state === 'parked') out.push(interactable(state, `bike:${v.id}`)!);
   return out;
 }
 
@@ -114,12 +120,13 @@ export function focusInteractable(state: GameState, actor: Person): Interactable
   let best: Interactable | null = null;
   let bestScore = Infinity;
   for (const it of allInteractables(state)) {
-    if (!canReach(actor, it)) continue;
-    if (it.kind === 'shopdoor' && !shopLocked(state, shopOf(it.id))) continue;
+    // cheap distance test first: the line-of-sight test is only for what is in reach
     const dPos = dist(actor.pos, it.pos);
     const dObj = dist(actor.pos, it.obj);
     const d = Math.min(dPos, dObj);
     if (d > it.range + 0.6) continue;
+    if (!canReach(actor, it)) continue;
+    if (it.kind === 'shopdoor' && !shopLocked(state, shopOf(it.id))) continue;
     const ang = Math.atan2(it.obj.x - actor.pos.x, it.obj.z - actor.pos.z);
     let diff = Math.abs(((ang - actor.facing + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
     if (dObj < 0.9) diff = 0;
@@ -363,6 +370,11 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
         out.push(opt('drive_forklift', `Get on the forklift (${palletsWaiting(state)} pallet(s) at goods-in)`, canDriveForklift(state, actorId)));
         break;
       }
+      if (it.id.startsWith('bike:')) {
+        const b = state.vehicles[it.id.slice(5)];
+        out.push(opt('ride_bike', 'Get back on the bike', b?.ownerId !== actorId ? 'Not your bike' : undefined));
+        break;
+      }
       if (it.id.startsWith('car:')) {
         const car = state.vehicles[it.id.slice(4)];
         out.push(opt('drive_car', car?.stolen ? `Get back in the stolen ${car.name}` : `Get in and drive your ${car?.name ?? 'car'}`, !car || (car.ownerId !== actorId && !car.stolen) ? 'Not your car' : canDriveCar(state, car)));
@@ -463,6 +475,9 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
       out.push(opt('chop', car ? `Sell the stolen ${car.name} for parts · ${fmtMoney(chopPrice(state, car.id))}` : 'Sell a stolen car for parts', car ? undefined : 'Bring a stolen car round to the yard gate'));
       break;
     }
+    case 'bike_dock':
+      out.push(opt('hire_bike', `Hire a bike · ${fmtMoney(BIKE_FARE)}`, Object.values(state.vehicles).some((v) => v.kind === 'bike' && v.ownerId === actorId) ? 'You already have a hire bike out' : undefined));
+      break;
     case 'payphone':
       if (!p.isPlayer) break;
       if (state.mission) { out.push(opt('vince', `Ring Vince (on a job: ${missionText(state).replace('Vince: ', '')})`, undefined, 'call')); out.push(opt('vince', 'Tell Vince you are dropping the job', undefined, 'drop')); }
@@ -797,6 +812,8 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
       begin(p, type, itId, { duration: 0.8 }, now); break;
     // a call from the box: lift the receiver, talk, hang up (the job is given at the end)
     case 'vince': begin(p, type, itId, { duration: 0.8, arg }, now); break;
+    case 'hire_bike': return { ok: true, msg: hireBike(state, p.id) };
+    case 'ride_bike': { const v = state.vehicles[itId.slice(5)]; return { ok: !!v, msg: v ? mountBike(state, p.id, v) : '' }; }
     case 'garage': { const v = state.vehicles[arg ?? '']; return { ok: !!v, msg: v ? garageJob(state, p.id, v) : '' }; }
     case 'prison_meal': begin(p, type, itId, { duration: 0.4 }, now); break;
     case 'serve_time':

@@ -345,12 +345,15 @@ function policeCatch(state: GameState) {
   if (me.down == null && !w.surrender) {
     me.hit = { at: state.minute, dir: Math.atan2(me.pos.x - cop.pos.x, me.pos.z - cop.pos.z), heavy: true, by: cop.id, force: 3.5 };
     cop.gesture = { clip: 'fight', until: state.minute + 0.4 };
-    floor(state, me, 0.8);
-    news(state, 'bad', 'Tackled!', `${cop.name} brings you down.`, true);
+    floor(state, me, 1.2);
+    news(state, 'bad', 'Tackled!', `${cop.name} brings you down and gets the cuffs out.`, true);
     return;
   }
-  // a moment on the ground before the cuffs go on
-  if (me.down != null && state.minute - me.down < 0.4) return;
+  // a moment on the ground while the officer kneels and gets the cuffs on
+  if (me.down != null && state.minute - me.down < 0.9) {
+    if (state.minute - me.down > 0.25) { cop.move = null; cop.facing = Math.atan2(me.pos.x - cop.pos.x, me.pos.z - cop.pos.z); cop.gesture = { clip: 'pickup', until: state.minute + 0.3 }; }
+    return;
+  }
   arrest(state, cop);
 }
 

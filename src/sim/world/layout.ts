@@ -1,5 +1,5 @@
 // Static world definition for the Harbourside starting district.
-import { HALTS, phoneBoxesOf, turnstilesOf } from './spots';
+import { bikeDocksOf, HALTS, phoneBoxesOf, turnstilesOf } from './spots';
 import { STALLS } from '../streetmarket';
 import { defaultDesign, furnish, type HomeDesign, type PlacedItem } from './homes';
 import { PLOTS } from './plots';
@@ -86,6 +86,7 @@ export type ObstacleKind =
   | 'stairguard'
   | 'halt_sign'
   | 'phonebox'
+  | 'bike_rack'
   | 'cellbars'
   | 'reception'
   | 'clothes_rack'
@@ -214,6 +215,7 @@ export type InteractKind =
   | 'prison_wall'
   | 'prison_bunk'
   | 'payphone'
+  | 'bike_dock'
   | 'chop_shop'
   | 'bus_stop'
   | 'hospital_door'
@@ -842,6 +844,11 @@ function buildWorldData(homeDesign: HomeDesign): World {
   phoneBoxesOf(buildCity(B.filter((b) => !b.unit && !b.level).map((b) => b.rect))).forEach((b, i) => {
     obstacles.push({ kind: 'phonebox', rect: { x0: b.x - 0.5, z0: b.z - 0.5, x1: b.x + 0.5, z1: b.z + 0.5 }, height: 2.5, solid: false });
     add({ id: `payphone_${i}`, kind: 'payphone', label: 'Phone box', pos: { x: b.x, z: b.z + 1.0 }, facing: Math.PI, obj: { x: b.x, z: b.z }, locationId: 'outside', range: 1.8 });
+  });
+  // ---- Harbour Bikes docks
+  bikeDocksOf(buildCity(B.filter((b) => !b.unit && !b.level).map((b) => b.rect))).forEach((d, i) => {
+    obstacles.push({ kind: 'bike_rack', rect: { x0: d.x - 1.6, z0: d.z - 0.9, x1: d.x + 1.6, z1: d.z - 0.3 }, height: 1.0, solid: false });
+    add({ id: `bikedock_${i}`, kind: 'bike_dock', label: 'Harbour Bikes dock', pos: { x: d.x, z: d.z + 0.6 }, facing: Math.PI, obj: { x: d.x, z: d.z - 0.6 }, locationId: 'outside', range: 2.0 });
   });
   // ---- the stadium's turnstiles
   { const t = turnstilesOf(buildCity(B.filter((b) => !b.unit && !b.level).map((b) => b.rect))); add({ id: 'turnstile', kind: 'turnstile', label: 'Harbour City Stadium turnstiles', pos: t, facing: Math.PI, obj: { x: t.x, z: t.z - 1.2 }, locationId: 'outside', range: 2.5 }); for (const dx of [-2.2, 1.4]) obstacles.push({ kind: 'kiosk', rect: { x0: t.x + dx, z0: t.z - 1.4, x1: t.x + dx + 0.8, z1: t.z - 0.7 }, height: 1.2, solid: true }); }

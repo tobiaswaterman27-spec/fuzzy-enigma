@@ -144,6 +144,32 @@ function toLevel(scene: THREE.Scene, k: number, ...objs: (THREE.Object3D | null 
   for (const o of objs) if (o && o.parent !== g) { o.parent?.remove(o); g.add(o); }
 }
 
+/** a Harbour Bikes hire bike, in the scheme's blue, front along +z */
+function hireBike(): THREE.Group {
+  const g = new THREE.Group();
+  const frame = new THREE.MeshStandardMaterial({ color: '#1f6fd1', roughness: 0.4, metalness: 0.4 });
+  const black = new THREE.MeshStandardMaterial({ color: '#151515', roughness: 0.8 });
+  const steel = new THREE.MeshStandardMaterial({ color: '#b0b5ba', roughness: 0.3, metalness: 0.8 });
+  for (const z of [-0.52, 0.52]) {
+    const w = new THREE.Mesh(new THREE.TorusGeometry(0.33, 0.035, 8, 24), black); w.rotation.y = Math.PI / 2; w.position.set(0, 0.36, z); g.add(w);
+    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.08, 8), steel); hub.rotation.z = Math.PI / 2; hub.position.set(0, 0.36, z); g.add(hub);
+  }
+  const bar = (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, m = frame, r = 0.025) => {
+    const a = new THREE.Vector3(x0, y0, z0), b = new THREE.Vector3(x1, y1, z1);
+    const c = new THREE.Mesh(new THREE.CylinderGeometry(r, r, a.distanceTo(b), 8), m);
+    c.position.copy(a).add(b).multiplyScalar(0.5);
+    c.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
+    g.add(c);
+  };
+  bar(0, 0.36, -0.52, 0, 0.45, -0.05); bar(0, 0.45, -0.05, 0, 0.82, -0.18); bar(0, 0.45, -0.05, 0, 0.8, 0.38);
+  bar(0, 0.8, 0.38, 0, 0.36, 0.52); bar(0, 0.82, -0.18, 0, 0.8, 0.38); bar(0, 0.36, -0.52, 0, 0.82, -0.18);
+  bar(0, 0.8, 0.38, 0, 1.0, 0.33); bar(-0.28, 1.0, 0.33, 0.28, 1.0, 0.33, black, 0.02);
+  const seat = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.05, 0.26), black); seat.position.set(0, 0.88, -0.2); g.add(seat);
+  const basket = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.2, 0.26), black); basket.position.set(0, 0.92, 0.58); g.add(basket);
+  g.traverse((o) => { o.castShadow = true; });
+  return g;
+}
+
 class PersonView {
   rig: Rig;
   anim: AnimationController;
@@ -189,7 +215,7 @@ class PersonView {
       this.lastPos.copy(root.position);
     }
     // at the wheel: drawn sitting in the driver's seat, hands on the wheel, seen through the glass
-    const seat = p.where === 'vehicle' ? Object.values(state.vehicles).find((v) => v.driverId === p.id && (v.kind === 'car' || v.kind === 'van' || v.kind === 'forklift')) : undefined;
+    const seat = p.where === 'vehicle' ? Object.values(state.vehicles).find((v) => v.driverId === p.id && (v.kind === 'car' || v.kind === 'van' || v.kind === 'forklift' || v.kind === 'bike')) : undefined;
     root.visible = (p.visible || !!seat) && !this.culled;
     if (this.mop) this.mop.visible = root.visible && !seat;
     if (this.binbag) this.binbag.visible = root.visible && !seat;
@@ -472,7 +498,7 @@ class PersonView {
   private atWheel(v: { kind: string; pos: { x: number; z: number }; heading: number }, dt: number) {
     const root = this.rig.root;
     // driver's seat: right-hand side (this is Britain); the van's cab is high and forward; the forklift's seat in the middle
-    const [lx, ly, lz] = v.kind === 'van' ? [-0.45, 0.15, 1.35] : v.kind === 'forklift' ? [0, 0.3, -0.25] : [-0.4, -0.5, 0.05];
+    const [lx, ly, lz] = v.kind === 'van' ? [-0.45, 0.15, 1.35] : v.kind === 'forklift' ? [0, 0.3, -0.25] : v.kind === 'bike' ? [0, 0.32, -0.12] : [-0.4, -0.5, 0.05];
     const c = Math.cos(v.heading), s = Math.sin(v.heading);
     root.position.set(v.pos.x + lx * c + lz * s, ly, v.pos.z - lx * s + lz * c);
     root.rotation.y = v.heading;
@@ -480,14 +506,32 @@ class PersonView {
     this.rig.body.position.set(0, 0, 0);
     this.ragdoll = null;
     this.anim.update(dt, 0, false, 'g:sit');
-    // both hands forward on the wheel, elbows bent
     const B = this.rig.bones;
+    if (v.kind === 'bike') {
+      // pedalling: the legs go round with the speed, leaning on the bars
+      const moved = Math.hypot(root.position.x - this.lastPos.x, root.position.z - this.lastPos.z);
+      this.pedal += moved * 2.4;
+      for (const [s, ph] of [['L', 0], ['R', Math.PI]] as const) {
+        const a = this.pedal + ph;
+        B[`thigh${s}`].quaternion.setFromEuler(new THREE.Euler(-1.15 + Math.sin(a) * 0.45, 0, 0));
+        B[`shin${s}`].quaternion.setFromEuler(new THREE.Euler(1.0 + Math.cos(a) * 0.45, 0, 0));
+      }
+      B.spine.quaternion.setFromEuler(new THREE.Euler(0.35, 0, 0));
+      B.armL.quaternion.setFromEuler(new THREE.Euler(-1.0, 0, -0.25));
+      B.armR.quaternion.setFromEuler(new THREE.Euler(-1.0, 0, 0.25));
+      B.foreL.quaternion.setFromEuler(new THREE.Euler(-0.3, 0, 0));
+      B.foreR.quaternion.setFromEuler(new THREE.Euler(-0.3, 0, 0));
+      this.lastPos.copy(root.position);
+      return;
+    }
+    // both hands forward on the wheel, elbows bent
     B.armL.quaternion.setFromEuler(new THREE.Euler(-0.95, 0, -0.3));
     B.armR.quaternion.setFromEuler(new THREE.Euler(-0.95, 0, 0.3));
     B.foreL.quaternion.setFromEuler(new THREE.Euler(-0.7, 0, -0.2));
     B.foreR.quaternion.setFromEuler(new THREE.Euler(-0.7, 0, 0.2));
     this.lastPos.copy(root.position);
   }
+  private pedal = 0;
   private ragdoll: Ragdoll | null = null;
   private getUpUntil = 0;
   private lastHit = -1;
@@ -1337,6 +1381,15 @@ export class Views {
         const t = performance.now() / 1000;
         obj.position.set(v.pos.x, -1.15 + Math.sin(t * 1.3) * 0.05, v.pos.z);
         obj.rotation.set(Math.sin(t * 0.9) * 0.03, v.heading, Math.sin(t * 1.1) * 0.035);
+        continue;
+      }
+      if (v.kind === 'bike') {
+        let obj = this.cars.get(v.id);
+        if (!obj) { obj = hireBike(); this.scene.add(obj); this.cars.set(v.id, obj); }
+        obj.position.set(v.pos.x, 0, v.pos.z);
+        obj.rotation.y = v.heading;
+        // parked: leant over on its stand
+        obj.rotation.z = v.driverId ? 0 : 0.18;
         continue;
       }
       if (v.kind !== 'car') continue;
