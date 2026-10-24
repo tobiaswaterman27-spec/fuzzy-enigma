@@ -9,8 +9,13 @@ import { goTo } from './npc';
 import { getWorld } from './world/layout';
 import { levelOf } from './world/levels';
 
-const POOL = 14;
-const KEEP = 190;
+const POOL = 28;
+/** how many are out at this hour: busy in the day, a few stragglers in the small hours */
+function wanted(minute: number): number {
+  const h = Math.floor((minute % 1440) / 60);
+  return h >= 8 && h < 19 ? POOL : h >= 7 && h < 22 ? 18 : h >= 22 || h < 1 ? 10 : 5;
+}
+const KEEP = 150;
 
 function walker(state: GameState, i: number): Person {
   const id = `crowd_${i}`;
@@ -48,9 +53,16 @@ export function crowdTick(state: GameState) {
   if (!me || levelOf(me.pos.x) !== 0) return;
   const nodes = cityNodes();
   if (!nodes.length) return;
-  if (!nearCache || nearCache.all !== nodes || Math.hypot(nearCache.x - me.pos.x, nearCache.z - me.pos.z) > 8) nearCache = { all: nodes, x: me.pos.x, z: me.pos.z, near: nodes.filter((n) => { const d = dist(n, me.pos); return d > 40 && d < KEEP - 30; }) };
+  if (!nearCache || nearCache.all !== nodes || Math.hypot(nearCache.x - me.pos.x, nearCache.z - me.pos.z) > 8) nearCache = { all: nodes, x: me.pos.x, z: me.pos.z, near: nodes.filter((n) => { const d = dist(n, me.pos); return d > 28 && d < 110; }) };
   const near = nearCache.near;
+  const want = wanted(state.minute);
   for (let i = 0; i < POOL; i++) {
+    // more than the hour calls for: those out finish their walk and go home once out of sight
+    if (i >= want) {
+      const q = state.people[`crowd_${i}`];
+      if (q?.visible && !q.combat && q.down == null && dist(q.pos, me.pos) > 70) { q.visible = false; q.where = 'offsite'; q.move = null; }
+      continue;
+    }
     const p = walker(state, i);
     if (p.dead || p.away || p.down != null || p.combat || p.action || (p.fleeing ?? 0) > state.minute) continue;
     const far = !p.visible || dist(p.pos, me.pos) > KEEP;
@@ -103,7 +115,8 @@ export function crowdTick(state: GameState) {
       for (let k = 0; k < 30; k++) {
         const d = nodes[randInt(state, 0, nodes.length - 1)];
         const dd = dist(d, p.pos);
-        if (dd > 60 && dd < 320) { goTo(state, p, d, 'somewhere'); break; }
+        // somewhere that keeps them about the streets round you
+        if (dd > 40 && dd < 240 && dist(d, me.pos) < KEEP - 30) { goTo(state, p, d, 'somewhere'); break; }
       }
     }
   }

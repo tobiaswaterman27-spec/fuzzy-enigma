@@ -224,6 +224,10 @@ class PersonView {
   culled = false;
   /** sideways offset so two people standing on the same spot are drawn side by side */
   nudge = { x: 0, z: 0 };
+  /** pose every n-th frame (set from the distance to the camera) */
+  lod = 1;
+  private lodTick = 0;
+  private lodAcc = 0;
   private turnRate = 0;
   shadow = true;
 
@@ -256,6 +260,13 @@ class PersonView {
     if (this.binbag) this.binbag.visible = root.visible && !seat;
     if (!root.visible) { root.position.set(p.pos.x, 0, p.pos.z); return; }
     if (seat) { this.atWheel(seat, dt); return; }
+    // far off, the pose is worked out every second or third frame (they still glide along in between)
+    this.lodAcc += dt;
+    if (this.lod > 1 && ++this.lodTick % this.lod !== 0 && !p.action && !p.down && !p.dead) {
+      root.position.lerp(new THREE.Vector3(p.pos.x + this.nudge.x, root.position.y, p.pos.z + this.nudge.z), Math.min(1, dt * 20));
+      return;
+    }
+    dt = this.lodAcc; this.lodAcc = 0;
     root.rotation.x = 0;
     const key = JSON.stringify(p.appearance);
     // a change of clothes waits for the new body (built in the background) and then swaps it in
@@ -1474,6 +1485,7 @@ export class Views {
         if (shadow !== v.shadow) { v.shadow = shadow; v.rig.root.traverse((o) => { o.castShadow = shadow; }); }
       }
       v.culled = !near;
+      v.lod = viewer && p.id !== state.playerId ? (() => { const d = Math.hypot(p.pos.x - viewer.x, p.pos.z - viewer.z); return d > 55 ? 3 : d > 32 ? 2 : 1; })() : 1;
       v.update(state, p, dt);
       if (p.isPlayer && this.hidePlayer) v.rig.root.visible = false;
       const sp = speech?.get(p.id);
