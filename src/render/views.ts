@@ -55,7 +55,7 @@ const BASKET_GEO = (() => { const g = new THREE.CylinderGeometry(0.17, 0.14, 0.1
 const BAG_MAT = new THREE.MeshStandardMaterial({ color: '#f2f2ee', roughness: 0.7, side: THREE.DoubleSide, transparent: true, opacity: 0.92 });
 
 const BASE_WALKS = ['walk', 'walk_b', 'walk_c'];
-const GEAR = new Set(['fishing_rod', 'bait', 'cricket_bat', 'kitchen_knife', 'golf_club', 'crowbar']);
+const GEAR = new Set(['guitar', 'umbrella', 'book', 'flowers', 'fishing_rod', 'bait', 'cricket_bat', 'kitchen_knife', 'golf_club', 'crowbar']);
 
 /** a cricket bat or a kitchen knife, gripped in the fist (the hand bone's -y runs out past the fingers) */
 function weaponMesh(kind: 'bat' | 'knife' | 'golf' | 'crowbar'): THREE.Group {
@@ -558,6 +558,7 @@ class PersonView {
     this.plantW += ((standing ? 1 : 0) - this.plantW) * Math.min(1, dt * 6);
     if (this.plantW > 0.02 && this.rig.joints) this.plantFeet(this.plantW);
     this.umbrellaFx(state, p, realSpeed);
+    this.guitarFx(p);
     this.lookAtPlayer(p, dt, floored || !!this.bedIt || !!a && a.type !== 'talk');
     // keep the feet on the floor: whatever the animation does, the lower foot rests on the ground
     if (!this.bedIt && !floored && this.rig.joints && !this.seatAt) {
@@ -768,6 +769,42 @@ class PersonView {
     if (on === this.shellsOn) return;
     this.shellsOn = on;
     for (const o of this.shellMeshes) o.visible = on;
+  }
+  /** busking: the guitar across the body, the left hand on the neck, the right hand strumming */
+  private guitar: THREE.Group | null = null;
+  private guitarFx(p: Person) {
+    const on = !!(p as { busking?: boolean }).busking && p.visible && !p.action;
+    if (!on) { if (this.guitar) { this.guitar.parent?.remove(this.guitar); this.guitar = null; } return; }
+    if (!this.guitar) {
+      const g = new THREE.Group();
+      const wood = new THREE.MeshStandardMaterial({ color: '#b07a3e', roughness: 0.45 });
+      const dark = new THREE.MeshStandardMaterial({ color: '#3a2412', roughness: 0.6 });
+      for (const [r, z] of [[0.19, -0.12], [0.15, 0.08]] as const) { const b = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 0.09, 20), wood); b.rotation.x = Math.PI / 2; b.position.set(z, 0, 0); g.add(b); }
+      const hole = new THREE.Mesh(new THREE.CircleGeometry(0.045, 16), dark); hole.position.set(-0.02, 0, 0.047); g.add(hole);
+      const neck = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.05, 0.03), dark); neck.position.set(0.42, 0, 0.03); g.add(neck);
+      const head = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.07, 0.03), dark); head.position.set(0.72, 0, 0.03); g.add(head);
+      g.traverse((o) => { o.castShadow = true; });
+      this.guitar = g;
+    }
+    const B = this.rig.bones, root = this.rig.root;
+    if (this.guitar.parent !== root.parent) root.parent?.add(this.guitar);
+    root.updateMatrixWorld(true);
+    const q = root.getWorldQuaternion(new THREE.Quaternion());
+    const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(q).setY(0).normalize(), left = new THREE.Vector3(fwd.z, 0, -fwd.x);
+    const chest = B.chest.getWorldPosition(new THREE.Vector3());
+    const body = chest.clone().addScaledVector(fwd, 0.17).add(new THREE.Vector3(0, -0.28, 0));
+    // the body of the guitar at the belly, the neck rising across to the left
+    this.guitar.position.copy(root.parent!.worldToLocal(body.clone()));
+    this.guitar.quaternion.copy(q).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, 0.45)));
+    const neckAt = body.clone().addScaledVector(left, 0.46).add(new THREE.Vector3(0, 0.3, 0)).addScaledVector(fwd, 0.04);
+    const strum = Math.sin(performance.now() / 85) * 0.07;
+    const pick = body.clone().addScaledVector(left, -0.02).add(new THREE.Vector3(0, strum, 0)).addScaledVector(fwd, 0.08);
+    for (const [arm, fore, hand, grip, out] of [[B.armL, B.foreL, B.handL, neckAt, left], [B.armR, B.foreR, B.handR, pick, left.clone().negate()]] as const) {
+      const sh = arm.getWorldPosition(new THREE.Vector3());
+      const elbow = sh.clone().lerp(grip, 0.5).addScaledVector(out, 0.12).add(new THREE.Vector3(0, -0.14, 0));
+      aimBone(arm, fore, elbow);
+      aimBone(fore, hand, grip);
+    }
   }
   /** passers-by glance at you: the head (and a little of the neck) turns your way when you are close */
   private lookW = 0;

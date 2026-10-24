@@ -47,3 +47,20 @@ describe('Cash shifts', () => {
     expect(shiftBlocker(s, me, v)).toMatch(/already/);
   });
 });
+
+describe('Busking', () => {
+  it('a guitar and listeners bring in coins, and practice helps', async () => {
+    const { buskMinute, canBusk } = await import('../src/sim/busking');
+    const s = createNewGame(7, setup);
+    const me = s.people.player;
+    expect(canBusk(s, me.id)).toBe(false);
+    addItems(s.containers[me.bagId], 'guitar', 1);
+    expect(canBusk(s, me.id)).toBe(true);
+    const cash = s.ledger.accounts[me.accountId].balance;
+    expect(buskMinute(s, me.id, 0, 0.1)).toBe(0);
+    const c = buskMinute(s, me.id, 5, 0.1);
+    expect(c).toBeGreaterThan(0);
+    expect(s.ledger.accounts[me.accountId].balance).toBe(cash + c);
+    expect(me.skills.music).toBeGreaterThan(0);
+  });
+});

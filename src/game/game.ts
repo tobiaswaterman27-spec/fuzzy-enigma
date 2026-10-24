@@ -39,6 +39,8 @@ import { buildWorld, setCarLights, type WorldView } from '../render/world';
 import { setWet } from '../render/wet';
 import { Views } from '../render/views';
 import { CityView } from '../render/city';
+import { fmtMoney } from '../sim/core';
+import { buskMinute, canBusk, coinText } from '../sim/busking';
 import { dogDies } from '../sim/rescue';
 import { Traffic } from '../render/traffic';
 import { PoliceCar } from '../render/police';
@@ -536,6 +538,7 @@ export class Game {
         return;
       }
       if (e.code === 'KeyR' && this.drivingVan() && this.drivingVan()!.kind !== 'bike') { this.onToast(this.audio.radio.cycle()); return; }
+      if (e.code === 'KeyB' && !this.drivingVan()) { this.toggleBusk(); return; }
       if (e.code === 'KeyE' && this.drivingVan()?.kind === 'forklift') {
         if (Math.abs(this.vanSpeed) > 1) { this.onToast('Stop first.'); return; }
         this.onToast(forkliftAction(this.state, this.player.id).msg);
@@ -746,7 +749,7 @@ export class Game {
     }
     // the flat is refitted when an order arrives (or a save is loaded): rebuild it
     if (++this.homeCheck % 30 === 0) { const k = JSON.stringify(s.homeDesigns.flat ?? null); if (k !== this.homeKey) { if (this.homeKey) this.applyHomeDesign(); this.homeKey = k; } }
-    if (!this.paused) { this.chatter(); this.approaches(); this.remarks(); this.stomach(); this.wary(); }
+    if (!this.paused) { this.chatter(); this.approaches(); this.remarks(); this.stomach(); this.wary(); this.buskTick(dt); }
     this.views.update(s, this.paused ? 0 : dt, this.player.pos, this.insideId, this.speech);
     // a jump: up and down, knees tucked in the air
     if (this.jumpY > 0 || this.jumpV > 0) {
@@ -936,6 +939,48 @@ export class Game {
       o.gesture = { clip: 'scared', until: this.state.minute + 0.6 };
       if ((this.remarked.get(o.id) ?? 0) < now) { this.remarked.set(o.id, now + 30000); const l = ['Get away from me!', 'Whoa whoa whoa, easy!', 'I don\'t want any trouble!', 'Help! He\'s got a weapon!'.replace('He', me.appearance.frame === 'f' ? 'She' : 'He')]; this.say(o.id, l[Math.floor(Math.random() * l.length)], 5); }
     }
+  }
+  /** busking: G, D, Em, C round and round, a strum every half second; people stop to listen */
+  private busk: { beat: number; n: number; minute: number } | null = null;
+  private toggleBusk() {
+    const p = this.player;
+    if (this.busk) { this.stopBusk('You pack the guitar away.'); return; }
+    if (!canBusk(this.state, p.id)) { this.onToast('You need a guitar (the pawnbroker has one).'); return; }
+    if (p.where !== 'outside' || p.action || p.sleeping || p.down != null) { this.onToast('Find a spot on the street first.'); return; }
+    this.busk = { beat: 0, n: 0, minute: this.state.minute };
+    (p as { busking?: boolean }).busking = true;
+    this.onToast('You open the case and start to play. (B to stop)');
+  }
+  private stopBusk(msg?: string) {
+    if (!this.busk) return;
+    this.busk = null;
+    (this.player as { busking?: boolean }).busking = false;
+    const t = (this.player as { buskTotal?: number }).buskTotal ?? 0;
+    if (msg) this.onToast(t ? `${msg} ${fmtMoney(t)} in the case today so far.` : msg);
+  }
+  private buskTick(dt: number) {
+    const b = this.busk, p = this.player;
+    if (!b) return;
+    if (p.where !== 'outside' || p.action || p.down != null || this.drivingVan()) { this.stopBusk(); return; }
+    b.beat -= dt;
+    if (b.beat <= 0) {
+      const pat = [true, true, false, false, true, false, true, false];
+      const chords: [number, boolean][] = [[196, false], [146.8, false], [164.8, true], [130.8, false]];
+      const [root, minor] = chords[Math.floor(b.n / 8) % 4];
+      this.audio.strum(root, minor, pat[b.n % 8]);
+      b.n++; b.beat += pat[b.n % 8] ? 0.32 : 0.24;
+    }
+    if (this.state.minute - b.minute < 1) return;
+    b.minute = this.state.minute;
+    // people nearby slow down and listen; a few stop and face you for a while
+    const near = Object.values(this.state.people).filter((o) => !o.isPlayer && o.visible && !o.dead && o.down == null && !o.police && Math.hypot(o.pos.x - p.pos.x, o.pos.z - p.pos.z) < 9);
+    for (const o of near.slice(0, 3)) if (o.npc && Math.random() < 0.3) {
+      o.move = null; o.facing = Math.atan2(p.pos.x - o.pos.x, p.pos.z - o.pos.z);
+      (o.npc as { idleUntil?: number }).idleUntil = this.state.minute + 1.5 + Math.random() * 2;
+      o.gesture = { clip: Math.random() < 0.5 ? 'happy' : 'idle', until: this.state.minute + 1.5 };
+    }
+    const coin = buskMinute(this.state, p.id, near.length, Math.random());
+    if (coin) { this.onToast(coinText(coin)); this.audio.cash(); }
   }
   /** running on empty: the stomach makes itself heard now and then */
   private nextGrowl = 0;
@@ -1340,6 +1385,7 @@ export class Game {
     const len = Math.min(1, Math.hypot(ix, iz));
     let tx = 0, tz = 0;
     if (len > 0) {
+      if (this.busk) this.stopBusk('You stop playing.');
       if (p.action) cancelAction(this.state, p, 'moved');
       // the camera's forward and right along the ground
       const fx = -Math.sin(this.camYaw), fz = -Math.cos(this.camYaw);

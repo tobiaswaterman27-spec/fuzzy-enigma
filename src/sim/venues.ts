@@ -100,6 +100,7 @@ export function offersAt(v: Venue, spotKind: string): Offer[] {
       return [];
     case 'station': return [{ key: 'coffee', label: 'Coffee to go', price: 320, energy: 15, mood: 2 }];
     case 'hospital': return [{ key: 'vending', label: 'Vending machine snack', price: 180, eat: 15, mood: 1 }];
+    case 'pawn': return spotKind === 'venue_till' ? [{ key: 'guitar', label: 'A second-hand acoustic guitar (busk with B)', price: 4500, item: 'guitar' }] : [];
     default: return [];
   }
 }

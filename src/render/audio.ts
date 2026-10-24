@@ -213,6 +213,20 @@ export class Audio {
     const g = c.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.55, t + 0.2); g.gain.linearRampToValueAtTime(0.35, t + 0.6); g.gain.linearRampToValueAtTime(0.0001, t + 1.15);
     src.connect(lp).connect(g).connect(this.master); src.start(t, Math.random() * 0.5); src.stop(t + 1.2);
   }
+  /** a strummed chord on an acoustic guitar: six plucked strings a few ms apart, ringing out */
+  strum(root: number, minor: boolean, down = true) {
+    if (!this.ctx || this.muted) return;
+    const c = this.ctx, t0 = c.currentTime;
+    const ivs = [0, 7, 12, minor ? 15 : 16, 19, 24];
+    (down ? ivs : [...ivs].reverse()).forEach((iv, k) => {
+      const t = t0 + k * 0.014, f = root * Math.pow(2, iv / 12);
+      for (const [type, mul, vol] of [['triangle', 1, 0.05], ['sine', 2, 0.02]] as const) {
+        const o = c.createOscillator(); o.type = type; o.frequency.value = f * mul;
+        const g = c.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.4 - k * 0.08);
+        o.connect(g).connect(this.master); o.start(t); o.stop(t + 1.5);
+      }
+    });
+  }
   /** a camera shutter: two quick clicks of filtered noise */
   shutter() {
     if (!this.ctx || this.muted) return;

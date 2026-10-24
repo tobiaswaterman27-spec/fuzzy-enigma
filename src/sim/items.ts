@@ -50,6 +50,7 @@ export const ITEMS: Record<string, ItemDef> = {
   uniform_police: { id: 'uniform_police', name: 'Police Uniform', category: 'clothing', caseSize: 1, wholesale: 0, importCost: 0, retail: 0, satiety: 0, energy: 0, color: '#1b2433', demand: 0 },
   cricket_bat: { id: 'cricket_bat', name: 'Cricket Bat', category: 'household', caseSize: 1, wholesale: 0, importCost: 0, retail: 3500, satiety: 0, energy: 0, color: '#d9b77a', demand: 0 },
   flowers: { id: 'flowers', name: 'Flowers', category: 'household', caseSize: 1, wholesale: 0, importCost: 0, retail: 2500, satiety: 0, energy: 0, color: '#e05a8a', demand: 0 },
+  guitar: { id: 'guitar', name: 'Guitar', category: 'household', caseSize: 1, wholesale: 0, importCost: 0, retail: 4500, satiety: 0, energy: 0, color: '#8a5a2b', demand: 0 },
   umbrella: { id: 'umbrella', name: 'Umbrella', category: 'household', caseSize: 1, wholesale: 0, importCost: 0, retail: 899, satiety: 0, energy: 0, color: '#1d2b44', demand: 0 },
   book: { id: 'book', name: 'Book', category: 'household', caseSize: 1, wholesale: 0, importCost: 0, retail: 899, satiety: 0, energy: 0, color: '#2f5a3a', demand: 0 },
   golf_club: { id: 'golf_club', name: 'Golf Club', category: 'household', caseSize: 1, wholesale: 0, importCost: 0, retail: 4500, satiety: 0, energy: 0, color: '#9aa3ab', demand: 0 },
