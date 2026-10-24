@@ -746,7 +746,7 @@ export class Game {
     }
     // the flat is refitted when an order arrives (or a save is loaded): rebuild it
     if (++this.homeCheck % 30 === 0) { const k = JSON.stringify(s.homeDesigns.flat ?? null); if (k !== this.homeKey) { if (this.homeKey) this.applyHomeDesign(); this.homeKey = k; } }
-    if (!this.paused) { this.chatter(); this.approaches(); this.remarks(); this.stomach(); }
+    if (!this.paused) { this.chatter(); this.approaches(); this.remarks(); this.stomach(); this.wary(); }
     this.views.update(s, this.paused ? 0 : dt, this.player.pos, this.insideId, this.speech);
     // a jump: up and down, knees tucked in the air
     if (this.jumpY > 0 || this.jumpV > 0) {
@@ -920,6 +920,22 @@ export class Game {
     this.say(o.id, lines[Math.floor(Math.random() * lines.length)], 3.5);
   }
   private remarked = new Map<string, number>();
+  /** walking up to people with a weapon in your hand: the nervous ones back off and run */
+  private nextWary = 0;
+  private wary() {
+    const now = performance.now(), me = this.player;
+    if (now < this.nextWary || !me.weapon || me.where === 'vehicle') return;
+    this.nextWary = now + 900;
+    for (const o of Object.values(this.state.people)) {
+      if (o.isPlayer || o.police || !o.visible || o.dead || o.down != null || o.combat || o.sleeping || (o.fleeing ?? 0) > this.state.minute) continue;
+      const d = Math.hypot(o.pos.x - me.pos.x, o.pos.z - me.pos.z);
+      if (d > 3.5) continue;
+      if (Math.random() > 0.75 - o.traits.patience * 0.35) continue;
+      flee(this.state, o, me.pos);
+      o.gesture = { clip: 'scared', until: this.state.minute + 0.6 };
+      if ((this.remarked.get(o.id) ?? 0) < now) { this.remarked.set(o.id, now + 30000); const l = ['Get away from me!', 'Whoa whoa whoa, easy!', 'I don\'t want any trouble!', 'Help! He\'s got a weapon!'.replace('He', me.appearance.frame === 'f' ? 'She' : 'He')]; this.say(o.id, l[Math.floor(Math.random() * l.length)], 5); }
+    }
+  }
   /** running on empty: the stomach makes itself heard now and then */
   private nextGrowl = 0;
   private stomach() {
