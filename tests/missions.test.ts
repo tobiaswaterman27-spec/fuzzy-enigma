@@ -54,3 +54,26 @@ describe('Jobs for Vince', () => {
     expect(s.mission).toBeFalsy();
   });
 });
+
+describe('Tailing someone for Vince', () => {
+  it('pays if you keep on them at a distance, fails if you crowd them', () => {
+    for (const crowd of [false, true]) {
+      const s = createNewGame(7, setup);
+      const me = s.people.player;
+      me.where = 'outside'; me.visible = true;
+      const t = Object.values(s.people).find((o) => o.npc && !o.npc.ambient && !o.police && !o.isPlayer)!;
+      t.visible = true; t.where = 'outside';
+      s.mission = { kind: 'tail', stage: 'go', targetId: t.id, deadline: s.minute + 90, reward: 35000, held: 0, close: 0, away: 0, at: s.minute, text: '' };
+      const cash = s.ledger.accounts[me.accountId].balance;
+      for (let i = 0; i < 60 && s.mission; i++) {
+        s.minute += 0.5;
+        t.visible = true; t.where = 'outside';
+        me.pos = { x: t.pos.x + (crowd ? 2 : 15), z: t.pos.z };
+        missionTick(s);
+      }
+      expect(s.mission).toBeNull();
+      if (crowd) expect(s.ledger.accounts[me.accountId].balance).toBe(cash);
+      else expect(s.ledger.accounts[me.accountId].balance).toBe(cash + 35000);
+    }
+  });
+});

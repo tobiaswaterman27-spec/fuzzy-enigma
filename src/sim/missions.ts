@@ -12,7 +12,7 @@ import { getWorld } from './world/layout';
 import { CAR_MODELS } from './cars';
 import { DISTRICT_NAMES, districtAt, streetAt } from './world/city';
 
-export type MissionKind = 'courier' | 'carjack' | 'collect';
+export type MissionKind = 'courier' | 'carjack' | 'collect' | 'tail';
 export interface Mission {
   kind: MissionKind;
   /** courier: 'pickup' then 'deliver' */
@@ -24,7 +24,15 @@ export interface Mission {
   deadline: number;
   reward: number;
   text: string;
+  /** tail: minutes kept on them, minutes spent too close (they notice), minutes out of sight, last tick */
+  held?: number;
+  close?: number;
+  away?: number;
+  at?: number;
 }
+
+/** tailing someone: stay within LOSE metres for HOLD minutes, never nearer than CLOSE for long */
+export const TAIL = { HOLD: 12, CLOSE: 4, LOSE: 45, NOTICE: 1.2, LOST: 1.5 };
 
 const BODY_NAMES: Record<string, string> = { suv: 'an SUV', sports: 'a sports coupe', saloon: 'a saloon', car: 'a hatchback' };
 
@@ -43,7 +51,17 @@ export function callVince(state: GameState, personId: Id): string {
   if (state.mission) return `"You've already got a job on. ${state.mission.text}"`;
   const level = state.vinceRep ?? 0;
   const pay = (base: number) => Math.round((base * (1 + level * 0.15)) / 500) * 500;
-  const k = randInt(state, 0, 2);
+  const k = randInt(state, 0, 3);
+  if (k === 3) {
+    // someone out on foot, a fair way from you: follow them and see where they go, without being seen
+    const walkers = Object.values(state.people).filter((o) => o.npc && !o.npc.ambient && !o.isPlayer && !o.police && !o.dead && !o.away && o.visible && o.where === 'outside' && o.move && dist(o.pos, p.pos) > 30 && dist(o.pos, p.pos) < 400);
+    const t = walkers[randInt(state, 0, Math.max(0, walkers.length - 1))];
+    if (t) {
+      state.mission = { kind: 'tail', stage: 'go', targetId: t.id, deadline: state.minute + 90, reward: pay(35000), held: 0, close: 0, away: 0, at: state.minute, text: `${t.name} is up to something. Find them and follow them for a bit. Don't get close, don't let them see you, don't lose them.` };
+      lifeEvent(state, p, 'Took a job from Vince');
+      return `Vince: "${state.mission.text}"`;
+    }
+  }
   if (k === 0) {
     const from = streetSpot(state, p.pos, 60, 260), to = streetSpot(state, from, 300, 700);
     const mins = Math.round(8 + Math.hypot(from.x - p.pos.x, from.z - p.pos.z) / 200 + Math.hypot(to.x - from.x, to.z - from.z) / 160);
@@ -52,14 +70,14 @@ export function callVince(state: GameState, personId: Id): string {
     const bodies = ['suv', 'sports', 'saloon'];
     const body = bodies[randInt(state, 0, bodies.length - 1)];
     state.mission = { kind: 'carjack', stage: 'go', body, deadline: state.minute + 180, reward: pay(body === 'sports' ? 90000 : 55000), text: `Bring me ${BODY_NAMES[body]} to the Eastgate Motors yard gate. Any colour. You've got three hours.` };
-  } else {
+  } else if (k === 2 || k === 3) {
     const marks = Object.values(state.people).filter((o) => o.npc && !o.npc.ambient && !o.isPlayer && !o.police && !o.dead && !o.away && o.id !== p.partnerId && (o.relations[p.id] ?? 0) < 50);
     const t = marks[randInt(state, 0, Math.max(0, marks.length - 1))];
     if (!t) return '"Nothing today. Ring me later."';
     state.mission = { kind: 'collect', stage: 'go', targetId: t.id, deadline: state.minute + 240, reward: pay(40000), text: `${t.name} owes me. Find them and put them on the floor, so they know I'm serious. Four hours.` };
   }
   lifeEvent(state, p, 'Took a job from Vince');
-  return `Vince: "${state.mission.text}"`;
+  return `Vince: "${state.mission!.text}"`;
 }
 
 export function dropMission(state: GameState): string {
@@ -86,6 +104,12 @@ export function missionText(state: GameState): string {
   const time = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')} left`;
   if (m.kind === 'courier') return `Vince: ${m.stage === 'pickup' ? 'collect the package' : 'deliver the package'} · ${time}`;
   if (m.kind === 'carjack') return `Vince: bring ${BODY_NAMES[m.body!]} to Eastgate Motors · ${time}`;
+  if (m.kind === 'tail') {
+    const t = state.people[m.targetId!], me = state.people[state.playerId];
+    const d = t && me ? dist(t.pos, me.pos) : 999;
+    const state_ = !t?.visible ? 'indoors - wait for them' : (m.held ?? 0) > 0 ? (d < TAIL.CLOSE ? 'TOO CLOSE - back off' : d > TAIL.LOSE * 0.75 ? 'losing them - keep up' : 'on them') : 'find them';
+    return `Vince: tail ${t?.name.split(' ')[0] ?? 'them'} · ${state_} · ${Math.round(m.held ?? 0)}/${TAIL.HOLD} min · ${time}`;
+  }
   const t = state.people[m.targetId!];
   return `Vince: deal with ${t?.name ?? 'them'}${t && !t.visible ? ' (not out right now)' : ''} · ${time}`;
 }
@@ -129,6 +153,31 @@ export function missionTick(state: GameState) {
       delete state.vehicles[car.id];
       pay(state, me.id, `The ${car.name.toLowerCase()} disappears into the yard.`);
     }
+  } else if (m.kind === 'tail') {
+    const t = state.people[m.targetId!];
+    const dt = Math.max(0, state.minute - (m.at ?? state.minute)); m.at = state.minute;
+    if (!t || t.dead) { state.mission = null; news(state, 'info', 'Vince rings', '"Forget it. They\'re not going anywhere now."', true); return; }
+    if (!t.visible || t.where !== 'outside') return;
+    const d = dist(t.pos, me.pos);
+    if ((m.held ?? 0) <= 0 && d > TAIL.LOSE) return; // not found them yet
+    if (d > TAIL.LOSE) {
+      m.away = (m.away ?? 0) + dt;
+      if (m.away > TAIL.LOST) { state.mission = null; state.vinceRep = Math.max(0, (state.vinceRep ?? 0) - 1); news(state, 'bad', 'Lost them', 'Vince: "You lost them? Unbelievable."', true); }
+      return;
+    }
+    m.away = 0;
+    m.held = (m.held ?? 0) + dt;
+    if (d < TAIL.CLOSE) m.close = (m.close ?? 0) + dt; else m.close = Math.max(0, (m.close ?? 0) - dt * 0.5);
+    if ((m.close ?? 0) > TAIL.NOTICE) {
+      // they clock you: a look, and off they go somewhere else
+      t.facing = Math.atan2(me.pos.x - t.pos.x, me.pos.z - t.pos.z);
+      t.gesture = { clip: 'argue', until: state.minute + 0.8 };
+      t.grudge = (t.grudge ?? 0) + 1; t.relations[me.id] = Math.max(0, (t.relations[me.id] ?? 0) - 10);
+      state.mission = null; state.vinceRep = Math.max(0, (state.vinceRep ?? 0) - 1);
+      news(state, 'bad', 'Spotted', `${t.name.split(' ')[0]} saw you following. Vince: "Subtle. Really subtle."`, true);
+      return;
+    }
+    if (m.held >= TAIL.HOLD) pay(state, me.id, `Vince: "Good. That's all I needed to know."`);
   } else {
     const t = state.people[m.targetId!];
     if (!t || t.dead) { state.mission = null; news(state, 'info', 'Vince rings', '"Someone got to them first. Never mind."', true); return; }
