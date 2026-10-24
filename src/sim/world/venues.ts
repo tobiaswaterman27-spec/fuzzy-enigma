@@ -222,7 +222,17 @@ function fitOut(id: string, kind: VenueKind, name: string, b: CityBuilding, fron
         spot(`chair${i}`, 'barber_chair', 'Barber chair', 2.6, v + 0.5, 1.4, v + 0.5);
       }
       ob('waiting_chairs', Wd - 1.0, 3.0, Wd - 0.4, 5.6, 0.9, true, -Math.PI / 2);
-      staffUV = [3.6, 4.6];
+      // more chairs and mirrors down the wall, a sofa and magazines for the queue, product shelves
+      for (let v = 8.4; v + 1.2 < D - 1.5; v += 2.5) { ob('armchair', 0.9, v, 1.9, v + 1.0, 0.9, true, Math.PI / 2, '#7a1f1f'); ob('mirror', 0.05, v, 0.15, v + 1.0, 1.9, false); }
+      if (D > 9) { ob('sofa', Wd - 1.2, 6.4, Wd - 0.3, 8.6, 0.9, true, -Math.PI / 2, '#3a3a3a'); ob('coffee_table', Wd - 2.4, 6.9, Wd - 1.6, 8.1, 0.45, true); }
+      if (D > 12) ob('storage_shelf', Wd - 0.7, 10, Wd - 0.2, Math.min(D - 1.5, 13), 1.8, true, -Math.PI / 2);
+      ob('plant', Wd - 1.0, 0.3, Wd - 0.3, 1.0, 1.4, true);
+      // in a big shop: a reception desk, a second waiting area and some greenery
+      if (Wd > 10) {
+        ob('reception', mid + 1.2, 2.2, mid + 3.6, 2.9, 1.05, true, undefined, '#2b3b55');
+        if (D > 12) { ob('sofa', mid - 1.2, D - 2.2, mid + 1.2, D - 1.2, 0.9, true, backRot, '#2b3b55'); ob('coffee_table', mid - 0.6, D - 3.4, mid + 0.6, D - 2.7, 0.45, true); }
+        for (const v of [4.5, D - 4.5]) ob('plant', mid - 0.35, v, mid + 0.35, v + 0.7, 1.5, true);
+      }
       break;
     }
     case 'bank': {
@@ -257,8 +267,12 @@ function fitOut(id: string, kind: VenueKind, name: string, b: CityBuilding, fron
     case 'gym': {
       counterFront(2.4);
       for (let u = 1.0; u + 0.9 < mid - 1.3; u += 1.6) ob('treadmill', u, 3.6, u + 0.9, 5.6, 1.4, true);
+      for (let u = mid + 1.3; u + 0.9 < Wd - 1; u += 1.6) ob('treadmill', u, 3.6, u + 0.9, 5.6, 1.4, true);
       spot('treadmill', 'treadmill', 'Treadmills', 1.45, 6.3, 1.45, 5.0);
       for (let u = 1.5; u + 2 < Wd - 1; u += 3.4) ob('bench', u, D - 3.0, u + 2.0, D - 2.4, 0.5, true, 0);
+      // weights benches in rows across the middle, dumbbell racks along the walls
+      for (let v = 8.0; v + 1 < D - 4.5; v += 3.0) for (let u = 1.5; u + 2 < Wd - 1; u += 3.4) if (Math.abs(u + 1 - mid) > 1.6) ob('bench', u, v, u + 2.0, v + 0.6, 0.5, true, 0);
+      for (let v = 7.0; v + 2.5 < D - 4; v += 4) { ob('storage_shelf', 0.2, v, 0.7, v + 2.4, 1.2, true, Math.PI / 2); ob('storage_shelf', Wd - 0.7, v, Wd - 0.2, v + 2.4, 1.2, true, -Math.PI / 2); }
       spot('weights', 'weights', 'Weights bench', 2.5, D - 4.0, 2.5, D - 2.7);
       nodes.push(P(1.45, 6.3), P(2.5, D - 4.0));
       break;
@@ -266,6 +280,8 @@ function fitOut(id: string, kind: VenueKind, name: string, b: CityBuilding, fron
     case 'arcade': {
       counterFront(2.4);
       for (let v = 4.2; v < D - 1.5; v += 2.4) for (const u of [1.0, Wd / 2 - 0.5]) ob('kiosk', u, v, u + 1.0, v + 0.7, 1.7, true);
+      // and more machines in rows across the rest of the floor, back to back
+      for (let u = Wd / 2 + 2.2; u + 1 < Wd - 0.6; u += 2.6) for (let v = 4.2; v + 1.5 < D - 1.5; v += 3.2) { ob('kiosk', u, v, u + 1.0, v + 0.7, 1.7, true); ob('kiosk', u, v + 0.75, u + 1.0, v + 1.45, 1.7, true); }
       spot('machines', 'arcade', 'Arcade machines', 2.8, 4.55, 1.5, 4.55);
       break;
     }
@@ -404,6 +420,10 @@ function fitOut(id: string, kind: VenueKind, name: string, b: CityBuilding, fron
     case 'pawn': {
       counterFront(3.0);
       ob('reception', 0.6, 3.5, 1.4, D - 1.5, 1.0, true, undefined, '#6b5a2a');
+      // racks of second-hand everything: tellies, tools, bikes, boxes of this and that
+      for (let u = 3.4; u + 2.4 < Wd - 0.6; u += 2.8) ob('storage_shelf', u, D - 0.7, u + 2.4, D - 0.15, 2.0, true, backRot);
+      for (let v = 5.0; v + 2 < D - 2.4; v += 3.2) for (let u = 3.2; u + 1.1 < Wd - 1.6; u += 3.0) if (Math.abs(u + 0.55 - mid) > 1.3) ob('gondola', u, v, u + 1.1, v + 2.0, 1.4, true, undefined, '#6b5a2a');
+      if (D > 8) ob('tv', Wd - 1.2, 4.2, Wd - 0.3, 5.4, 1.2, true, -Math.PI / 2);
       break;
     }
   }
