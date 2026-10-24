@@ -65,7 +65,9 @@ export function venuesTick(state: GameState) {
 }
 
 // ---------------------------------------------------------------- buying
-export interface Offer { key: string; label: string; price: number; eat?: number; drink?: number; item?: string; energy?: number; mood?: number }
+export interface Offer { key: string; label: string; price: number; eat?: number; drink?: number; item?: string; energy?: number; mood?: number; /** something worn as soon as it is bought (an appearance extra) */ wear?: string }
+/** glasses on the rail at the clothes shops */
+export const EYEWEAR: Offer[] = [{ key: 'sunglasses', label: 'Sunglasses (wear them)', price: 2900, wear: 'sunglasses', mood: 4 }, { key: 'glasses', label: 'Glasses with clear lenses (wear them)', price: 3900, wear: 'glasses', mood: 2 }];
 const TAKEAWAY: Record<string, Offer[]> = {
   'Golden Dragon': [{ key: 'chowmein', label: 'Chicken chow mein', price: 850, eat: 60, mood: 6 }, { key: 'ribs', label: 'Salt and pepper ribs', price: 790, eat: 50, mood: 6 }],
   'The Codfather': [{ key: 'fish', label: 'Cod and chips', price: 920, eat: 65, mood: 8 }, { key: 'chips', label: 'Bag of chips', price: 350, eat: 30, mood: 4 }],
@@ -86,7 +88,11 @@ export function offersAt(v: Venue, spotKind: string): Offer[] {
     case 'gym': return [{ key: 'pass', label: 'Day pass', price: 600 }];
     case 'mall':
       if (spotKind === 'food_court') return [{ key: 'burger', label: 'Burger and fries', price: 799, eat: 55, mood: 5 }, { key: 'noodles', label: 'Noodle box', price: 650, eat: 45, mood: 4 }, { key: 'shake', label: 'Milkshake', price: 399, eat: 10, energy: 6, mood: 6 }];
-      if (spotKind === 'jeweller') return [{ key: 'ring', label: 'A gold ring', price: 89900, item: 'jewellery', mood: 10 }, { key: 'watch', label: 'A watch', price: 64900, item: 'watch', mood: 8 }];
+      if (spotKind === 'jeweller') return [
+        { key: 'chain', label: 'A gold chain (wear it)', price: 39900, wear: 'chain', mood: 8 }, { key: 'watch', label: 'A watch (wear it)', price: 24900, wear: 'watch', mood: 6 },
+        { key: 'hoops', label: 'Gold hoop earrings (wear them)', price: 14900, wear: 'hoops', mood: 5 }, { key: 'studs', label: 'Silver ear studs (wear them)', price: 7900, wear: 'studs', mood: 4 },
+        { key: 'ring', label: 'A gold ring', price: 89900, item: 'jewellery', mood: 10 },
+      ];
       return [];
     case 'station': return [{ key: 'coffee', label: 'Coffee to go', price: 320, energy: 15, mood: 2 }];
     case 'hospital': return [{ key: 'vending', label: 'Vending machine snack', price: 180, eat: 15, mood: 1 }];
@@ -102,6 +108,14 @@ export function buyAt(state: GameState, personId: Id, v: Venue, o: Offer): strin
   if (!r.ok) return `That's ${fmtMoney(o.price)}: you can't afford it.`;
   vs(state, v.id).till += o.price;
   if (o.item) addItems(state.containers[p.bagId], o.item, 1);
+  // put on there and then (glasses swap for sunglasses and back)
+  if (o.wear) {
+    const set = new Set(p.appearance.extras ?? []);
+    set.add(o.wear);
+    if (o.wear === 'glasses') set.delete('sunglasses'); if (o.wear === 'sunglasses') set.delete('glasses');
+    p.appearance = { ...p.appearance, extras: [...set] };
+    p.gesture = { clip: 'dress', until: state.minute + 1 };
+  }
   if (o.eat) p.needs.satiety = clamp(p.needs.satiety + o.eat, 0, 100);
   if (o.energy) p.needs.energy = clamp(p.needs.energy + o.energy, 0, 100);
   if (o.mood) p.needs.mood = clamp(p.needs.mood + o.mood, 0, 100);
@@ -110,7 +124,7 @@ export function buyAt(state: GameState, personId: Id, v: Venue, o: Offer): strin
   // what you buy to have there and then, you eat or drink there and then
   if (!o.item && o.eat && o.eat >= 15) p.gesture = { clip: 'eat', until: state.minute + 2.5 };
   else if (!o.item && (o.drink || o.energy)) p.gesture = { clip: 'drink', until: state.minute + 1.6 };
-  return o.item ? `${o.label}: ${fmtMoney(o.price)}. In your bag.` : o.key === 'pass' ? `Day pass: ${fmtMoney(o.price)}. Get to it.` : `${o.label}: ${fmtMoney(o.price)}.`;
+  return o.wear ? `${o.label.replace(/ \(wear (it|them)\)/, '')}: ${fmtMoney(o.price)}. You put ${o.wear === 'hoops' || o.wear === 'studs' || o.wear.includes('glasses') ? 'them' : 'it'} on.` : o.item ? `${o.label}: ${fmtMoney(o.price)}. In your bag.` : o.key === 'pass' ? `Day pass: ${fmtMoney(o.price)}. Get to it.` : `${o.label}: ${fmtMoney(o.price)}.`;
 }
 
 // ---------------------------------------------------------------- crime

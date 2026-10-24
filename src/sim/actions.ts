@@ -11,7 +11,7 @@ import { BIKE_FARE, hireBike, mountBike } from './bikes';
 import { laundryShift, mealNow, nextMeal, prisonMeal, tryEscape } from './prison';
 import { callVince, dropMission, missionText } from './missions';
 import { fixture, gateOpen, goToMatch, ODDS, STAKE, TICKET, type Pick } from './stadium';
-import { arcadeGo, buyAt, clearRecord, crackVault, RECORD_FEE, smashCases, watchFilm, wedding, WEDDING_FEE, haircut, hasGymPass, newOutfit, offersAt, PAWN, pawnSell, robVenue, shoplift, slots, staffOf, venueOfSpot, workout } from './venues';
+import { arcadeGo, buyAt, clearRecord, crackVault, RECORD_FEE, smashCases, watchFilm, wedding, WEDDING_FEE, haircut, hasGymPass, newOutfit, offersAt, PAWN, pawnSell, robVenue, shoplift, slots, staffOf, venueOfSpot, workout, EYEWEAR } from './venues';
 import { venueOpen } from './world/venues';
 import { attack, crime, goToAandE } from './health';
 import { chopCandidate, chopPrice, mug, pickpocket, sellToChop } from './streetcrime';
@@ -422,6 +422,7 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
         if (it.kind === 'venue_till' && v.kind === 'pawn' && !Object.keys(PAWN).some((k) => count(state.containers[p.bagId], k))) out.push(opt('venue', 'Sell something', 'Nothing worth selling (bring jewellery, watches, laptops, phones)', 'pawn:none'));
         if (it.kind === 'venue_till' && p.isPlayer && staff) out.push(opt('rob_venue', p.weapon ? `Hold up the ${v.kind === 'bank' ? 'cashier' : 'till'} (${p.weapon === 'knife' ? 'knife' : 'bat'} out)` : 'Demand the cash from the till'));
       }
+      if (it.kind === 'clothes_rail') for (const o of EYEWEAR) out.push(opt('venue', `${o.label} · ${fmtMoney(o.price)}`, shut, `wear:${o.key}`));
       if (it.kind === 'clothes_rail') { out.push(opt('venue', `A new casual look · ${fmtMoney(4500)}`, open ? undefined : shut, 'outfit:casual')); out.push(opt('venue', `Something smart · ${fmtMoney(9500)}`, open ? undefined : shut, 'outfit:smart')); }
       if (it.kind === 'barber_chair') for (const [k, l] of [['short', 'Short back and sides'], ['curly', 'Curls'], ['long', 'Grow it long (extensions)'], ['bun', 'Tie it up'], ['bald', 'Shave it all off'], ['dye', 'Dye it a new colour']] as const) out.push(opt('venue', `${l} · ${fmtMoney(k === 'dye' ? 2500 : 1400)}`, shut, `hair:${k}`));
       if (it.kind === 'vault') out.push(opt('crack_vault', 'Crack the vault (a few minutes; the alarm goes straight to the police)'));
@@ -1163,6 +1164,7 @@ export function tickAction(state: GameState, p: Person, dt: number): string | nu
       if (verb === 'buy') { const o = offersAt(v, interactable(state, a.target)?.kind ?? '').find((x) => x.key === what); msg = o ? buyAt(state, p.id, v, o) : null; }
       else if (verb === 'pawn') msg = what === 'none' ? null : pawnSell(state, p.id, what);
       else if (verb === 'outfit') msg = newOutfit(state, p.id, v, what === 'smart');
+      else if (verb === 'wear') { const o = EYEWEAR.find((x) => x.key === what); msg = o ? buyAt(state, p.id, v, o) : null; }
       else if (verb === 'hair') msg = haircut(state, p.id, v, what as 'short');
       else if (verb === 'slots') msg = slots(state, p.id, Number(what)).msg;
       else if (verb === 'arcade') msg = arcadeGo(state, p.id);

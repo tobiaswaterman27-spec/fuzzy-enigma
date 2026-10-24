@@ -81,6 +81,16 @@ export function makePerson(state: GameState, id: Id, name: string, opts: { homeI
   const appearance = opts.appearance ?? randomAppearance(state, homeOutfit);
   // everyday clothes differ from person to person (fixed per person, without using the random stream)
   if (!opts.appearance && appearance.style === undefined) { let h = 2166136261; for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 16777619) >>> 0; appearance.style = h % 1000; }
+  // a few of the townspeople wear glasses, earrings, a watch or a chain (from their id, not the dice)
+  if (!opts.appearance && !appearance.extras) {
+    let h = 7; for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 2654435761) >>> 0;
+    const ex: string[] = [];
+    if (h % 7 === 0) ex.push('glasses');
+    if ((h >>> 3) % 6 === 0) ex.push(appearance.frame === 'f' ? 'hoops' : 'studs');
+    if ((h >>> 6) % 5 === 0) ex.push('watch');
+    if ((h >>> 9) % 11 === 0) ex.push('chain');
+    if (ex.length) appearance.extras = ex;
+  }
   const hands = createContainer(state, 'hands', id, id, 16, undefined, `hands_${id}`);
   const bag = createContainer(state, 'bag', id, id, 40, undefined, `bag_${id}`);
   const basket = createContainer(state, 'basket', id, id, 30, undefined, `basket_${id}`);
