@@ -678,6 +678,21 @@ export class Game {
     return BASE_TIME_SCALE * this.speedMult;
   }
 
+  /** compile every material's shaders off the main thread ahead of first use (no hitch the first
+   * time something new comes into view); re-run while new bodies and props keep arriving */
+  private warmCount = -1;
+  private warmAt = 0;
+  private warming = false;
+  private prewarm() {
+    const now = performance.now();
+    if (this.warming || now < this.warmAt) return;
+    this.warmAt = now + 2500;
+    let n = 0; this.scene.traverse(() => { n++; });
+    if (n === this.warmCount) return;
+    this.warmCount = n;
+    this.warming = true;
+    this.renderer.compileAsync(this.scene, this.camera).catch(() => {}).finally(() => { this.warming = false; });
+  }
   start() {
     const loop = () => {
       const now = performance.now();
@@ -685,6 +700,7 @@ export class Game {
       this.last = now;
       const t0 = performance.now();
       this.tick(dt);
+      this.prewarm();
       this.frameMs = this.frameMs * 0.95 + (performance.now() - t0) * 0.05;
       requestAnimationFrame(loop);
     };
@@ -838,6 +854,28 @@ export class Game {
     if (me.injured || (me.health ?? 100) < 45) lines.push('Are you alright? You\'re bleeding.', 'Blimey, what happened to you?');
     if ((me.drunk ?? 0) > 40) lines.push('Someone\'s had a few.', 'Steady on, pal.');
     if (raining(s) > 0.5 && me.needs.hygiene >= 20) lines.push('Lovely weather, eh?');
+    const hr = hourOfDay(s.minute), dark = hr < 6 || hr >= 20;
+    const wear = me.appearance.outfit, extras = me.appearance.extras ?? [];
+    if (extras.includes('sunglasses') && (dark || raining(s) > 0.3)) lines.push('Sunglasses? Now? Bit dark for that, isn\'t it.', 'Who do you think you are, a film star?');
+    if (wear === 'outfit_night' && hr >= 18) lines.push('Off out tonight, are we?', 'Looking sharp. Somewhere nice?');
+    if (wear === 'outfit_smart' && me.needs.hygiene >= 20) lines.push('Ooh, someone\'s dressed up.', 'Job interview, is it?');
+    if (wear === 'outfit_sport' && (me.fitness ?? 0) < 35) lines.push('Off for a jog? Don\'t overdo it.');
+    if (wear === 'outfit_casual' && extras.includes('chain') && extras.includes('sunglasses')) lines.push('Flash, aren\'t we.');
+    if ((s.containers[me.bagId]?.items.flowers ?? 0) > 0) lines.push('Ooh, flowers! Who are they for, then?', 'Somebody\'s lucky day.');
+    if (hr >= 1 && hr < 5) lines.push('What are you doing out at this hour?');
+    if ((me.record?.length ?? 0) >= 3 || s.wanted) lines.push('I know your face... weren\'t you in the paper?', 'That\'s the one the police are after.');
+    // anyone who knows you says hello by name, before anything else
+    const pal = Object.values(s.people).find((q) => !q.isPlayer && q.visible && !q.sleeping && !q.action && !q.dead && q.down == null && !q.combat && q.npc && (q.relations[me.id] ?? 0) >= 30 && Math.hypot(q.pos.x - me.pos.x, q.pos.z - me.pos.z) < 6 && (this.remarked.get(q.id) ?? 0) < now);
+    if (pal && !me.weapon && Math.random() < 0.5) {
+      const first = me.name.split(' ')[0];
+      this.remarked.set(pal.id, now + 180000);
+      this.nextRemark = now + 12000;
+      pal.facing = Math.atan2(me.pos.x - pal.pos.x, me.pos.z - pal.pos.z);
+      pal.gesture = { clip: 'wave', until: s.minute + 0.8 };
+      const hi = me.needs.hygiene < 20 ? [`Alright ${first}... you might want a shower, mate.`] : wear === 'outfit_night' && hr >= 18 ? [`${first}! Where are you off to looking like that?`] : [`Alright, ${first}!`, `Hiya ${first}, you alright?`, `${first}! Long time no see.`, `Morning, ${first}.`.replace('Morning', hr < 12 ? 'Morning' : hr < 18 ? 'Afternoon' : 'Evening')];
+      this.say(pal.id, hi[Math.floor(Math.random() * hi.length)], 4);
+      return;
+    }
     if (!lines.length) return;
     const o = Object.values(s.people).find((q) => !q.isPlayer && q.visible && !q.sleeping && !q.action && !q.dead && q.down == null && !q.combat && q.npc && Math.hypot(q.pos.x - me.pos.x, q.pos.z - me.pos.z) < 3.2 && (this.remarked.get(q.id) ?? 0) < now);
     if (!o) return;
