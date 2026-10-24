@@ -131,6 +131,14 @@ export function planVenues(city: City): Venue[] {
   const jailOk = (c: CityBuilding) => !taken.has(c) && !c.name && (c.district === 'industrial' || c.district === 'docks') && c.rect.x1 - c.rect.x0 >= SIZE.prison.w && c.rect.z1 - c.rect.z0 >= SIZE.prison.d && !!frontLoose(c) && spaced(c);
   const jail = city.buildings.find((c) => jailOk(c) && c.style === 'brick_dark') ?? city.buildings.find(jailOk);
   if (jail) { taken.add(jail); out.push(fitOut(`v_${out.length}`, 'prison', NAMES.prison[0], jail, frontLoose(jail)!)); }
+  // the petrol station's kiosk: a corner shop at the back of the forecourt, door onto the pumps
+  const kiosk = city.buildings.find((c) => c.style === 'shop' && c.name === 'Harbour Fuel');
+  if (kiosk) {
+    taken.add(kiosk);
+    const v = fitOut(`v_${out.length}`, 'shop', kiosk.name!, kiosk, 's');
+    v.path = { x: v.outside.x, z: Math.ceil(kiosk.rect.z1 / 130) * 130 - ROAD_HALF - WALK_W / 2 };
+    out.push(v);
+  }
   // the chosen buildings become proper buildings with insides: the generator's boxes go
   city.buildings = city.buildings.filter((b) => !taken.has(b));
   city.opened = [...taken];

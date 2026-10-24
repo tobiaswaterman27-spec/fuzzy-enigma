@@ -1192,6 +1192,9 @@ function buildWorldData(homeDesign: HomeDesign): World {
   const city = buildCity(B.filter((b) => !b.unit && !b.level).map((b) => b.rect));
   for (const cb of city.buildings) colliders.push(cb.rect);
   for (const pr of city.props) if (pr.kind === 'container') colliders.push(pr.rot === 0 ? box(pr.x, pr.z, 6.1, 2.5) : box(pr.x, pr.z, 2.5, 6.1));
+  // petrol pumps on their islands, and the canopy's four legs
+  for (const pr of city.props) if (pr.kind === 'pump') colliders.push(box(pr.x, pr.z, 0.9, 2.2));
+  for (const pr of city.props) if (pr.kind === 'canopy') for (const dx of [-9, 9]) for (const dz of [-5.5, 5.5]) colliders.push(box(pr.x + dx, pr.z + dz, 0.5, 0.5));
   // the park lakes: no walking on water (the gravel paths cross them as causeways)
   for (const w of city.ground.filter((g) => g.kind === 'water').map((g) => g.rect)) {
     const paths = city.ground.filter((g) => g.kind === 'gravel' && g.rect.x0 < w.x1 && g.rect.x1 > w.x0 && g.rect.z0 < w.z1 && g.rect.z1 > w.z0).map((g) => g.rect);
@@ -1265,6 +1268,13 @@ function buildWorldData(homeDesign: HomeDesign): World {
       const seen = new Set<string>([`in_${v.id}`]), q = [`in_${v.id}`];
       while (q.length) { const x = q.pop()!; for (const y of edges[x] ?? []) if (!seen.has(y)) { seen.add(y); q.push(y); } }
       for (const g of grid) if (!seen.has(g)) { for (const y of edges[g] ?? []) edges[y] = edges[y].filter((z) => z !== g); delete edges[g]; delete nodes[g]; }
+      // a point the floor grid missed (tucked in beside a bunk, say) joins the nearest connected point it can see
+      v.nodes.forEach((_, i) => {
+        const id = `${v.id}_n${i}`;
+        if (!nodes[id] || seen.has(id)) return;
+        const c = [...seen].filter((o) => nodes[o] && nodes[o].loc === v.id).map((o) => ({ o, d: Math.hypot(nodes[o].x - nodes[id].x, nodes[o].z - nodes[id].z) })).filter((x) => x.d < 4.5).sort((p1, p2) => p1.d - p2.d).find((x) => clearV(nodes[id], nodes[x.o]));
+        if (c) { L(id, c.o); seen.add(id); }
+      });
     }
   }
   // north sidewalk (z=-6.5)

@@ -23,7 +23,7 @@ export interface CityBuilding {
   tint: number;
 }
 
-export interface CityProp { kind: 'tree' | 'lamp' | 'bench' | 'bin' | 'crane' | 'container' | 'boat' | 'bus_stop' | 'fountain' | 'goal' | 'parasol' | 'hut' | 'postbox'; x: number; z: number; rot: number; s?: number; color?: string }
+export interface CityProp { kind: 'tree' | 'lamp' | 'bench' | 'bin' | 'crane' | 'container' | 'boat' | 'bus_stop' | 'fountain' | 'goal' | 'parasol' | 'hut' | 'postbox' | 'canopy' | 'pump'; x: number; z: number; rot: number; s?: number; color?: string }
 export interface Ground { rect: Rect; kind: 'paving' | 'grass' | 'garden' | 'concrete' | 'sand' | 'water' | 'gravel' | 'pitch' | 'car_park' }
 export interface Lane { from: Vec2; to: Vec2; axis: 'x' | 'z' }
 
@@ -179,6 +179,7 @@ export function buildCity(avoid: Rect[]): City {
     { block: [585, -585], build: (r) => stadium(r) },
     { block: [-455, -845], build: (r) => civic(r, 'school', 'Northfield Academy', 10, 'pitch') },
     { block: [-65, -195], build: (r) => civic(r, 'civic', 'City Hall', 24, 'paving') },
+    { block: [455, -195], build: (r) => petrol(r) },
   ];
   const lmAt = (r: Rect) => landmarks.find((l) => l.block[0] > r.x0 && l.block[0] < r.x1 && l.block[1] > r.z0 && l.block[1] < r.z1);
 
@@ -191,6 +192,21 @@ export function buildCity(avoid: Rect[]): City {
     const pr: CityProp[] = [];
     for (let x = r.x0 + 6; x < r.x1 - 4; x += 12) { pr.push({ kind: 'tree', x, z: r.z1 - 3, rot: x }); }
     return { buildings: out, ground: [{ rect: r, kind: around }], props: pr };
+  }
+  /** a petrol station on the street corner: a forecourt under a canopy, two islands of pumps, the
+   * kiosk behind them (a corner shop inside), and a builders' merchant's yard and shed behind */
+  function petrol(r: Rect) {
+    const district = districtAt((r.x0 + r.x1) / 2, (r.z0 + r.z1) / 2);
+    const fx0 = r.x0 + 4, fx1 = r.x0 + 48, fz1 = r.z1 - 2, fz0 = r.z1 - 34;
+    const cx = (fx0 + fx1) / 2;
+    const b: CityBuilding[] = [
+      { rect: { x0: cx - 10, z0: fz0 - 12, x1: cx + 10, z1: fz0 }, height: 4.2, style: 'shop', district, name: 'Harbour Fuel', tint: 0 },
+      { rect: { x0: r.x0 + 62, z0: r.z0 + 14, x1: r.x1 - 10, z1: r.z0 + 60 }, height: 9, style: 'warehouse', district, tint: 1 },
+    ];
+    const props: CityProp[] = [{ kind: 'canopy', x: cx, z: (fz0 + fz1) / 2 - 2, rot: 0 }];
+    for (const dx of [-6, 6]) for (const dz of [-3.5, 3.5]) props.push({ kind: 'pump', x: cx + dx, z: (fz0 + fz1) / 2 - 2 + dz, rot: 0 });
+    for (let x = r.x0 + 60; x < r.x1 - 4; x += 12) props.push({ kind: 'tree', x, z: r.z1 - 3, rot: x });
+    return { buildings: b, ground: [{ rect: r, kind: 'car_park' as const }, { rect: { x0: fx0, z0: fz0, x1: fx1, z1: fz1 }, kind: 'concrete' as const }], props };
   }
   function stadium(r: Rect) {
     const cx = (r.x0 + r.x1) / 2, cz = (r.z0 + r.z1) / 2;

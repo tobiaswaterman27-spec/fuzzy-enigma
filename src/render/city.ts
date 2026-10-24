@@ -474,6 +474,8 @@ export class CityView {
       else if (p.kind === 'fountain') this.group.add(fountain(p.x, p.z));
       else if (p.kind === 'goal') this.group.add(goal(p.x, p.z, p.rot));
       else if (p.kind === 'bus_stop') this.group.add(shelter(p.x, p.z, p.rot));
+      else if (p.kind === 'canopy') this.group.add(fuelCanopy(p.x, p.z));
+      else if (p.kind === 'pump') this.group.add(fuelPump(p.x, p.z));
     }
   }
 
@@ -587,4 +589,39 @@ function treeCrown(): THREE.BufferGeometry {
     nrm.setXYZ(i, m.x, m.y, m.z);
   }
   return out;
+}
+
+/** the forecourt canopy: a deep white slab on four legs, a green fascia with the name, lights under it */
+function fuelCanopy(x: number, z: number): THREE.Group {
+  const g = new THREE.Group();
+  const white = new THREE.MeshStandardMaterial({ color: '#f2f3f1', roughness: 0.6 });
+  const green = new THREE.MeshStandardMaterial({ color: '#0f7a43', roughness: 0.5 });
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(22, 0.5, 14), white); roof.position.y = 5.4; roof.castShadow = true; roof.receiveShadow = true; g.add(roof);
+  const band = new THREE.Mesh(new THREE.BoxGeometry(22.2, 0.9, 14.2), green); band.position.y = 5.0; g.add(band);
+  const { tex, aspect } = signTexture('HARBOUR FUEL', '#ffffff', '#0f7a43');
+  for (const sz of [1, -1]) {
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(0.8 * aspect, 0.8), new THREE.MeshBasicMaterial({ map: tex }));
+    sign.position.set(0, 5.0, sz * 7.12); if (sz < 0) sign.rotation.y = Math.PI; g.add(sign);
+  }
+  // lights set into the underside, glowing a little
+  const glow = new THREE.MeshStandardMaterial({ color: '#ffffff', emissive: '#fff6e0', emissiveIntensity: 1.2 });
+  for (const lx of [-6, 0, 6]) for (const lz of [-3.5, 3.5]) { const l = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.05, 0.5), glow); l.position.set(lx, 5.13, lz); g.add(l); }
+  for (const dx of [-9, 9]) for (const dz of [-5.5, 5.5]) { const leg = new THREE.Mesh(new THREE.BoxGeometry(0.45, 5.2, 0.45), white); leg.position.set(dx, 2.6, dz); leg.castShadow = true; g.add(leg); }
+  g.position.set(x, 0, z);
+  return g;
+}
+/** a fuel pump on its kerbed island, a hose hung on each side */
+function fuelPump(x: number, z: number): THREE.Group {
+  const g = new THREE.Group();
+  const island = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.18, 2.4), new THREE.MeshStandardMaterial({ color: '#d8d6cf', roughness: 0.9 })); island.position.y = 0.09; island.receiveShadow = true; g.add(island);
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.75, 0.5), new THREE.MeshStandardMaterial({ color: '#f4f4f2', roughness: 0.5 })); body.position.y = 0.18 + 0.875; body.castShadow = true; g.add(body);
+  const top = new THREE.Mesh(new THREE.BoxGeometry(0.74, 0.3, 0.54), new THREE.MeshStandardMaterial({ color: '#0f7a43', roughness: 0.5 })); top.position.y = 1.93 + 0.15; g.add(top);
+  const screen = new THREE.MeshStandardMaterial({ color: '#0b1a12', emissive: '#40ff9a', emissiveIntensity: 0.35, roughness: 0.2 });
+  for (const sx of [1, -1]) {
+    const sc = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 0.22), screen); sc.position.set(sx * 0.351, 1.5, 0); sc.rotation.y = sx * Math.PI / 2; g.add(sc);
+    const nozzle = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.25, 0.12), new THREE.MeshStandardMaterial({ color: sx > 0 ? '#1b1b1b' : '#2e8b57', roughness: 0.4 })); nozzle.position.set(sx * 0.4, 1.0, 0.12); g.add(nozzle);
+    const hose = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.018, 6, 14, Math.PI), new THREE.MeshStandardMaterial({ color: '#111', roughness: 0.6 })); hose.position.set(sx * 0.38, 0.95, -0.05); hose.rotation.set(0, Math.PI / 2, Math.PI); g.add(hose);
+  }
+  g.position.set(x, 0, z);
+  return g;
 }
