@@ -592,6 +592,31 @@ class PersonView {
         const ankle = knee.clone().addScaledVector(fwd, 0.06).setY(floorY + 0.09);
         aimBone(shin, foot, ankle);
       }
+      // sitting up: the captured sit slumps right back, so the back is set nearly upright against the
+      // seat back (a slight recline), the head level (not on a sofa, where a slouch is allowed)
+      if (this.seatH > 0.43) {
+        const up = new THREE.Vector3(0, 1, 0);
+        for (const [bone, child, lean] of [[B.spine, B.chest, -0.1], [B.chest, B.neck, -0.06], [B.neck, B.head, 0.05]] as const) {
+          const from = bone.getWorldPosition(new THREE.Vector3());
+          aimBone(bone, child, from.clone().add(up).addScaledVector(fwd, lean));
+        }
+        // head level, looking ahead
+        B.head.parent!.updateWorldMatrix(true, false);
+        B.head.quaternion.copy(B.head.parent!.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(root.getWorldQuaternion(new THREE.Quaternion())));
+        B.head.updateMatrixWorld(true);
+        // hands resting on the thighs, elbows easy at the sides
+        if (a?.type !== 'read_book' && !firstItem(state.containers[p.handsId])) {
+          const right = new THREE.Vector3(-fwd.z, 0, fwd.x);
+          for (const [arm, fore, hand, thigh, sgn] of [[B.armL, B.foreL, B.handL, B.thighL, -1], [B.armR, B.foreR, B.handR, B.thighR, 1]] as const) {
+            const hip = thigh.getWorldPosition(new THREE.Vector3());
+            const sh = arm.getWorldPosition(new THREE.Vector3());
+            const grip = hip.clone().addScaledVector(fwd, 0.27).addScaledVector(right, sgn * 0.03).add(new THREE.Vector3(0, 0.1, 0));
+            const elbow = sh.clone().lerp(grip, 0.5).addScaledVector(right, sgn * 0.09).addScaledVector(fwd, -0.06).add(new THREE.Vector3(0, -0.06, 0));
+            aimBone(arm, fore, elbow);
+            aimBone(fore, hand, grip);
+          }
+        }
+      }
       // a book open in the lap, held in both hands, head a little bowed over it
       if (a?.type === 'read_book') {
         const chest = B.chest.getWorldPosition(new THREE.Vector3());

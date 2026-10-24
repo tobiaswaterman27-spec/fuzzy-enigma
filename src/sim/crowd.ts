@@ -43,12 +43,24 @@ const jogHour = (h: number) => (h >= 6 && h < 10) || (h >= 17 && h < 21);
 
 // the park benches (and where you sit on one: just in front of the middle, facing the path)
 let benchCache: { w: unknown; all: { x: number; z: number; rot: number }[] } | null = null;
-function benchNear(at: { x: number; z: number }, within = 30) {
+type Bench = { x: number; z: number; rot: number; slot?: number };
+/** a bench near by with a free place on it (two to a bench, left and right) */
+function benchNear(state: GameState, p: Person, at: { x: number; z: number }, within = 30): Bench | null {
   const w = getWorld();
   if (benchCache?.w !== w) benchCache = { w, all: w.city.props.filter((q) => q.kind === 'bench').map((q) => ({ x: q.x, z: q.z, rot: q.rot })) };
-  return benchCache.all.find((b) => Math.hypot(b.x - at.x, b.z - at.z) < within) ?? null;
+  for (const b of benchCache.all) {
+    if (Math.hypot(b.x - at.x, b.z - at.z) >= within) continue;
+    const me = state.people[state.playerId];
+    if (me && Math.hypot(me.pos.x - b.x, me.pos.z - b.z) < 0.8) continue;
+    for (const slot of [-1, 1]) {
+      const seat = benchSeat({ ...b, slot });
+      const taken = Object.values(state.people).some((q) => q !== p && q.visible && (dist(q.pos, seat) < 0.45 || (() => { const qb = (q.npc as { bench?: Bench | null } | undefined)?.bench; return !!qb && qb.x === b.x && qb.z === b.z && qb.slot === slot; })()));
+      if (!taken) return { ...b, slot };
+    }
+  }
+  return null;
 }
-const benchSeat = (b: { x: number; z: number; rot: number }) => ({ x: b.x + Math.sin(b.rot) * 0.35, z: b.z + Math.cos(b.rot) * 0.35 });
+const benchSeat = (b: Bench) => ({ x: b.x + Math.sin(b.rot) * 0.35 + Math.cos(b.rot) * 0.45 * (b.slot ?? 0), z: b.z + Math.cos(b.rot) * 0.35 - Math.sin(b.rot) * 0.45 * (b.slot ?? 0) });
 
 // the street nodes (cached per world), and the ones at the right distance to appear on (cached until you move)
 let nodeCache: { w: unknown; all: { id: string; x: number; z: number }[] } | null = null;
@@ -116,11 +128,11 @@ export function crowdTick(state: GameState) {
       p.jogging = i % 7 === 4 && jogHour(hr) && !p.drunk ? state.minute + 60 : 0;
     }
     // sitting on a bench, or stopped for a chat: leave them be until they are done
-    const n = p.npc as typeof p.npc & { idleUntil?: number; bench?: { x: number; z: number; rot: number } | null };
+    const n = p.npc as typeof p.npc & { idleUntil?: number; bench?: Bench | null };
     if ((n.idleUntil ?? 0) > state.minute) continue;
     // on the way somewhere: now and then a bench catches their eye, or they bump into someone they know
     if (p.move && !n.bench && rand(state) < 0.02 && !((p.jogging ?? 0) > state.minute)) {
-      const b = benchNear(p.pos, 35);
+      const b = benchNear(state, p, p.pos, 35);
       if (b && rand(state) < 0.5) { n.bench = b; goTo(state, p, benchSeat(b), 'a bench'); continue; }
       const o = Object.values(state.people).find((q) => q !== p && q.id.startsWith('crowd_') && q.visible && dist(q.pos, p.pos) < 3 && ((q.npc as typeof n).idleUntil ?? 0) <= state.minute);
       if (o && rand(state) < 0.4) {
@@ -141,7 +153,7 @@ export function crowdTick(state: GameState) {
       n.bench = null;
       const r = rand(state);
       // a bench near by
-      const b = r < 0.3 ? benchNear(p.pos) : null;
+      const b = r < 0.3 ? benchNear(state, p, p.pos) : null;
       if (b) { n.bench = b; goTo(state, p, benchSeat(b), 'a bench'); continue; }
       // someone they know: stop and chat, face to face
       if (r < 0.5) {
