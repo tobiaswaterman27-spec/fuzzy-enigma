@@ -259,8 +259,10 @@ function whiteTex() {
   return white;
 }
 
-function fabricTexture(base: string, kind: string): THREE.Texture {
-  const key = `fab${base}${kind}`;
+/** the weave of a fabric, in grey: one per kind of cloth, tinted by the material's colour (so a new
+ * colour of shirt costs nothing to make, rather than a fresh 512x512 texture drawn pixel by pixel) */
+function fabricTexture(kind: string): THREE.Texture {
+  const key = `fab${kind}`;
   const hit = matCache.get(key) as any;
   if (hit) return hit;
   const S = 512;
@@ -269,9 +271,6 @@ function fabricTexture(base: string, kind: string): THREE.Texture {
   const c = cv.getContext('2d')!;
   // fill a fresh ImageData directly: reading back an accelerated canvas stalls the GPU for seconds
   const img = new ImageData(S, S);
-  const hex = new THREE.Color(base).getHex();
-  const br = (hex >> 16) & 255, bg = (hex >> 8) & 255, bb = hex & 255;
-  for (let i = 0; i < img.data.length; i += 4) { img.data[i] = br; img.data[i + 1] = bg; img.data[i + 2] = bb; img.data[i + 3] = 255; }
   let seed = 9;
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
   for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
@@ -281,9 +280,8 @@ function fabricTexture(base: string, kind: string): THREE.Texture {
     else if (kind === 'knit') v += (x % 4 < 2 ? 4 : -3) + (y % 6 < 3 ? 2 : -2);
     else if (kind === 'suit' || kind === 'twill') v += ((x + 2 * y) % 6 < 3 ? 4 : -3);
     else v += (x % 3 === 0 ? -3 : 1);
-    img.data[i] = Math.max(0, Math.min(255, img.data[i] + v));
-    img.data[i + 1] = Math.max(0, Math.min(255, img.data[i + 1] + v));
-    img.data[i + 2] = Math.max(0, Math.min(255, img.data[i + 2] + v * (kind === 'denim' ? 1.3 : 1)));
+    const g = Math.max(0, Math.min(255, 238 + v));
+    img.data[i] = g; img.data[i + 1] = g; img.data[i + 2] = g; img.data[i + 3] = 255;
   }
   c.putImageData(img, 0, 0);
   const t = new THREE.CanvasTexture(cv);
@@ -293,7 +291,7 @@ function fabricTexture(base: string, kind: string): THREE.Texture {
   return t;
 }
 
-const cloth = (color: string, kind: string, rough = 0.85) => cached(`hcloth${color}${kind}`, () => new THREE.MeshStandardMaterial({ color: '#ffffff', map: fabricTexture(color, kind), roughness: rough, side: THREE.DoubleSide }));
+const cloth = (color: string, kind: string, rough = 0.85) => cached(`hcloth${color}${kind}`, () => new THREE.MeshStandardMaterial({ color: new THREE.Color(color).multiplyScalar(1.16), map: fabricTexture(kind), roughness: rough, side: THREE.DoubleSide }));
 
 /** Materials are asked for by kind and arguments, so that a body can be built off the main thread: in
  * the worker `mat` returns a placeholder carrying the request and the main thread makes the material. */
