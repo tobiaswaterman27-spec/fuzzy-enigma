@@ -12,6 +12,7 @@ import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
 import type { GameState , Person, Vehicle } from '../sim/types';
 import { step } from '../sim/sim';
 import { cancelAction, focusInteractable, optionsFor, startAction, enforceLocationRules, type ActionOption } from '../sim/actions';
+import { netWorth } from '../sim/wealth';
 import { resolveCircle } from '../sim/world/nav';
 import { buildingAt, collidersIn, DWELLING_IDS, dwellingDoor, getWorld, stairCross, stairY, publicDoors, setHomeDesign, shellAt, SHOP_IDS } from '../sim/world/layout';
 import { shopLocked } from '../sim/breakins';
@@ -897,6 +898,14 @@ export class Game {
     if (me.needs.satiety < 12) lines.push('Was that your stomach? Go and get something to eat!');
     if (me.needs.energy < 12) lines.push('You look dead on your feet, mate.');
     if ((me.record?.length ?? 0) >= 3 || s.wanted) lines.push('I know your face... weren\'t you in the paper?', 'That\'s the one the police are after.');
+    // who you are: the uniform you have on, and how well you have done for yourself
+    if (wear === 'uniform_police') lines.push(hr < 12 ? 'Morning, officer.' : hr < 18 ? 'Afternoon, officer.' : 'Evening, officer.', 'Everything alright, officer?', 'Nice to see a bobby on the beat.');
+    else if (wear === 'uniform_site') lines.push('Knocking off early?', 'Hard hat suits you.');
+    else if (wear === 'uniform_cafe') lines.push('Don\'t you work at the cafe? Do a good flat white, you lot.');
+    else if (wear === 'uniform_market' || wear === 'uniform_wholesale') lines.push('On your break?', 'You work at the shop, don\'t you?');
+    if (now > this.worthAt) { this.worthAt = now + 60000; this.worth = netWorth(s, me.id).total; }
+    if (this.worth >= 100000000) lines.push(`That's ${me.name}! THE bigshot!`, 'Can I get a selfie? My mum won\'t believe it.', 'Spare a few quid for the little people?');
+    else if (this.worth >= 25000000) lines.push('That\'s the one who made a packet, isn\'t it?', 'Alright, moneybags.', 'Hiring, are you?');
     // someone the worse for drink on their way home: singing, shouting, overly friendly
     const sot = Object.values(s.people).find((q) => !q.isPlayer && q.visible && (q.drunk ?? 0) > 40 && q.down == null && !q.combat && Math.hypot(q.pos.x - me.pos.x, q.pos.z - me.pos.z) < 9 && (this.remarked.get(q.id) ?? 0) < now);
     if (sot && Math.random() < 0.6) {
@@ -929,6 +938,8 @@ export class Game {
     this.say(o.id, lines[Math.floor(Math.random() * lines.length)], 3.5);
   }
   private remarked = new Map<string, number>();
+  private worth = 0;
+  private worthAt = 0;
   /** creeping past people at the wheel: they notice the car (a flash one, a battered one, one on fire) */
   private nextDriveRemark = 0;
   private driveRemarks() {
