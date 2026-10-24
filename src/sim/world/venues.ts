@@ -305,6 +305,13 @@ function fitOut(id: string, kind: VenueKind, name: string, b: CityBuilding, fron
       for (let u = 4; u < 16 && u < Wd - 4; u += 2.2) ob('kiosk', u, 3.2, u + 1.0, 3.9, 1.7, true);
       spot('tickets', 'ticket_machine', 'Ticket machines', 4.5, 4.6, 4.5, 3.6);
       for (let u = mid + 6; u + 2 < Wd - 3; u += 5) ob('bench', u, 5, u + 2, 5.6, 0.9, true, 0);
+      if (Wd > 30) {
+        // seats across the concourse, a coffee stand and a newsagent, bins and planters
+        for (let v = 12; v + 0.6 < D - 13; v += 4) for (let u = 6; u + 2 < Wd - 6; u += 5) if (Math.abs(u + 1 - mid) > 5) ob('bench', u, v, u + 2, v + 0.6, 0.9, true, 0);
+        ob('kiosk', mid + 8, 9, mid + 11, 10.2, 2.4, true);
+        ob('kiosk', mid - 11, 9, mid - 8, 10.2, 2.4, true);
+        for (let u = 4; u < Wd - 4; u += 9) ob('plant', u, D - 12.5, u + 0.8, D - 11.7, 1.3, true);
+      }
       ob('platform_edge', 1, D - 9, Wd - 1, D - 8.7, 1.0, true);
       ob('track', 1, D - 8.7, Wd - 1, D - 1, 0.2, true);
       spot('platform', 'platform', 'Platform 1', mid, D - 10.2, mid, D - 8.6, 2.5);
@@ -324,6 +331,15 @@ function fitOut(id: string, kind: VenueKind, name: string, b: CityBuilding, fron
       spot('cinema', 'cinema', 'Harbourgate Cinema', Wd - 9, D - 3.0, Wd - 9, D - 0.5, 2.5);
       for (let v2 = 6; v2 < D - 15; v2 += 6) for (const u of [mid - 8, mid + 6]) ob('plant', u, v2, u + 0.8, v2 + 0.8, 1.4, true);
       for (let v2 = 5; v2 < D - 16; v2 += 3) ob('clothes_rack', 3, v2, 9, v2 + 0.5, 1.6, true, undefined, '#7a2f2f');
+      if (Wd > 30) {
+        // more of the centre: shop fittings in blocks down both sides, a longer food court,
+        // and an avenue of benches and planters up the middle
+        for (let v2 = 5; v2 + 2 < D - 16; v2 += 4) for (const u of [Wd - 16, Wd - 12]) ob('gondola', u, v2, u + 1.2, v2 + 2.4, 1.5, true, undefined, ['#2f4f7a', '#7a5a2f', '#2f7a4f'][Math.floor(v2) % 3]);
+        for (let v2 = 5; v2 < D - 16; v2 += 3) ob('clothes_rack', 13, v2, 19, v2 + 0.5, 1.6, true, undefined, ['#3d3d3d', '#c9b27a', '#2f4f7a'][Math.floor(v2) % 3]);
+        for (let u = 17; u + 1.2 < mid - 5; u += 3) for (const v2 of [D - 13, D - 16]) ob('table', u, v2, u + 1.2, v2 + 1.2, 0.75, true);
+        for (let v2 = 8; v2 < D - 18; v2 += 6) for (const u of [mid - 4, mid + 2]) ob('bench', u, v2 + 2.5, u + 2, v2 + 3.1, 0.9, true, 0);
+        for (const u of [Wd - 22, 24]) ob('kiosk', u, 6, u + 2.4, 7.2, 2.2, true);
+      }
       spot('rail', 'clothes_rail', 'Clothes rail', 6, 3.6, 6, 4.8);
       nodes.push(P(9, D - 9.2), P(mid, D - 9.2), P(Wd - 9, D - 3.0), P(6, 3.6));
       staffUV = [9, D - 6.4];
@@ -336,6 +352,17 @@ function fitOut(id: string, kind: VenueKind, name: string, b: CityBuilding, fron
       for (const u of [3, 6, 9]) ob('waiting_chairs', u, 3, u + 2.4, 3.6, 0.9, true, 0);
       for (let u = 3; u + 2.2 < Wd - 3; u += 3.4) { ob('bed', u, D - 3.2, u + 1.1, D - 1, 0.6, true, Math.PI); }
       ob('waiting_chairs', Wd - 4, 3, Wd - 1.6, 3.6, 0.9, true, 0);
+      if (Wd > 30) {
+        // the waiting room proper: rows of seats either side, drinks machines, plants
+        for (let v = 8; v < 15; v += 2.2) for (const u of [3, 6, 9, Wd - 12, Wd - 9, Wd - 6]) ob('waiting_chairs', u, v, u + 2.4, v + 0.6, 0.9, true, 0);
+        for (const u of [mid - 9, mid - 7.8]) ob('kiosk', u, 8, u + 1.0, 8.7, 1.8, true);
+        for (const u of [mid - 5, mid + 4.2]) ob('plant', u, 9, u + 0.8, 9.8, 1.5, true);
+        // the wards: bays of beds with cabinets, a nurses' station in the middle of each
+        for (let v = 19; v + 3 < D - 6; v += 8) {
+          for (let u = 3; u + 1.1 < Wd - 3; u += 3.4) { if (Math.abs(u + 0.55 - mid) < 4) continue; ob('bed', u, v, u + 1.1, v + 2.2, 0.6, true, 0); ob('storage_shelf', u + 1.3, v, u + 1.8, v + 0.6, 1.0, true, 0); }
+          ob('reception', mid - 2.5, v + 0.6, mid + 2.5, v + 1.4, 1.05, true, undefined, '#2f6fb0');
+        }
+      }
       nodes.push(P(mid, 3.8), P(mid, D - 5));
       staffUV = [mid, 6.6];
       break;
@@ -346,6 +373,13 @@ function fitOut(id: string, kind: VenueKind, name: string, b: CityBuilding, fron
       for (let u = 4; u < Wd - 4; u += 6) ob('plant', u, 1, u + 0.8, 1.8, 1.4, true);
       ob('board', 3, D - 0.4, 11, D - 0.1, 2.2, false);
       for (let v2 = 12; v2 < D - 4; v2 += 2.2) ob('bench', mid - 5, v2, mid - 1, v2 + 0.6, 0.9, true, Math.PI);
+      if (Wd > 30) {
+        for (let v2 = 12; v2 < D - 4; v2 += 2.2) ob('bench', mid + 1, v2, mid + 5, v2 + 0.6, 0.9, true, Math.PI);
+        // clerks' desks down both sides, leaflets, waiting chairs
+        for (let v2 = 12; v2 + 2 < D - 6; v2 += 5) for (const u of [4, Wd - 7]) { ob('desk', u, v2, u + 2.4, v2 + 1.0, 0.76, true); ob('dining_chair', u + 0.8, v2 + 1.1, u + 1.6, v2 + 1.8, 0.9, true); }
+        for (const u of [mid - 9, mid + 8]) ob('leaflet_stand', u, 4, u + 0.6, 4.6, 1.4, true);
+        for (const u of [mid - 14, mid + 11]) ob('waiting_chairs', u, 4, u + 2.4, 4.6, 0.9, true, 0);
+      }
       nodes.push(P(mid, 5.8));
       staffUV = [mid, 8.8];
       break;
