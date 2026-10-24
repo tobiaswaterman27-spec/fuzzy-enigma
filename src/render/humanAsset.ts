@@ -205,7 +205,7 @@ function skinMaterial(skin: string, hair: string, fem: boolean): THREE.Material 
     const base = new THREE.Color(skin);
     const hsl = { h: 0, s: 0, l: 0 };
     base.getHSL(hsl, THREE.SRGBColorSpace);
-    if (hsl.l > 0.7) base.setHSL(hsl.h, Math.min(1, hsl.s + 0.12), hsl.l - 0.08, THREE.SRGBColorSpace);
+    if (hsl.l > 0.66) base.setHSL(hsl.h, Math.min(1, hsl.s + 0.2), hsl.l - 0.06 - (hsl.l - 0.66) * 0.6, THREE.SRGBColorSpace);
     const m = new THREE.MeshPhysicalMaterial({ color: base, roughness: 0.55, sheen: 0.2, sheenRoughness: 0.7, sheenColor: new THREE.Color(skin).lerp(new THREE.Color('#ff8a6a'), 0.5), emissive: new THREE.Color(skin).lerp(new THREE.Color('#c0503a'), 0.5), emissiveIntensity: 0.07, specularIntensity: 0.6 });
     const masks = asset!.masks;
     if (masks) {
