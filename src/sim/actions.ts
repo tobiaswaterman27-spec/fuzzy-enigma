@@ -9,7 +9,7 @@ import { BUS_FARE } from './bus';
 import { TRAIN_FARE } from './train';
 import { BIKE_FARE, hireBike, mountBike } from './bikes';
 import { laundryShift, mealNow, nextMeal, prisonMeal, tryEscape } from './prison';
-import { callVince, dropMission, missionText } from './missions';
+import { callVince, dropMission, missionText, startDeliveries, DELIVERY_PAY, DELIVERY_BONUS } from './missions';
 import { fixture, gateOpen, goToMatch, ODDS, STAKE, TICKET, type Pick } from './stadium';
 import { type OutfitKind, OUTFIT_PRICES, SHIFT_PAY, SHIFT_HOURS, shiftBlocker, finishShift, arcadeGo, buyAt, clearRecord, crackVault, RECORD_FEE, smashCases, watchFilm, wedding, WEDDING_FEE, haircut, hasGymPass, newOutfit, offersAt, PAWN, pawnSell, robVenue, shoplift, slots, staffOf, venueOfSpot, workout, EYEWEAR } from './venues';
 import { venueOpen } from './world/venues';
@@ -423,6 +423,7 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
         if (it.kind !== 'venue_till' && p.isPlayer) for (const o of offersAt(v, it.kind).filter((x) => x.item).slice(0, 2)) out.push(opt('shoplift', `Pocket the ${o.label.toLowerCase()} (don't pay)`, undefined, o.item));
         if (it.kind === 'venue_till' && v.kind === 'pawn') for (const k of Object.keys(PAWN)) if (count(state.containers[p.bagId], k)) out.push(opt('venue', `Sell ${PAWN[k].label} · ${fmtMoney(PAWN[k].price)}`, shut, `pawn:${k}`));
         if (it.kind === 'venue_till' && v.kind === 'pawn' && !Object.keys(PAWN).some((k) => count(state.containers[p.bagId], k))) out.push(opt('venue', 'Sell something', 'Nothing worth selling (bring jewellery, watches, laptops, phones)', 'pawn:none'));
+        if (it.kind === 'venue_till' && p.isPlayer && v.kind === 'takeaway') out.push(opt('deliveries', `Do a round of deliveries (3 drops · ${fmtMoney(DELIVERY_PAY)} each + ${fmtMoney(DELIVERY_BONUS)} bonus)`, shut ?? (state.delivery ? 'You are already out on a round' : state.mission ? 'Finish Vince\'s job first' : undefined)));
         if (it.kind === 'venue_till' && p.isPlayer && SHIFT_PAY[v.kind]) out.push(opt('venue_shift', `Ask for a cash-in-hand shift, ${SHIFT_PAY[v.kind]!.role} (${SHIFT_HOURS} h · ${fmtMoney(SHIFT_PAY[v.kind]!.hourly * SHIFT_HOURS)})`, shiftBlocker(state, p, v) ?? undefined));
         if (it.kind === 'venue_till' && p.isPlayer && staff) out.push(opt('rob_venue', p.weapon ? `Hold up the ${v.kind === 'bank' ? 'cashier' : 'till'} (${(WEAPONS as any)[p.weapon]?.label ?? 'weapon'} out)` : 'Demand the cash from the till'));
       }
@@ -821,6 +822,7 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
       return { ok: true, msg: bargeIn(state, p.id) };
     case 'loot_till':
       begin(p, type, itId, { duration: 1.4 }, now); break;
+    case 'deliveries': { const v = venueOfSpot(itId); return { ok: true, msg: v ? startDeliveries(state, p.id, v.id, p.pos) : '' }; }
     case 'give_flowers':
       return { ok: true, msg: giveFlowers(state, p, itId.slice(7)) };
     case 'pickpocket': case 'mug': {

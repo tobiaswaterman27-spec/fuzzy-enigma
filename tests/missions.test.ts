@@ -77,3 +77,20 @@ describe('Tailing someone for Vince', () => {
     }
   });
 });
+
+describe('Takeaway deliveries', () => {
+  it('three drops pay with a bonus; too slow and the round ends', async () => {
+    const { startDeliveries, DELIVERY_PAY, DELIVERY_BONUS } = await import('../src/sim/missions');
+    const s = createNewGame(7, setup);
+    const me = s.people.player;
+    me.where = 'outside'; me.visible = true;
+    const cash = s.ledger.accounts[me.accountId].balance;
+    startDeliveries(s, me.id, 'v_0', me.pos);
+    for (let k = 0; k < 3; k++) { me.pos = { ...s.delivery!.to }; s.minute += 0.5; missionTick(s); }
+    expect(s.delivery).toBeNull();
+    expect(s.ledger.accounts[me.accountId].balance).toBe(cash + DELIVERY_PAY * 3 + DELIVERY_BONUS);
+    startDeliveries(s, me.id, 'v_0', me.pos);
+    s.minute = s.delivery!.deadline + 1; missionTick(s);
+    expect(s.delivery).toBeNull();
+  });
+});

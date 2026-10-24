@@ -176,6 +176,7 @@ export type ActionType =
   | 'loot_till'
   | 'pickpocket'
   | 'give_flowers'
+  | 'deliveries'
   | 'mug'
   | 'chop'
   | 'hand_in'
@@ -809,6 +810,8 @@ export interface GameState {
   serving?: boolean;
   /** the job you are doing for Vince, and how far he trusts you */
   mission?: import('./missions').Mission | null;
+  /** a round of takeaway deliveries on foot (missions.ts) */
+  delivery?: { venue: string; to: Vec2; left: number; deadline: number; pay: number; earned: number } | null;
   vinceRep?: number;
   /** at the match: which day's game, and what you bet on */
   matchBet?: { day: number; pick: 'H' | 'D' | 'A' | null } | null;

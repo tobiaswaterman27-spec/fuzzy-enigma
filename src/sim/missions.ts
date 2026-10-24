@@ -87,9 +87,49 @@ export function dropMission(state: GameState): string {
   return 'Vince: "Fine. I\'ll find someone who can."';
 }
 
+// ---------------------------------------------------------- takeaway deliveries
+/** a round of three drops for a takeaway: each to a door a few streets off, before the food goes cold */
+export const DELIVERY_PAY = 450, DELIVERY_BONUS = 600;
+export function startDeliveries(state: GameState, personId: Id, venueId: string, from: Vec2): string {
+  if (state.delivery) return 'You are already out on a round.';
+  if (state.mission) return 'Finish Vince\'s job first.';
+  const to = streetSpot(state, from, 90, 320);
+  const mins = Math.round(4 + Math.hypot(to.x - from.x, to.z - from.z) / 120);
+  state.delivery = { venue: venueId, to, left: 3, deadline: state.minute + mins, pay: DELIVERY_PAY, earned: 0 };
+  void personId;
+  return `Three orders to drop. First: ${placeName(to)}, by ${fmtClock(state.minute + mins)}. Go!`;
+}
+function deliveryTick(state: GameState) {
+  const d = state.delivery!;
+  const me = state.people[state.playerId];
+  if (!me || me.dead || me.away) { state.delivery = null; return; }
+  if (state.minute > d.deadline) {
+    state.delivery = null;
+    if (d.earned) transfer(state, { from: state.externalId, to: me.accountId, amount: d.earned, reason: 'transfer', memo: 'Delivery tips', key: `deliv:${Math.floor(state.minute)}` });
+    news(state, 'bad', 'Cold food', `Too slow: the customer cancelled. ${d.earned ? `You keep ${fmtMoney(d.earned)} for the drops you made.` : ''}`, true);
+    return;
+  }
+  if (dist(me.pos, d.to) > 5) return;
+  d.earned += d.pay;
+  d.left--;
+  if (d.left <= 0) {
+    const total = d.earned + DELIVERY_BONUS;
+    transfer(state, { from: state.externalId, to: me.accountId, amount: total, reason: 'transfer', memo: 'Takeaway deliveries', key: `deliv:${Math.floor(state.minute)}` });
+    state.delivery = null;
+    lifeEvent(state, me, 'Did a round of takeaway deliveries');
+    news(state, 'good', 'Round done', `Three hot dinners delivered: ${fmtMoney(total)} with the bonus.`, true);
+    return;
+  }
+  const next = streetSpot(state, d.to, 90, 320);
+  const mins = Math.round(4 + Math.hypot(next.x - d.to.x, next.z - d.to.z) / 120);
+  d.to = next; d.deadline = state.minute + mins;
+  news(state, 'info', 'Delivered', `Next: ${placeName(next)}, by ${fmtClock(state.minute + mins)}.`, true);
+}
+
 /** where to go next, for the waypoint and the ring */
 export function missionGoal(state: GameState): Vec2 | null {
   const m = state.mission;
+  if (!m && state.delivery) return state.delivery.to;
   if (!m) return null;
   if (m.kind === 'courier') return m.stage === 'pickup' ? m.from! : m.to!;
   if (m.kind === 'carjack') { const it = getWorld().interactables.chop_shop; return it ? it.pos : null; }
@@ -99,6 +139,7 @@ export function missionGoal(state: GameState): Vec2 | null {
 
 export function missionText(state: GameState): string {
   const m = state.mission;
+  if (!m && state.delivery) { const d = state.delivery, left = Math.max(0, Math.round(d.deadline - state.minute)); return `Delivery ${4 - d.left}/3: ${placeName(d.to)} · ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')} left`; }
   if (!m) return '';
   const left = Math.max(0, Math.round(m.deadline - state.minute));
   const time = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')} left`;
@@ -126,6 +167,7 @@ function pay(state: GameState, personId: Id, msg: string) {
 
 /** each tick: has the job been done, or has the clock run out? */
 export function missionTick(state: GameState) {
+  if (state.delivery) deliveryTick(state);
   const m = state.mission;
   if (!m) return;
   const me = state.people[state.playerId];
