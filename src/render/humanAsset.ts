@@ -311,9 +311,10 @@ let workerMode = false;
 export function setHumanWorkerMode() { workerMode = true; }
 function mat(...spec: MatSpec): THREE.Material {
   if (workerMode) return { isMaterial: true, userData: { spec } } as unknown as THREE.Material;
-  return MAKERS[spec[0]](...spec.slice(1));
+  return materialFromSpec(spec);
 }
-export function materialFromSpec(spec: MatSpec): THREE.Material { return MAKERS[spec[0]](...spec.slice(1)); }
+/** the material for a spec, tagged with its kind (so a body's hair strands can be told apart later) */
+export function materialFromSpec(spec: MatSpec): THREE.Material { const m = MAKERS[spec[0]](...spec.slice(1)); m.userData.kind ??= spec[0]; return m; }
 
 function irisTexture(color: string): THREE.Texture {
   const key = `iris${color}`;

@@ -13,6 +13,8 @@ import { boat } from './harbour';
 
 const CHUNK = 520;
 const VIEW = 820;
+/** trees are drawn in cells this size, the full crowns only within TREE_NEAR */
+const TREE_CELL = 130, TREE_NEAR = 45;
 
 // ---------------------------------------------------------------- facade textures
 interface Facade { wall: string; win: string; frame: string; kind: 'sash' | 'ribbon' | 'curtain' | 'shed' | 'tall' | 'balcony' | 'arch'; bay: number; storey: number; brick?: boolean }
@@ -179,6 +181,7 @@ export const VENUE_LOD = 150;
 export class CityView {
   group = new THREE.Group();
   private chunks: { g: THREE.Group; cx: number; cz: number }[] = [];
+  private treeLods: { hi: THREE.InstancedMesh; lo: THREE.InstancedMesh; cx: number; cz: number }[] = [];
   private lods: { g: THREE.Group; cx: number; cz: number }[] = [];
   private glowMats: THREE.MeshStandardMaterial[] = [];
   private bulbs: THREE.MeshStandardMaterial;
@@ -413,17 +416,26 @@ export class CityView {
     };
     const q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
     const place = (p: CityProp, m: THREE.Matrix4, y: number, s = 1, sy = s) => m.compose(new THREE.Vector3(p.x, y, p.z), q.setFromAxisAngle(up, p.rot), new THREE.Vector3(s, sy, s));
-    // trees: a trunk and two lumps of crown
+    // trees, in cells of the city so that what is behind the camera is culled: a trunk, and a leafy
+    // crown in full up close or a simple one further off
     const trees = of('tree');
     const trunk = new THREE.CylinderGeometry(0.16, 0.24, 3, 6); trunk.translate(0, 1.5, 0);
-    inst(trunk, new THREE.MeshStandardMaterial({ color: '#5a4030', roughness: 1 }), trees, (p, m) => place(p, m, 0, p.s ?? 1));
-    const crown = treeCrown();
+    const trunkMat = new THREE.MeshStandardMaterial({ color: '#5a4030', roughness: 1 });
+    const crownHi = treeCrown(2), crownLo = treeCrown(0);
     const leafMat = new THREE.MeshStandardMaterial({ color: '#ffffff', vertexColors: true, roughness: 0.92 });
     leafMat.name = 'leaves';
-    const leaves = inst(crown, leafMat, trees, (p, m) => place(p, m, 0, p.s ?? 1));
-    // each tree its own shade: a little yellower, bluer, lighter or darker than the next
-    if (leaves) { const c = new THREE.Color(); trees.forEach((t, i) => leaves.setColorAt(i, c.setHSL(0.25 + Math.sin(t.x * 3.1) * 0.05, 0.25, 0.82 + Math.sin(t.z * 1.7) * 0.1))); if (leaves.instanceColor) leaves.instanceColor.needsUpdate = true; }
-    if (leaves) leaves.name = 'leaves';
+    const cellsOf = (size: number) => { const out = new Map<string, CityProp[]>(); for (const t of trees) { const k = `${Math.floor(t.x / size)},${Math.floor(t.z / size)}`; (out.get(k) ?? out.set(k, []).get(k)!).push(t); } return out.values(); };
+    // trunks are a dozen triangles each: big cells, few draw calls
+    for (const list of cellsOf(TREE_CELL * 3)) inst(trunk, trunkMat, list, (p, m) => place(p, m, 0, p.s ?? 1))?.computeBoundingSphere();
+    for (const list of cellsOf(TREE_CELL)) {
+      const hi = inst(crownHi, leafMat, list, (p, m) => place(p, m, 0, p.s ?? 1))!;
+      const lo = inst(crownLo, leafMat, list, (p, m) => place(p, m, 0, p.s ?? 1), false)!;
+      // each tree its own shade: a little yellower, bluer, lighter or darker than the next
+      const c = new THREE.Color();
+      for (const im of [hi, lo]) { list.forEach((t, i) => im.setColorAt(i, c.setHSL(0.25 + Math.sin(t.x * 3.1) * 0.05, 0.25, 0.82 + Math.sin(t.z * 1.7) * 0.1))); if (im.instanceColor) im.instanceColor.needsUpdate = true; im.name = 'leaves'; im.computeBoundingSphere(); }
+      const cx = list.reduce((a, t) => a + t.x, 0) / list.length, cz = list.reduce((a, t) => a + t.z, 0) / list.length;
+      this.treeLods.push({ hi, lo, cx, cz });
+    }
     // street lamps: pole, arm and lamp head (the head lights up at night)
     const lamps = of('lamp');
     const pole = new THREE.CylinderGeometry(0.07, 0.1, 5.2, 8); pole.translate(0, 2.6, 0);
@@ -508,6 +520,7 @@ export class CityView {
     const p = camera.position;
     for (const c of this.chunks) c.g.visible = Math.hypot(c.cx - p.x, c.cz - p.z) < VIEW + CHUNK * 0.7;
     for (const c of this.lods) { const d = Math.hypot(c.cx - p.x, c.cz - p.z); c.g.visible = d >= VENUE_LOD && d < VIEW + CHUNK; }
+    for (const t of this.treeLods) { const d = Math.hypot(t.cx - p.x, t.cz - p.z) - TREE_CELL * 0.7; t.hi.visible = d < TREE_NEAR; t.lo.visible = d >= TREE_NEAR && d < VIEW; }
     for (const m of this.glowMats) m.emissiveIntensity = night * 1.2;
     this.bulbs.emissiveIntensity = night > 0.3 ? 1.6 : 0;
   }
@@ -558,12 +571,14 @@ void mergeGeometries; void AVENUES; void STREETS;
 
 /** a leafy crown: a cluster of lumpy lobes (welded, so the surface never cracks), shaded darker
  * underneath and inside, lighter where the sun catches the top, mottled all over */
-function treeCrown(): THREE.BufferGeometry {
-  const lobes: [number, number, number, number][] = [[0, 4.5, 0, 1.75], [1.05, 4.15, 0.35, 1.25], [-0.95, 4.2, -0.4, 1.3], [0.25, 5.35, -0.2, 1.25], [-0.35, 4.0, 1.0, 1.15], [0.55, 4.35, -1.05, 1.15], [-0.7, 5.0, 0.6, 1.0]];
+function treeCrown(detail = 2): THREE.BufferGeometry {
+  const all: [number, number, number, number][] = [[0, 4.5, 0, 1.75], [1.05, 4.15, 0.35, 1.25], [-0.95, 4.2, -0.4, 1.3], [0.25, 5.35, -0.2, 1.25], [-0.35, 4.0, 1.0, 1.15], [0.55, 4.35, -1.05, 1.15], [-0.7, 5.0, 0.6, 1.0]];
+  // far off, one rounded lump does
+  const lobes = detail === 0 ? [[0, 4.55, 0, 2.15] as [number, number, number, number]] : all.slice(0, 6);
   const noise = (x: number, y: number, z: number) => Math.sin(x * 2.3 + Math.sin(z * 1.9)) * Math.cos(y * 2.1 + Math.sin(x * 1.3)) * 0.5 + Math.sin((x + y + z) * 4.7) * 0.25;
   const dark = new THREE.Color('#2f5a26'), light = new THREE.Color('#7fae4e'), c = new THREE.Color();
   const geos = lobes.map(([cx, cy, cz, r]) => {
-    const g = new THREE.IcosahedronGeometry(r, 3);
+    const g = new THREE.IcosahedronGeometry(r, detail === 0 ? 1 : detail);
     g.deleteAttribute('uv');
     const pos = g.getAttribute('position');
     const col = new Float32Array(pos.count * 3);

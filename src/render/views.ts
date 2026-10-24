@@ -708,6 +708,18 @@ class PersonView {
   }
   /** flies round the head and a whiff coming off someone who has not washed in days */
   private stink: THREE.Group | null = null;
+  private shellsOn = true;
+  private shellRig: Rig | null = null;
+  private shellMeshes: THREE.Object3D[] = [];
+  setShells(on: boolean) {
+    if (this.shellRig !== this.rig) {
+      this.shellRig = this.rig; this.shellsOn = true; this.shellMeshes = [];
+      this.rig.root.traverse((o) => { const m = (o as THREE.Mesh).material as THREE.Material | undefined; if (m && !Array.isArray(m) && m.userData?.kind === 'shell') this.shellMeshes.push(o); });
+    }
+    if (on === this.shellsOn) return;
+    this.shellsOn = on;
+    for (const o of this.shellMeshes) o.visible = on;
+  }
   private hipsRest = new THREE.Vector3();
   private plantW = 0;
   /** two-bone leg IK: ankles to the bind-pose stance under the body, knees bending forward */
@@ -1603,7 +1615,10 @@ export class Views {
         if (shadow !== v.shadow) { v.shadow = shadow; v.rig.root.traverse((o) => { o.castShadow = shadow; }); }
       }
       v.culled = !near;
-      v.lod = viewer && p.id !== state.playerId ? (() => { const d = Math.hypot(p.pos.x - viewer.x, p.pos.z - viewer.z); return d > 55 ? 3 : d > 32 ? 2 : 1; })() : 1;
+      const dv = viewer && p.id !== state.playerId ? Math.hypot(p.pos.x - viewer.x, p.pos.z - viewer.z) : 0;
+      v.lod = dv > 55 ? 3 : dv > 32 ? 2 : 1;
+      // the soft strands round the hair only show close up
+      v.setShells(dv < 18);
       v.update(state, p, dt);
       if (p.isPlayer && this.hidePlayer) v.rig.root.visible = false;
       const sp = speech?.get(p.id);
