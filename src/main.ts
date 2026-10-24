@@ -23,7 +23,7 @@ await Promise.all([ticked(loadHumanAsset(), 'Fitting the townspeople'), ticked(l
 bootTick('Building the city');
 await new Promise((r) => setTimeout(r, 30));
 const canvas = document.getElementById('view') as HTMLCanvasElement;
-const seed = (Date.now() % 100000) + 1;
+const seed = Number(new URLSearchParams(location.search).get('seed')) || (Date.now() % 100000) + 1;
 const OUTFITS = [['outfit_casual', 'Everyday'], ['outfit_sport', 'Tracksuit'], ['outfit_night', 'Going out'], ['outfit_smart', 'Suited']] as const;
 const appearance = { frame: 'm', skin: SKIN_TONES[2], hair: 'short', hairColor: HAIR_COLORS[1], build: 'average' } as Omit<Appearance, 'outfit' | 'height'>;
 const state = createNewGame(seed, { name: 'Alex Morgan', appearance });
