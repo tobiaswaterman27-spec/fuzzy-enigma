@@ -109,9 +109,18 @@ const SKIN_ETHNIC: Record<string, [number, number, number]> = {
 export function morphWeights(a: Appearance): Record<string, number> {
   const f = (a.frame ?? 'm') === 'f';
   const g = f ? 'female' : 'male';
-  const eth = SKIN_ETHNIC[a.skin] ?? [0.33, 0.33, 0.34];
+  const sh = a.shape;
+  const eth = sh ? (() => { const t = sh.african + sh.asian + sh.caucasian || 1; return [sh.african / t, sh.asian / t, sh.caucasian / t]; })() : SKIN_ETHNIC[a.skin] ?? [0.33, 0.33, 0.34];
   const w: Record<string, number> = {};
   ['african', 'asian', 'caucasian'].forEach((e, i) => { w[`${e}-${g}-young`] = eth[i]; });
+  if (sh) {
+    // the sliders, straight onto the body's shape targets
+    if (sh.muscle > 0) w[`universal-${g}-young-maxmuscle-averageweight`] = sh.muscle; else if (sh.muscle < 0) w[`universal-${g}-young-minmuscle-averageweight`] = -sh.muscle;
+    if (sh.weight > 0) w[`universal-${g}-young-averagemuscle-maxweight`] = sh.weight; else if (sh.weight < 0) w[`universal-${g}-young-averagemuscle-minweight`] = -sh.weight;
+    if (sh.tall > 0) w[`height-${g}-maxheight`] = sh.tall * 0.6; else if (sh.tall < 0) w[`height-${g}-minheight`] = -sh.tall * 0.6;
+    w[`prop-${g}`] = sh.prop;
+    return w;
+  }
   if (a.build === 'slim') { w[`universal-${g}-young-averagemuscle-minweight`] = 0.7; w[`universal-${g}-young-minmuscle-averageweight`] = 0.3; }
   if (a.build === 'broad') { w[`universal-${g}-young-maxmuscle-averageweight`] = 0.55; w[`universal-${g}-young-averagemuscle-maxweight`] = 0.45; }
   w[`prop-${g}`] = 0.6;
@@ -1031,7 +1040,28 @@ function buildRealHumanUncached(a: Appearance): HumanBuild {
       out.push(m);
       return m;
     };
-    sk(poolGeometry(pool, visibleSkin, 0, 1, 0), mat('skin', a.skin, a.hairColor, fem));
+    // round the eyes the skin moves with the head alone, as the eyeballs do; otherwise a bend of the
+    // neck drags the lids one way and the (rigid) eyes the other, and the eyes poke through
+    const eyeLock = (g: THREE.BufferGeometry) => {
+      const P = g.getAttribute('position') as THREE.BufferAttribute, SI = g.getAttribute('skinIndex') as THREE.BufferAttribute, SW = g.getAttribute('skinWeight') as THREE.BufferAttribute;
+      if (!SI || !SW) return g;
+      const head = bi('head'), v = new THREE.Vector3();
+      for (let i = 0; i < P.count; i++) {
+        v.fromBufferAttribute(P, i);
+        const e = eyes.reduce((b, x) => (x.c.distanceTo(v) < b.c.distanceTo(v) ? x : b));
+        const d = e.c.distanceTo(v), r0 = e.r * 2.2, r1 = e.r * 3.6;
+        if (d > r1) continue;
+        const k = d < r0 ? 1 : 1 - (d - r0) / (r1 - r0);
+        const w = [SW.getX(i), SW.getY(i), SW.getZ(i), SW.getW(i)].map((x) => x * (1 - k));
+        const idx = [SI.getX(i), SI.getY(i), SI.getZ(i), SI.getW(i)];
+        const at = idx.indexOf(head);
+        if (at >= 0) w[at] += k; else { const lo = w.indexOf(Math.min(...w)); idx[lo] = head; w[lo] += k; }
+        SI.setXYZW(i, idx[0], idx[1], idx[2], idx[3]); SW.setXYZW(i, w[0], w[1], w[2], w[3]);
+      }
+      SI.needsUpdate = true; SW.needsUpdate = true;
+      return g;
+    };
+    sk(eyeLock(poolGeometry(pool, visibleSkin, 0, 1, 0)), mat('skin', a.skin, a.hairColor, fem));
     if (A.lashTris.length) {
       // the lash strips are long: draw them shorter and solid, so they read as a dark lash line
       const lg = poolGeometry(pool, Array.from(A.lashTris), 0, 1, 0);
@@ -1046,7 +1076,7 @@ function buildRealHumanUncached(a: Appearance): HumanBuild {
         lp.setXYZ(i, e.c.x + d.x, e.c.y + d.y, e.c.z + d.z);
       }
       lp.needsUpdate = true;
-      sk(lg, mat('lash', a.hairColor));
+      sk(eyeLock(lg), mat('lash', a.hairColor));
     }
     const shirt = cutBody(pos, nrm, [fTopLong], A.index);
     const shirtGeo = torsoOnly(poolGeometry(shirt.pool, shirt.buckets[0], 0.011, 6, 6, bridge), bi('neck'), bi('head'), bi('chest'));
@@ -1119,11 +1149,54 @@ function buildRealHumanUncached(a: Appearance): HumanBuild {
     // eyes
     const eyeColor = a.eyes ?? ['#4a6b8a', '#5a4632', '#3b2a1c', '#4f6b3a'][Math.abs(hashStr(a.skin + a.hairColor)) % 4];
     // both eyeballs in one mesh on the head bone; texture centre faces +z
-    const eyeGeo = mergeGeometries(eyes.map((e) => new THREE.SphereGeometry(e.r * 0.98, 20, 16).rotateY(-Math.PI / 2).translate(e.c.x - joints.head.x, e.c.y - joints.head.y, e.c.z - joints.head.z)))!;
+    const eyeGeo = mergeGeometries(eyes.map((e) => new THREE.SphereGeometry(e.r * 0.9, 20, 16).rotateY(-Math.PI / 2).scale(1, 1, 0.78).translate(e.c.x - joints.head.x, e.c.y - joints.head.y, e.c.z - joints.head.z - e.r * 0.2)))!;
     const em = new THREE.Mesh(eyeGeo, mat('eye', eyeColor));
     em.userData.attach = 'head';
     em.userData.worldPos = joints.head.clone();
     out.push(em);
+    // jewellery and glasses, placed from the real eyes and joints so they fit any face
+    const ex = new Set(a.extras ?? []);
+    if (ex.size) {
+      const gold = mat('std', 'jewel_gold', { color: '#d4a93a', metalness: 1, roughness: 0.25 });
+      const silver = mat('std', 'jewel_silver', { color: '#d8dde2', metalness: 1, roughness: 0.2 });
+      const frameM = mat('std', 'glasses_frame', { color: '#141414', roughness: 0.4, metalness: 0.2 });
+      const shade = mat('std', 'glasses_shade', { color: '#0b0f14', roughness: 0.05, metalness: 0.6, transparent: true, opacity: 0.85 });
+      const clear = mat('std', 'glasses_clear', { color: '#e8f2f6', roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.18, depthWrite: false });
+      const put = (geo: THREE.BufferGeometry, m: THREE.Material, at: string, worldAt: THREE.Vector3) => {
+        const o = new THREE.Mesh(geo, m); o.castShadow = true;
+        o.userData.attach = at; o.userData.worldPos = worldAt.clone();
+        geo.translate(0, 0, 0); out.push(o); return o;
+      };
+      const [eL, eR] = eyes.length > 1 ? (eyes[0].c.x > eyes[1].c.x ? [eyes[0], eyes[1]] : [eyes[1], eyes[0]]) : [eyes[0], eyes[0]];
+      const mid = eL.c.clone().add(eR.c).multiplyScalar(0.5), er = eL.r;
+      const ear = (side: number) => new THREE.Vector3(mid.x + side * (Math.abs(eL.c.x - mid.x) + 0.047), mid.y - 0.03, mid.z - 0.085);
+      const g = (geos: THREE.BufferGeometry[], origin: THREE.Vector3) => { const m = mergeGeometries(geos.map((x) => x.translate(-origin.x, -origin.y, -origin.z)))!; return m; };
+      if (ex.has('glasses') || ex.has('sunglasses')) {
+        const z = mid.z + er * 1.35;
+        const rims = [eL, eR].map((e) => new THREE.TorusGeometry(er * 1.75, 0.0022, 6, 20).translate(e.c.x, e.c.y, z));
+        const bridge = new THREE.BoxGeometry(Math.abs(eL.c.x - eR.c.x) - er * 3.2, 0.003, 0.003).translate(mid.x, mid.y + er * 0.6, z);
+        const arms = [1, -1].map((sd) => new THREE.BoxGeometry(0.003, 0.003, 0.095).translate(mid.x + sd * (Math.abs(eL.c.x - mid.x) + er * 1.7), mid.y + er * 0.5, z - 0.047));
+        const o = put(g([...rims, bridge, ...arms], joints.head), frameM, 'head', joints.head);
+        void o;
+        const lenses = [eL, eR].map((e) => new THREE.CircleGeometry(er * 1.72, 20).translate(e.c.x, e.c.y, z));
+        put(g(lenses, joints.head), ex.has('sunglasses') ? shade : clear, 'head', joints.head);
+      }
+      if (ex.has('studs')) put(g([1, -1].map((sd) => { const c = ear(sd); return new THREE.SphereGeometry(0.0045, 8, 6).translate(c.x, c.y, c.z); }), joints.head), silver, 'head', joints.head);
+      if (ex.has('hoops')) put(g([1, -1].map((sd) => { const c = ear(sd); return new THREE.TorusGeometry(0.011, 0.0018, 6, 16).rotateY(Math.PI / 2).translate(c.x, c.y - 0.012, c.z); }), joints.head), gold, 'head', joints.head);
+      if (ex.has('chain')) {
+        const n = joints.neck, c = joints.chest;
+        const y = n.y - (n.y - c.y) * 0.35;
+        put(g([new THREE.TorusGeometry(0.078, 0.003, 6, 32).rotateX(Math.PI / 2 - 0.5).translate(n.x, y - 0.015, n.z + 0.03)], joints.chest), gold, 'chest', joints.chest);
+      }
+      if (ex.has('watch')) {
+        const w = joints.handL, f = joints.foreL, d = w.clone().sub(f).normalize(), at = w.clone().addScaledVector(d, -0.035);
+        const band = new THREE.TorusGeometry(0.027, 0.006, 6, 18);
+        band.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), d));
+        const face = new THREE.CylinderGeometry(0.014, 0.014, 0.006, 16).applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1))).translate(0, 0, 0.03);
+        face.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), d.clone().cross(new THREE.Vector3(0, 1, 0)).normalize().negate()));
+        put(g([band.translate(at.x, at.y, at.z), face.translate(at.x, at.y, at.z)], joints.foreL), silver, 'foreL', joints.foreL);
+      }
+    }
     return out;
   };
   void A;

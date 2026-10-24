@@ -113,6 +113,12 @@ export interface Appearance {
   coat?: boolean;
   /** eye colour; unset = one that suits the skin and hair */
   eyes?: string;
+  /** fine shaping from the character creator: the heritage blend behind the face and body shape
+   * (0..1 each), muscle and weight (-1..1, 0 = average), a taller or shorter build (-1..1) and
+   * proportions (0..1). Unset = from the skin tone and build */
+  shape?: { african: number; asian: number; caucasian: number; muscle: number; weight: number; tall: number; prop: number };
+  /** jewellery and the like: ear studs, a chain, a watch, glasses */
+  extras?: string[];
 }
 
 export interface Needs {

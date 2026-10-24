@@ -2,7 +2,7 @@ import './style.css';
 import { Game } from './game/game';
 import * as THREE from 'three';
 import { UI } from './ui/ui';
-import { createNewGame, SKIN_TONES, HAIR_COLORS, HAIR_STYLES, BUILDS } from './sim/newgame';
+import { createNewGame, SKIN_TONES, HAIR_COLORS, HAIR_STYLES } from './sim/newgame';
 import type { Appearance } from './sim/types';
 import * as sim from './sim/index';
 import { loadHumanAsset, buildRealHuman } from './render/humanAsset';
@@ -44,6 +44,11 @@ const EYE_COLORS = ['#4a6b8a', '#5a4632', '#3b2a1c', '#4f6b3a', '#6b7f8c', '#7a5
 const GAITS = [['walk', 'normal'], ['walk_b', 'relaxed'], ['walk_c', 'casual'], ['walk_brisk', 'brisk'], ['walk_proud', 'confident']] as const;
 
 // --- character creator: edits the real player appearance live
+const EXTRAS: [string, string][] = [['glasses', 'Glasses'], ['sunglasses', 'Sunglasses'], ['studs', 'Ear studs'], ['hoops', 'Gold hoops'], ['chain', 'Gold chain'], ['watch', 'Watch']];
+type Shape = NonNullable<Appearance['shape']>;
+const DEFAULT_SHAPE: Shape = { african: 0.33, asian: 0.33, caucasian: 0.34, muscle: 0, weight: 0, tall: 0, prop: 0.6 };
+
+// --- character creator: tabs of sliders and swatches, editing the real player appearance live
 function creator() {
   const el = document.getElementById('creator')!;
   el.hidden = false;
@@ -53,34 +58,72 @@ function creator() {
   game.camPitch = 0.12;
   game.camYaw = Math.PI * 0.92;
   const p = () => game.state.people.player;
+  p().appearance.shape ??= { ...DEFAULT_SHAPE };
+  let tab: 'body' | 'face' | 'hair' | 'style' | 'you' = 'body';
   const chip = (group: string, vals: readonly string[], cur: string, swatch = false) => `<div class="chips">${vals.map((v) => `<button data-g="${group}" data-v="${v}" class="${v === cur ? 'on' : ''} ${swatch ? 'swatch' : ''}" ${swatch ? `style="background:${v}" aria-label="${v}"` : ''}>${swatch ? '' : v}</button>`).join('')}</div>`;
+  const slider = (key: keyof Shape | 'height', label: string, min: number, max: number, val: number, ends: [string, string]) => `<div class="slide"><span>${label}</span><input type="range" data-s="${key}" min="${min}" max="${max}" step="0.01" value="${val}"><small>${ends[0]}</small><small>${ends[1]}</small></div>`;
+  const colour = (g: string, val: string) => `<label class="pick">Any colour <input type="color" data-c="${g}" value="${val}"></label>`;
   const render = () => {
-    const a = p().appearance;
-    el.innerHTML = `<h1>THE <span>BIGSHOT</span></h1><p class="muted">You have just moved to Harbourside with £180 in the bank and a week's rent paid. Make a life: work, save, and build from there.</p>
-      <label for="cc-name">Name</label><input id="cc-name" type="text" maxlength="24" value="${p().name}">
-      <label>Body</label><div class="chips">${[['m', 'masculine'], ['f', 'feminine']].map(([v, l]) => `<button data-g="frame" data-v="${v}" class="${(a.frame ?? 'm') === v ? 'on' : ''}">${l}</button>`).join('')}</div>
-      <label>Skin</label>${chip('skin', SKIN_TONES, a.skin, true)}
-      <label>Hair</label>${chip('hair', HAIR_STYLES, a.hair)}
-      <label>Hair colour</label>${chip('hairColor', HAIR_COLORS, a.hairColor, true)}
-      <label>Build</label>${chip('build', BUILDS, a.build)}
-      <label>Everyday clothes</label><div class="chips">${CASUAL_TOPS.map(([c], i) => `<button data-g="style" data-v="${i}" class="swatch ${(a.style ?? 0) % CASUAL_TOPS.length === i && a.style !== undefined ? 'on' : ''}" style="background:${c}" aria-label="top ${i + 1}"></button>`).join('')}</div>
-      <label>Height</label><div class="chips">${[0.94, 1, 1.06].map((h) => `<button data-g="height" data-v="${h}" class="${a.height === h ? 'on' : ''}">${h < 1 ? 'shorter' : h > 1 ? 'taller' : 'average'}</button>`).join('')}</div>
-      <label>Eyes</label>${chip('eyes', EYE_COLORS, a.eyes ?? '', true)}
-      <label>Walk</label><div class="chips">${GAITS.map(([v, l]) => `<button data-g="gait" data-v="${v}" class="${(p().gait ?? 'walk') === v ? 'on' : ''}">${l}</button>`).join('')}</div>
+    const a = p().appearance, sh = a.shape!;
+    const tabs = (['body', 'face', 'hair', 'style', 'you'] as const).map((t) => `<button data-tab="${t}" class="${tab === t ? 'on' : ''}">${{ body: 'Body', face: 'Face & skin', hair: 'Hair', style: 'Style', you: 'You' }[t]}</button>`).join('');
+    let body = '';
+    if (tab === 'body') body = `<label>Frame</label><div class="chips">${[['m', 'masculine'], ['f', 'feminine']].map(([v, l]) => `<button data-g="frame" data-v="${v}" class="${(a.frame ?? 'm') === v ? 'on' : ''}">${l}</button>`).join('')}</div>
+      ${slider('height', 'Height', 0.92, 1.08, a.height ?? 1, ['shorter', 'taller'])}
+      ${slider('tall', 'Build length', -1, 1, sh.tall, ['compact', 'long-limbed'])}
+      ${slider('muscle', 'Muscle', -1, 1, sh.muscle, ['soft', 'muscular'])}
+      ${slider('weight', 'Weight', -1, 1, sh.weight, ['lean', 'heavy'])}
+      ${slider('prop', 'Proportions', 0, 1, sh.prop, ['natural', 'idealised'])}`;
+    if (tab === 'face') body = `<p class="muted">Face and bone structure are a blend: drag to mix.</p>
+      ${slider('african', 'African', 0, 1, sh.african, ['', ''])}${slider('asian', 'East Asian', 0, 1, sh.asian, ['', ''])}${slider('caucasian', 'European', 0, 1, sh.caucasian, ['', ''])}
+      <label>Skin tone</label>${chip('skin', SKIN_TONES, a.skin, true)}${colour('skin', a.skin)}
+      <label>Eyes</label>${chip('eyes', EYE_COLORS, a.eyes ?? '', true)}${colour('eyes', a.eyes ?? '#5a4632')}`;
+    if (tab === 'hair') body = `<label>Style</label>${chip('hair', HAIR_STYLES, a.hair)}<label>Colour</label>${chip('hairColor', HAIR_COLORS, a.hairColor, true)}${colour('hairColor', a.hairColor)}`;
+    if (tab === 'style') body = `<label>Everyday clothes</label><div class="chips">${CASUAL_TOPS.map(([c], i) => `<button data-g="style" data-v="${i}" class="swatch ${(a.style ?? 0) % CASUAL_TOPS.length === i && a.style !== undefined ? 'on' : ''}" style="background:${c}" aria-label="top ${i + 1}"></button>`).join('')}</div><p class="muted">Pick the same top again for different trousers and shoes.</p>
+      <label>Jewellery & glasses</label><div class="chips">${EXTRAS.map(([k, l]) => `<button data-x="${k}" class="${a.extras?.includes(k) ? 'on' : ''}">${l}</button>`).join('')}</div>
+      <label>Walk</label><div class="chips">${GAITS.map(([v, l]) => `<button data-g="gait" data-v="${v}" class="${(p().gait ?? 'walk') === v ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+    if (tab === 'you') body = `<label for="cc-name">Name</label><input id="cc-name" type="text" maxlength="24" value="${p().name}">
       <label for="cc-ai">OpenAI API key <span class="muted">(optional)</span></label>
       <input id="cc-ai" type="password" placeholder="${hasAi() ? 'Key saved in this browser - leave blank to keep it' : 'sk-… - leave blank to play without'}" autocomplete="off">
-      <p class="muted" style="margin-top:4px">People answer anything you say to them, in character, from their job, family, money, mood and history. Playing inside claude.ai, they are voiced by Claude on your own account (you will be asked to allow it the first time) and no key is needed. Elsewhere, add your OpenAI key: it is stored only in this browser and sent only to OpenAI.</p>
-      <button class="primary" id="cc-start">Start life in Harbourside</button>
-      <p class="muted">Controls: W/S to walk, A/D to turn, Shift to run, E to use, F to fight, G to take a car, Tab for your phone. The camera follows behind you; drag with the mouse to look around and scroll to zoom.</p>`;
+      <p class="muted" style="margin-top:4px">People answer anything you say to them, in character, from their job, family, money, mood and history. With your OpenAI key (stored only in this browser, sent only to OpenAI) they use that; playing inside claude.ai without a key, Claude voices them on your own account.</p>
+      <p class="muted">Controls: W/S to walk, A/D to turn, Shift to run, E to use, F to fight, G to take a car, Space to jump (handbrake in a car), Tab for your phone.</p>`;
+    el.innerHTML = `<h1>THE <span>BIGSHOT</span></h1><p class="muted">You have just moved to Harbourside with £180 in the bank and a week's rent paid.</p>
+      <div class="cc-tabs">${tabs}</div><div class="cc-body">${body}</div>
+      <div class="row"><button id="cc-dice" title="Randomise">🎲 Surprise me</button><button class="primary" id="cc-start">Start life in Harbourside</button></div>`;
   };
   render();
+  // sliders reshape the body a moment after you stop dragging (a rebuild per pixel would crawl)
+  let pending = 0;
+  el.oninput = (e) => {
+    const t = e.target as HTMLInputElement;
+    const a = p().appearance;
+    if (t.dataset.s) {
+      const v = Number(t.value);
+      window.clearTimeout(pending);
+      pending = window.setTimeout(() => { if (t.dataset.s === 'height') a.height = v; else a.shape = { ...a.shape!, [t.dataset.s!]: v }; }, 220);
+    } else if (t.dataset.c) {
+      window.clearTimeout(pending);
+      pending = window.setTimeout(() => { (a as any)[t.dataset.c!] = t.value; }, 220);
+    }
+  };
+  el.onchange = (e) => { const t = e.target as HTMLInputElement; if (t.id === 'cc-name' && t.value.trim()) p().name = t.value.trim(); };
   el.onclick = (e) => {
     const b = (e.target as HTMLElement).closest('button');
     if (!b) return;
+    const a = p().appearance;
+    if (b.dataset.tab) { tab = b.dataset.tab as typeof tab; render(); return; }
+    if (b.id === 'cc-dice') {
+      const r = Math.random, pick = <T,>(x: readonly T[]) => x[Math.floor(r() * x.length)];
+      const h = [r(), r(), r()], t = h[0] + h[1] + h[2];
+      a.shape = { african: h[0] / t, asian: h[1] / t, caucasian: h[2] / t, muscle: r() * 1.4 - 0.6, weight: r() * 1.4 - 0.7, tall: r() * 1.6 - 0.8, prop: 0.3 + r() * 0.6 };
+      a.skin = pick(SKIN_TONES); a.hair = pick(HAIR_STYLES); a.hairColor = pick(HAIR_COLORS); a.eyes = pick(EYE_COLORS); a.height = 0.94 + r() * 0.12;
+      a.extras = EXTRAS.map(([k]) => k).filter(() => r() < 0.18).filter((k, _, all) => !(k === 'glasses' && all.includes('sunglasses')));
+      a.style = Math.floor(r() * 1000);
+      render(); return;
+    }
     if (b.id === 'cc-start') {
-      const name = (document.getElementById('cc-name') as HTMLInputElement).value.trim();
-      if (name) p().name = name;
-      const key = (document.getElementById('cc-ai') as HTMLInputElement).value.trim();
+      const nameEl = document.getElementById('cc-name') as HTMLInputElement | null;
+      if (nameEl?.value.trim()) p().name = nameEl.value.trim();
+      const key = (document.getElementById('cc-ai') as HTMLInputElement | null)?.value.trim();
       if (key) setApiKey(key);
       el.hidden = true;
       game.audio.theme.play(false);
@@ -91,14 +134,19 @@ function creator() {
       game.camYaw = Math.PI;
       return;
     }
+    if (b.dataset.x) {
+      const k = b.dataset.x, set = new Set(a.extras ?? []);
+      if (set.has(k)) set.delete(k); else { set.add(k); if (k === 'glasses') set.delete('sunglasses'); if (k === 'sunglasses') set.delete('glasses'); }
+      a.extras = [...set]; render(); return;
+    }
     const g = b.dataset.g as keyof Appearance;
     if ((g as string) === 'gait') { p().gait = b.dataset.v === 'walk' ? undefined : b.dataset.v; render(); return; }
     if (g === 'style') {
       // keep the chosen top; step through trousers and shoes when the same top is picked again
-      const cur = p().appearance.style;
+      const cur = a.style;
       const top = Number(b.dataset.v);
-      p().appearance.style = cur !== undefined && cur % CASUAL_TOPS.length === top ? (cur + CASUAL_TOPS.length * 13) % 1000 : top;
-    } else (p().appearance as any)[g] = g === 'height' ? Number(b.dataset.v) : b.dataset.v;
+      a.style = cur !== undefined && cur % CASUAL_TOPS.length === top ? (cur + CASUAL_TOPS.length * 13) % 1000 : top;
+    } else (a as any)[g] = b.dataset.v;
     render();
   };
 }
