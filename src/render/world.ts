@@ -306,10 +306,12 @@ function pool(mat: THREE.Material, geo: THREE.BufferGeometry): [THREE.Material, 
   if (!m.isMeshStandardMaterial || (m as THREE.MeshPhysicalMaterial).isMeshPhysicalMaterial || m.transparent || m.alphaTest || m.emissiveMap || mutableMats.has(m) || m.vertexColors) return [mat, geo];
   // textured ones too: one shared material per set of textures, the tint in the vertices (a wall
   // painted three colours with the same plaster texture is then one draw call, not three)
-  const key = `${m.roughness.toFixed(2)}|${m.metalness.toFixed(2)}|${m.side}|${m.flatShading}|${m.map?.uuid ?? ''}|${m.normalMap?.uuid ?? ''}|${m.roughnessMap?.uuid ?? ''}|${m.normalScale.x.toFixed(2)}|${m.emissive.getHexString()}|${m.emissiveIntensity.toFixed(2)}|${m.envMapIntensity.toFixed(2)}`;
+  // near-identical finishes share one material: roughness in quarters, metalness none, some or full
+  const rough = Math.max(0.25, Math.round(m.roughness * 4) / 4), metal = m.metalness < 0.3 ? 0 : m.metalness < 0.8 ? 0.6 : 1;
+  const key = `${rough}|${metal}|${m.side}|${m.flatShading}|${m.map?.uuid ?? ''}|${m.normalMap?.uuid ?? ''}|${m.roughnessMap?.uuid ?? ''}|${m.normalScale.x.toFixed(2)}|${m.emissive.getHexString()}|${m.emissiveIntensity.toFixed(2)}|${m.envMapIntensity.toFixed(2)}`;
   let shared = pooled.get(key);
   if (!shared) {
-    shared = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: m.roughness, metalness: m.metalness, side: m.side, flatShading: m.flatShading, vertexColors: true, envMapIntensity: m.envMapIntensity, map: m.map, normalMap: m.normalMap, normalScale: m.normalScale.clone(), roughnessMap: m.roughnessMap, emissive: m.emissive.clone(), emissiveIntensity: m.emissiveIntensity });
+    shared = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: rough, metalness: metal, side: m.side, flatShading: m.flatShading, vertexColors: true, envMapIntensity: m.envMapIntensity, map: m.map, normalMap: m.normalMap, normalScale: m.normalScale.clone(), roughnessMap: m.roughnessMap, emissive: m.emissive.clone(), emissiveIntensity: m.emissiveIntensity });
     pooled.set(key, shared);
   }
   const n = geo.getAttribute('position').count;
@@ -433,7 +435,7 @@ function bakeStatic(g: THREE.Group, cutaway: WorldView['cutaway']) {
   // materials in small cells, light ones in big cells; insides apart from outsides, so a building's
   // contents can be dropped from far off while its street front still shows
   for (const p of pieces) {
-    const size = (trisOf.get(p.mat) ?? 0) > 15000 ? CELL * 2 : p.inside ? CELL * 3 : 100000;
+    const size = (trisOf.get(p.mat) ?? 0) > 15000 ? CELL * 4 : p.inside ? CELL * 3 : 100000;
     const key = `${p.mat.uuid}|${p.shadow}|${Math.floor(p.cx / size)},${Math.floor(p.cz / size)}|${p.inside}`;
     const b = buckets.get(key) ?? { mat: p.mat, geos: [], shadow: p.shadow, inside: p.inside };
     b.geos.push(p.geo);
