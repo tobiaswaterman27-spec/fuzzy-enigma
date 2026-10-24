@@ -184,6 +184,25 @@ export class Audio {
     const v = Math.min(1, 8 / Math.max(2, dist));
     this.thud(heavy ? 80 : 120, heavy ? 0.3 : 0.18, 0.75 * v); this.thud(heavy ? 400 : 800, 0.08, 0.35 * v);
   }
+  /** a moped's two-stroke buzz, rising with speed (null: engine off) */
+  private scoot: { osc: OscillatorNode; osc2: OscillatorNode; g: GainNode } | null = null;
+  scooter(speed: number | null) {
+    const c = this.ctx;
+    if (!c) return;
+    if (speed === null) { if (this.scoot) { this.scoot.g.gain.setTargetAtTime(0, c.currentTime, 0.1); } return; }
+    if (!this.scoot) {
+      const osc = c.createOscillator(); osc.type = 'sawtooth';
+      const osc2 = c.createOscillator(); osc2.type = 'square';
+      const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 900;
+      const g = c.createGain(); g.gain.value = 0;
+      osc.connect(lp); osc2.connect(lp); lp.connect(g).connect(this.master); osc.start(); osc2.start();
+      this.scoot = { osc, osc2, g };
+    }
+    const f = 70 + speed * 13;
+    this.scoot.osc.frequency.setTargetAtTime(f, c.currentTime, 0.08);
+    this.scoot.osc2.frequency.setTargetAtTime(f * 0.5 + 3, c.currentTime, 0.08);
+    this.scoot.g.gain.setTargetAtTime(this.muted ? 0 : 0.05 + Math.min(1, speed / 13) * 0.05, c.currentTime, 0.1);
+  }
   /** an empty stomach: a low gurgling rumble that rises and falls */
   growl() {
     if (!this.ctx || this.muted) return;

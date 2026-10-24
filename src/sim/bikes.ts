@@ -27,6 +27,23 @@ export function hireBike(state: GameState, personId: Id): string {
   return `${fmtMoney(BIKE_FARE)}. W/S to pedal and brake, A/D to steer, E to get off (ride into any dock to hand it back).`;
 }
 
+/** a little 50cc moped from the same docks: twice the pace of a bike, buzzing like a wasp */
+export const MOPED_FARE = 800;
+export function hireMoped(state: GameState, personId: Id): string {
+  const p = state.people[personId];
+  if (Object.values(state.vehicles).some((v) => v.kind === 'bike' && v.ownerId === personId)) return 'You already have one out.';
+  const r = transfer(state, { from: p.accountId, to: state.externalId, amount: MOPED_FARE, reason: 'purchase', memo: 'Harbour Bikes moped hire', key: `moped:${personId}:${Math.floor(state.minute * 10)}` });
+  if (!r.ok) return `A moped is ${fmtMoney(MOPED_FARE)}.`;
+  const id = `bike_${personId}`;
+  const box = state.containers[`${id}_basket`] ?? createContainer(state, 'van', 'bike', id, 4, undefined, `${id}_basket`);
+  state.vehicles[id] = {
+    id, name: 'Hire moped', ownerId: personId, kind: 'bike', model: 'moped', pos: { ...p.pos }, heading: p.facing, route: [], routeIdx: 0, speed: 0,
+    state: 'manual_out', driverId: personId, cargoId: box.id, shipmentId: null, waitUntil: 0, condition: 100, odometer: 0,
+  };
+  p.where = 'vehicle'; p.visible = false;
+  return `${fmtMoney(MOPED_FARE)}. W to go, S to brake, A/D to steer, E to get off (ride into any dock to hand it back).`;
+}
+
 /** off the bike: at a dock it goes back in the rack; anywhere else it waits for you */
 export function leaveBike(state: GameState, personId: Id): string {
   const p = state.people[personId];

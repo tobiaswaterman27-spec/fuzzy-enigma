@@ -207,6 +207,28 @@ function hireBike(): THREE.Group {
   return g;
 }
 
+/** a hire moped: step-through body with a leg shield, small fat wheels, a top box */
+function moped(): THREE.Group {
+  const g = new THREE.Group();
+  const paint = new THREE.MeshStandardMaterial({ color: '#e8562a', roughness: 0.35, metalness: 0.3 });
+  const black = new THREE.MeshStandardMaterial({ color: '#151515', roughness: 0.8 });
+  const steel = new THREE.MeshStandardMaterial({ color: '#b0b5ba', roughness: 0.3, metalness: 0.8 });
+  for (const z of [-0.5, 0.52]) {
+    const w = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.07, 10, 22), black); w.rotation.y = Math.PI / 2; w.position.set(0, 0.27, z); g.add(w);
+    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.1, 12), steel); hub.rotation.z = Math.PI / 2; hub.position.set(0, 0.27, z); g.add(hub);
+  }
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.32, 0.62), paint); body.position.set(0, 0.48, -0.32); g.add(body);
+  const board = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.06, 0.5), black); board.position.set(0, 0.3, 0.12); g.add(board);
+  const shield = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.62, 0.07), paint); shield.position.set(0, 0.65, 0.4); shield.rotation.x = -0.25; g.add(shield);
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.5, 8), steel); stem.position.set(0, 0.85, 0.45); stem.rotation.x = -0.25; g.add(stem);
+  const bars = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.6, 8), black); bars.rotation.z = Math.PI / 2; bars.position.set(0, 1.08, 0.5); g.add(bars);
+  const lamp = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.05, 12), new THREE.MeshStandardMaterial({ color: '#fff', emissive: '#fff6d0', emissiveIntensity: 1.2 })); lamp.rotation.x = Math.PI / 2; lamp.position.set(0, 1.0, 0.6); g.add(lamp);
+  const seat = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.08, 0.5), black); seat.position.set(0, 0.68, -0.28); g.add(seat);
+  const box = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.26, 0.3), new THREE.MeshStandardMaterial({ color: '#f2f2f0', roughness: 0.5 })); box.position.set(0, 0.86, -0.6); g.add(box);
+  g.traverse((o) => { o.castShadow = true; });
+  return g;
+}
+
 class PersonView {
   rig: Rig;
   anim: AnimationController;
@@ -651,19 +673,41 @@ class PersonView {
       root.position.y += want - hy;
     }
     if (v.kind === 'bike') {
-      // pedalling: the legs go round with the speed, leaning on the bars
+      // riding: hips on the saddle, leaning over the bars, hands on the grips; on a bike the feet go
+      // round on the pedals, on a moped they rest on the footboard (all solved in the world)
+      const mop = v.model === 'moped';
+      const at = (lx2: number, ly2: number, lz2: number) => new THREE.Vector3(v.pos.x + lx2 * c + lz2 * s, ly2, v.pos.z - lx2 * s + lz2 * c);
+      const fwd = new THREE.Vector3(s, 0, c), up = new THREE.Vector3(0, 1, 0), side = new THREE.Vector3().crossVectors(up, fwd);
+      root.updateMatrixWorld(true);
+      const hip = B.hips.getWorldPosition(new THREE.Vector3()), seat = mop ? at(0, 0.8, -0.3) : at(0, 0.98, -0.24);
+      root.position.add(seat.sub(hip));
+      root.updateMatrixWorld(true);
+      // lean the spine forward about the bike's sideways axis
+      const lean = mop ? -0.12 : 0.42;
+      const pq = B.spine.parent!.getWorldQuaternion(new THREE.Quaternion()), wq = B.spine.getWorldQuaternion(new THREE.Quaternion());
+      B.spine.quaternion.copy(pq.invert().multiply(new THREE.Quaternion().setFromAxisAngle(side, -lean).multiply(wq)));
+      B.spine.updateMatrixWorld(true);
       const moved = Math.hypot(root.position.x - this.lastPos.x, root.position.z - this.lastPos.z);
       this.pedal += moved * 2.4;
-      for (const [s, ph] of [['L', 0], ['R', Math.PI]] as const) {
-        const a = this.pedal + ph;
-        B[`thigh${s}`].quaternion.setFromEuler(new THREE.Euler(-1.15 + Math.sin(a) * 0.45, 0, 0));
-        B[`shin${s}`].quaternion.setFromEuler(new THREE.Euler(1.0 + Math.cos(a) * 0.45, 0, 0));
+      for (const [thigh, shin, foot, sx, ph] of [[B.thighL, B.shinL, B.footL, 1, 0], [B.thighR, B.shinR, B.footR, -1, Math.PI]] as const) {
+        const T = mop ? at(sx * 0.13, 0.42, 0.18) : at(sx * 0.12, 0.45 + Math.cos(this.pedal + ph) * 0.17, -0.05 + Math.sin(this.pedal + ph) * 0.17);
+        const H = thigh.getWorldPosition(new THREE.Vector3()), K = shin.getWorldPosition(new THREE.Vector3()), A = foot.getWorldPosition(new THREE.Vector3());
+        const l1 = H.distanceTo(K), l2 = K.distanceTo(A), toT = T.clone().sub(H), dl = toT.length();
+        if (dl < 1e-4) continue;
+        const dir = toT.divideScalar(dl), d = Math.min(dl, l1 + l2 - 0.002);
+        const a = (l1 * l1 - l2 * l2 + d * d) / (2 * d), h = Math.sqrt(Math.max(0, l1 * l1 - a * a));
+        const bend = fwd.clone().addScaledVector(dir, -fwd.dot(dir)).normalize();
+        aimBone(thigh, shin, H.clone().addScaledVector(dir, a).addScaledVector(bend, h));
+        aimBone(shin, foot, H.clone().addScaledVector(dir, d));
       }
-      B.spine.quaternion.setFromEuler(new THREE.Euler(0.35, 0, 0));
-      B.armL.quaternion.setFromEuler(new THREE.Euler(-1.0, 0, -0.25));
-      B.armR.quaternion.setFromEuler(new THREE.Euler(-1.0, 0, 0.25));
-      B.foreL.quaternion.setFromEuler(new THREE.Euler(-0.3, 0, 0));
-      B.foreR.quaternion.setFromEuler(new THREE.Euler(-0.3, 0, 0));
+      // hands on the grips, elbows a little out and down
+      for (const [arm, fore, hand, sx] of [[B.armL, B.foreL, B.handL, 1], [B.armR, B.foreR, B.handR, -1]] as const) {
+        const grip = mop ? at(sx * 0.26, 1.08, 0.48) : at(sx * 0.25, 1.0, 0.31);
+        const sh = arm.getWorldPosition(new THREE.Vector3());
+        const elbow = sh.clone().lerp(grip, 0.5).addScaledVector(side, sx * 0.08).add(new THREE.Vector3(0, -0.1, 0));
+        aimBone(arm, fore, elbow);
+        aimBone(fore, hand, grip);
+      }
       this.lastPos.copy(root.position);
       return;
     }
@@ -1768,7 +1812,7 @@ export class Views {
       }
       if (v.kind === 'bike') {
         let obj = this.cars.get(v.id);
-        if (!obj) { obj = hireBike(); this.scene.add(obj); this.cars.set(v.id, obj); }
+        if (!obj) { obj = v.model === 'moped' ? moped() : hireBike(); this.scene.add(obj); this.cars.set(v.id, obj); }
         obj.position.set(v.pos.x, 0, v.pos.z);
         obj.rotation.y = v.heading;
         // parked: leant over on its stand

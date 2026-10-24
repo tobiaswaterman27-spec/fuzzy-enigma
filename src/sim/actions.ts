@@ -7,7 +7,7 @@ import { bargeIn, breakIn, houseOf, houseOpen, knock, searchValuables } from './
 import { breakUp, handIn, onPcsoShift, readBeat } from './station';
 import { BUS_FARE } from './bus';
 import { TRAIN_FARE } from './train';
-import { BIKE_FARE, hireBike, mountBike } from './bikes';
+import { BIKE_FARE, hireBike, hireMoped, MOPED_FARE, mountBike } from './bikes';
 import { laundryShift, mealNow, nextMeal, prisonMeal, tryEscape } from './prison';
 import { callVince, dropMission, missionText, startDeliveries, DELIVERY_PAY, DELIVERY_BONUS } from './missions';
 import { fixture, gateOpen, goToMatch, ODDS, STAKE, TICKET, type Pick } from './stadium';
@@ -494,6 +494,7 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
       break;
     case 'bike_dock':
       out.push(opt('hire_bike', `Hire a bike · ${fmtMoney(BIKE_FARE)}`, Object.values(state.vehicles).some((v) => v.kind === 'bike' && v.ownerId === actorId) ? 'You already have a hire bike out' : undefined));
+      out.push(opt('hire_bike', `Hire a moped · ${fmtMoney(MOPED_FARE)}`, Object.values(state.vehicles).some((v) => v.kind === 'bike' && v.ownerId === actorId) ? 'You already have one out' : undefined, 'moped'));
       break;
     case 'payphone':
       if (!p.isPlayer) break;
@@ -850,7 +851,7 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
       p.gesture = { clip: 'eat', until: state.minute + 2.5 };
       return { ok: true, msg: arg === '99' ? 'A 99 with a flake. Perfect.' : 'An ice lolly. Brain freeze.' };
     }
-    case 'hire_bike': return { ok: true, msg: hireBike(state, p.id) };
+    case 'hire_bike': return { ok: true, msg: arg === 'moped' ? hireMoped(state, p.id) : hireBike(state, p.id) };
     case 'ride_bike': { const v = state.vehicles[itId.slice(5)]; return { ok: !!v, msg: v ? mountBike(state, p.id, v) : '' }; }
     case 'garage': {
       const [vid, hex] = (arg ?? '').split('|');

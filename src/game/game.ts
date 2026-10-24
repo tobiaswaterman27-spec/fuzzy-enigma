@@ -810,6 +810,7 @@ export class Game {
     if (inCar && !this.wasInCar && this.audio.radio.station >= 0 && this.radioOn) this.onToast(this.audio.radio.nowPlaying());
     this.wasInCar = inCar;
     this.audio.update(s, this.paused ? 0 : dt, Math.hypot(this.vel.x, this.vel.z), this.drivingVan() ? this.vanSpeed : null);
+    this.audio.scooter(this.drivingVan()?.model === 'moped' && !this.paused ? Math.abs(this.vanSpeed) : null);
     this.watchFrameRate(dt);
     this.world.update(s, dt);
     this.emergency.update(s, this.paused ? 0 : dt, { x: planX(this.player.pos.x), z: this.player.pos.z });
@@ -1024,14 +1025,15 @@ export class Game {
     const fork = v.kind === 'forklift', boat = v.kind === 'boat', bike = v.kind === 'bike';
     // a battered engine loses its power; a burning or burnt-out car goes nowhere
     const tired = v.kind === 'car' ? (v.condition < 25 ? 0.55 : v.condition < 50 ? 0.85 : 1) : 1;
-    const MAX = (fork ? 4.5 : boat ? 7.5 : bike ? 7 : car?.topSpeed ?? 11) * (v.wrecked || v.burning != null ? 0 : tired), REV = fork ? 2.5 : bike ? 1 : 3;
+    const moped = bike && v.model === 'moped';
+    const MAX = (fork ? 4.5 : boat ? 7.5 : moped ? 13.5 : bike ? 7 : car?.topSpeed ?? 11) * (v.wrecked || v.burning != null ? 0 : tired), REV = fork ? 2.5 : bike ? 1 : 3;
     if (v.burning != null && !this.fireWarned) { this.fireWarned = true; this.onToast('The engine is on fire! Get out (E) before it goes up!'); }
     if (v.burning == null) this.fireWarned = false;
     if (boat && this.player.action?.type === 'fish' && thr !== 0) cancelAction(this.state, this.player, 'moved');
     // the handbrake (Space): the back steps out and the car slides round, tyres howling
     const handbrake = canDrive && k.has('Space') && (v.kind === 'car' || v.kind === 'van') && !this.air;
     if (handbrake) this.vanSpeed -= Math.sign(this.vanSpeed) * Math.min(Math.abs(this.vanSpeed), 2.6 * dt);
-    else if (thr > 0) this.vanSpeed += (this.vanSpeed < 0 ? 9 : 3.5) * dt;
+    else if (thr > 0) this.vanSpeed += (this.vanSpeed < 0 ? 9 : moped ? 4.2 : 3.5) * dt;
     else if (thr < 0) this.vanSpeed -= (this.vanSpeed > 0 ? 9 : 2.5) * dt;
     else this.vanSpeed -= Math.sign(this.vanSpeed) * Math.min(Math.abs(this.vanSpeed), 2.2 * dt);
     this.vanSpeed = Math.max(-REV, Math.min(MAX, this.vanSpeed));
