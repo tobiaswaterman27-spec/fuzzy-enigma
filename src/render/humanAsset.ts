@@ -744,31 +744,11 @@ function poolGeometry(pool: Pool, indices: number[], offset: number, uvScale: nu
       }
       P.set(Q);
     }
-    // what the fabric must stay outside of: the body with its small bumps smoothed away (nipples, the
-    // crotch, ribs), so cloth lies over them as real cloth does instead of shrink-wrapping them. The skin
-    // under a garment is not drawn, so nothing pokes through.
-    const hull = new Float32Array(base);
-    for (let it = 0; it < Math.min(10, smooth); it++) {
-      const Q = new Float32Array(hull);
-      for (let i = 0; i < n; i++) {
-        const s0 = start[i], s1 = start[i + 1];
-        if (rep[i] !== i || boundary[i] || s1 === s0) continue;
-        let x = 0, y = 0, z = 0;
-        for (let q = s0; q < s1; q++) { const j = adj[q]; x += hull[j * 3]; y += hull[j * 3 + 1]; z += hull[j * 3 + 2]; }
-        const k = s1 - s0;
-        // only ever outwards: hollows fill in, bumps are kept as broad swells
-        const ax = x / k - hull[i * 3], ay = y / k - hull[i * 3 + 1], az = z / k - hull[i * 3 + 2];
-        const out = ax * N[i * 3] + ay * N[i * 3 + 1] + az * N[i * 3 + 2];
-        const w = out > 0 ? 0.5 : 0.35;
-        Q[i * 3] = hull[i * 3] + ax * w; Q[i * 3 + 1] = hull[i * 3 + 1] + ay * w; Q[i * 3 + 2] = hull[i * 3 + 2] + az * w;
-      }
-      hull.set(Q);
-    }
     for (let i = 0; i < n; i++) {
       const r = rep[i];
       for (let d = 0; d < 3; d++) P[i * 3 + d] = P[r * 3 + d];
-      // never let fabric sink into the (smoothed) body
-      const dx = P[i * 3] - hull[i * 3], dy = P[i * 3 + 1] - hull[i * 3 + 1], dz = P[i * 3 + 2] - hull[i * 3 + 2];
+      // never let fabric sink into the body
+      const dx = P[i * 3] - base[i * 3], dy = P[i * 3 + 1] - base[i * 3 + 1], dz = P[i * 3 + 2] - base[i * 3 + 2];
       const along = dx * N[i * 3] + dy * N[i * 3 + 1] + dz * N[i * 3 + 2];
       if (along < 0) for (let d = 0; d < 3; d++) P[i * 3 + d] -= along * N[i * 3 + d];
     }
@@ -1098,13 +1078,13 @@ function buildRealHumanUncached(a: Appearance): HumanBuild {
       sk(eyeLock(lg), mat('lash', a.hairColor));
     }
     const shirt = cutBody(pos, nrm, [fTopLong], A.index);
-    const shirtGeo = torsoOnly(poolGeometry(shirt.pool, shirt.buckets[0], 0.011, 6, 12, bridge), bi('neck'), bi('head'), bi('chest'));
+    const shirtGeo = torsoOnly(poolGeometry(shirt.pool, shirt.buckets[0], 0.011, 6, 6, bridge), bi('neck'), bi('head'), bi('chest'));
     sk(shirtGeo, mat('cloth', g.top.color, g.top.tex, 0.85));
     // ribbed neckband along the neckline
     const band = necklineBand(shirtGeo, neckBase - 0.12, 0.0075, bi('chest'));
     if (band) sk(band, mat('cloth', g.top.collar ?? g.top.color, g.top.tex, 0.9));
     void topTris;
-    sk(poolGeometry(pool, botTris, 0.008, 6, 12, bridge, legHang), mat('cloth', g.bottom.color, g.bottom.tex, 0.9));
+    sk(poolGeometry(pool, botTris, 0.008, 6, 8, bridge, legHang), mat('cloth', g.bottom.color, g.bottom.tex, 0.9));
     const shoeStyle = SHOE_STYLE[a.outfit] ?? 'shoe_trainer';
     const shoes = hasModel(shoeStyle) ? shoeGeometries(shoeStyle, pos, W.foot, [joints.footL.x, joints.footR.x], [bi('footL'), bi('footR')]) : [];
     if (shoes.length) {
@@ -1119,7 +1099,12 @@ function buildRealHumanUncached(a: Appearance): HumanBuild {
     } else if (ov) {
       const over = cutBody(pos, nrm, [fOver], A.index);
       const thick = ov.kind === 'vest' ? 0.018 : ov.kind === 'coat' ? 0.022 : ov.kind === 'jumper' ? 0.014 : 0.017;
-      sk(torsoOnly(poolGeometry(over.pool, over.buckets[0], thick, 6, 12, bridge), bi('neck'), bi('head'), bi('chest')), mat('cloth', ov.color, ov.kind === 'vest' ? 'hivis' : ov.tex ?? 'suit', ov.kind === 'vest' ? 0.5 : ov.tex === 'knit' ? 0.95 : 0.85));
+      const overM = mat('cloth', ov.color, ov.kind === 'vest' ? 'hivis' : ov.tex ?? 'suit', ov.kind === 'vest' ? 0.5 : ov.tex === 'knit' ? 0.95 : 0.85);
+      const overGeo = torsoOnly(poolGeometry(over.pool, over.buckets[0], thick, 6, 10, bridge), bi('neck'), bi('head'), bi('chest'));
+      sk(overGeo, overM);
+      // a turned hem round the bottom of a jacket, coat or jumper, so it reads as its own garment over the trousers
+      const hem = necklineBand(overGeo, joints.hips.y + 0.12, ov.kind === 'jumper' ? 0.011 : 0.008, bi('hips'), true);
+      if (hem) sk(hem, overM);
     }
     if (g.tie) {
       const tieM = mat('std', `tie${g.tie}`, { color: g.tie!, roughness: 0.45, side: THREE.DoubleSide });
@@ -1343,7 +1328,7 @@ function torsoOnly(g: THREE.BufferGeometry, neck: number, head: number, chest: n
 
 /** A rounded band (tube) along the open edge of a garment above `minY` (the neckline), following a smoothed
  * version of the edge and skinned like the nearest garment vertex. */
-function necklineBand(g: THREE.BufferGeometry, minY: number, radius: number, chest: number): THREE.BufferGeometry | null {
+function necklineBand(g: THREE.BufferGeometry, minY: number, radius: number, chest: number, below = false): THREE.BufferGeometry | null {
   const P = g.getAttribute('position') as THREE.BufferAttribute;
   const SI = g.getAttribute('skinIndex') as THREE.BufferAttribute, SW = g.getAttribute('skinWeight') as THREE.BufferAttribute;
   const idx = g.getIndex()!;
@@ -1362,7 +1347,7 @@ function necklineBand(g: THREE.BufferGeometry, minY: number, radius: number, che
   for (const [k, c] of ec) {
     if (c !== 1) continue;
     const [a, b] = k.split('_').map(Number);
-    if (P.getY(a) < minY || P.getY(b) < minY) continue;
+    if (below ? P.getY(a) > minY || P.getY(b) > minY : P.getY(a) < minY || P.getY(b) < minY) continue;
     nb.set(a, [...(nb.get(a) ?? []), b]); nb.set(b, [...(nb.get(b) ?? []), a]);
   }
   // walk the longest loop
