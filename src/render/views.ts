@@ -536,6 +536,7 @@ class PersonView {
     this.plantW += ((standing ? 1 : 0) - this.plantW) * Math.min(1, dt * 6);
     if (this.plantW > 0.02 && this.rig.joints) this.plantFeet(this.plantW);
     this.umbrellaFx(state, p, realSpeed);
+    this.lookAtPlayer(p, dt, floored || !!this.bedIt || !!a && a.type !== 'talk');
     // keep the feet on the floor: whatever the animation does, the lower foot rests on the ground
     if (!this.bedIt && !floored && this.rig.joints && !this.seatAt) {
       this.rig.root.updateMatrixWorld(true);
@@ -723,6 +724,31 @@ class PersonView {
     if (on === this.shellsOn) return;
     this.shellsOn = on;
     for (const o of this.shellMeshes) o.visible = on;
+  }
+  /** passers-by glance at you: the head (and a little of the neck) turns your way when you are close */
+  private lookW = 0;
+  private lookYaw = 0;
+  private lookAtPlayer(p: Person, dt: number, busy: boolean) {
+    if (p.isPlayer || !playerHead) return;
+    const B = this.rig.bones, root = this.rig.root;
+    const head = B.head.getWorldPosition(new THREE.Vector3());
+    const dx = playerHead.x - head.x, dz = playerHead.z - head.z, d = Math.hypot(dx, dz);
+    const q = root.getWorldQuaternion(new THREE.Quaternion());
+    const f = new THREE.Vector3(0, 0, 1).applyQuaternion(q);
+    let want = Math.atan2(dx, dz) - Math.atan2(f.x, f.z);
+    want = ((want + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+    const on = !busy && this.lod === 1 && d < 6 && d > 0.4 && Math.abs(want) < 1.75 && p.visible;
+    this.lookW += ((on ? 1 : 0) - this.lookW) * Math.min(1, dt * 3);
+    this.lookYaw += (Math.max(-1.05, Math.min(1.05, want)) - this.lookYaw) * Math.min(1, dt * 5);
+    if (this.lookW < 0.01) return;
+    const up = new THREE.Vector3(0, 1, 0);
+    for (const [bone, frac] of [[B.neck, 0.35], [B.head, 0.65]] as const) {
+      bone.parent!.updateWorldMatrix(true, false);
+      const pq = bone.parent!.getWorldQuaternion(new THREE.Quaternion());
+      const wq = bone.getWorldQuaternion(new THREE.Quaternion());
+      bone.quaternion.copy(pq.invert().multiply(new THREE.Quaternion().setFromAxisAngle(up, this.lookYaw * frac * this.lookW).multiply(wq)));
+      bone.updateMatrixWorld(true);
+    }
   }
   private hipsRest = new THREE.Vector3();
   private plantW = 0;
@@ -1219,6 +1245,8 @@ function hygieneSticker(rating: number | null): THREE.CanvasTexture {
 
 /** the air temperature this frame (for breath in the cold) */
 let airTemp = 12;
+/** where the player's head is this frame (for people glancing at them) */
+let playerHead: THREE.Vector3 | null = null;
 /** how hard it is raining this frame (0..1) */
 let rainNow = 0;
 let breathMat: THREE.SpriteMaterial | null = null;
@@ -1600,6 +1628,7 @@ export class Views {
   update(state: GameState, dt: number, viewer?: { x: number; z: number }, viewerInside?: string | null, speech?: Map<string, { text: string; until: number }>) {
     buildBudget = 1;
     airTemp = temperature(state);
+    { const me = state.people[state.playerId]; const pv = me ? this.people.get(me.id) : null; playerHead = pv && me.visible ? pv.rig.bones.head.getWorldPosition(playerHead ?? new THREE.Vector3()) : null; }
     rainNow = raining(state);
     this.syncBlood(state);
     // without a worker, bodies are built here, one per frame at most
