@@ -1025,6 +1025,8 @@ export class Game {
             o.hit = { at: this.state.minute, dir, heavy: false, by: p.id, force: 3.2 };
             floor(this.state, o, 0.8);
             o.gesture = { clip: 'scared', until: this.state.minute + 1.5 };
+            const shout = ['Watch it, you maniac!', 'Oi! Slow down!', 'Are you blind?!', 'Jesus! You nearly killed me!', 'Learn to drive!'];
+            this.say(o.id, shout[Math.floor(Math.random() * shout.length)], 6);
             continue;
           }
         }

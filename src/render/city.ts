@@ -417,12 +417,12 @@ export class CityView {
     const trees = of('tree');
     const trunk = new THREE.CylinderGeometry(0.16, 0.24, 3, 6); trunk.translate(0, 1.5, 0);
     inst(trunk, new THREE.MeshStandardMaterial({ color: '#5a4030', roughness: 1 }), trees, (p, m) => place(p, m, 0, p.s ?? 1));
-    const crown = new THREE.IcosahedronGeometry(2.2, 1); crown.translate(0, 4.4, 0);
-    const pos = crown.getAttribute('position');
-    for (let i = 0; i < pos.count; i++) { const k = 1 + Math.sin(i * 12.9898) * 0.12; pos.setXYZ(i, pos.getX(i) * k, pos.getY(i), pos.getZ(i) * k); }
-    crown.computeVertexNormals();
-    const leaves = inst(crown, new THREE.MeshStandardMaterial({ color: '#4d7a3a', roughness: 0.95, flatShading: true }), trees, (p, m) => place(p, m, 0, p.s ?? 1));
-    if (leaves) { const c = new THREE.Color(); trees.forEach((t, i) => leaves.setColorAt(i, c.setHSL(0.27 + (Math.sin(t.x * 3.1) * 0.04), 0.42, 0.32 + Math.sin(t.z) * 0.05))); if (leaves.instanceColor) leaves.instanceColor.needsUpdate = true; }
+    const crown = treeCrown();
+    const leafMat = new THREE.MeshStandardMaterial({ color: '#ffffff', vertexColors: true, roughness: 0.92 });
+    leafMat.name = 'leaves';
+    const leaves = inst(crown, leafMat, trees, (p, m) => place(p, m, 0, p.s ?? 1));
+    // each tree its own shade: a little yellower, bluer, lighter or darker than the next
+    if (leaves) { const c = new THREE.Color(); trees.forEach((t, i) => leaves.setColorAt(i, c.setHSL(0.25 + Math.sin(t.x * 3.1) * 0.05, 0.25, 0.82 + Math.sin(t.z * 1.7) * 0.1))); if (leaves.instanceColor) leaves.instanceColor.needsUpdate = true; }
     if (leaves) leaves.name = 'leaves';
     // street lamps: pole, arm and lamp head (the head lights up at night)
     const lamps = of('lamp');
@@ -553,3 +553,38 @@ function shelter(x: number, z: number, rot: number) {
 }
 
 void mergeGeometries; void AVENUES; void STREETS;
+
+/** a leafy crown: a cluster of lumpy lobes (welded, so the surface never cracks), shaded darker
+ * underneath and inside, lighter where the sun catches the top, mottled all over */
+function treeCrown(): THREE.BufferGeometry {
+  const lobes: [number, number, number, number][] = [[0, 4.5, 0, 1.75], [1.05, 4.15, 0.35, 1.25], [-0.95, 4.2, -0.4, 1.3], [0.25, 5.35, -0.2, 1.25], [-0.35, 4.0, 1.0, 1.15], [0.55, 4.35, -1.05, 1.15], [-0.7, 5.0, 0.6, 1.0]];
+  const noise = (x: number, y: number, z: number) => Math.sin(x * 2.3 + Math.sin(z * 1.9)) * Math.cos(y * 2.1 + Math.sin(x * 1.3)) * 0.5 + Math.sin((x + y + z) * 4.7) * 0.25;
+  const dark = new THREE.Color('#2f5a26'), light = new THREE.Color('#7fae4e'), c = new THREE.Color();
+  const geos = lobes.map(([cx, cy, cz, r]) => {
+    const g = new THREE.IcosahedronGeometry(r, 3);
+    g.deleteAttribute('uv');
+    const pos = g.getAttribute('position');
+    const col = new Float32Array(pos.count * 3);
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+      const k = 1 + noise(x + cx, y + cy, z + cz) * 0.16;
+      const wx = x * k + cx, wy = y * k + cy, wz = z * k + cz;
+      pos.setXYZ(i, wx, wy, wz);
+      const up = Math.max(0, Math.min(1, (wy - 3.2) / 3)) * 0.75 + Math.max(0, y / r) * 0.25;
+      c.copy(dark).lerp(light, up).multiplyScalar(0.85 + (noise(wx * 3, wy * 3, wz * 3) + 0.75) * 0.15);
+      col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
+    }
+    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    g.computeVertexNormals();
+    return g;
+  });
+  const out = mergeGeometries(geos)!;
+  // normals pointing out from the crown as a whole read as one soft mass rather than seven balls
+  const pos = out.getAttribute('position'), nrm = out.getAttribute('normal');
+  for (let i = 0; i < pos.count; i++) {
+    const n = new THREE.Vector3(pos.getX(i), (pos.getY(i) - 4.6) * 1.2, pos.getZ(i)).normalize();
+    const m = new THREE.Vector3(nrm.getX(i), nrm.getY(i), nrm.getZ(i)).lerp(n, 0.55).normalize();
+    nrm.setXYZ(i, m.x, m.y, m.z);
+  }
+  return out;
+}
