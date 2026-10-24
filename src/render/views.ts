@@ -772,7 +772,7 @@ class PersonView {
     for (const o of this.shellMeshes) o.visible = on;
   }
   /** far away: the merged one-piece body stands in for all the separate parts */
-  private farOn = false;
+  farOn = false;
   private farRig: Rig | null = null;
   private farKey = '';
   private farMesh: THREE.SkinnedMesh | null = null;
@@ -1783,7 +1783,7 @@ export class Views {
       v.lod = dv > 55 ? 3 : dv > 32 ? 2 : 1;
       // the soft strands round the hair only show close up
       v.setShells(dv < 18);
-      v.setFar(dv > 25);
+      v.setFar(dv > (v.farOn ? 17 : 19));
       v.update(state, p, dt);
       if (p.isPlayer && this.hidePlayer) v.rig.root.visible = false;
       const sp = speech?.get(p.id);
