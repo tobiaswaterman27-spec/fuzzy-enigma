@@ -349,6 +349,12 @@ class PersonView {
         root.position.set(it.obj.x, 0, it.obj.z);
         root.rotation.y = Math.atan2(it.obj.x - it.pos.x, it.obj.z - it.pos.z);
         yaw = root.rotation.y;
+      } else if (a?.type === 'venue_shift' && it) {
+        // working a shift: round the other side of the counter, next to whoever runs the place, facing out
+        const dx = it.obj.x - it.pos.x, dz = it.obj.z - it.pos.z, l = Math.hypot(dx, dz) || 1;
+        root.position.set(it.obj.x + (dx / l) * 0.75 + (dz / l) * 0.7, 0, it.obj.z + (dz / l) * 0.75 - (dx / l) * 0.7);
+        root.rotation.y = Math.atan2(-dx, -dz);
+        yaw = root.rotation.y;
       } else if (a?.type === 'feed_pigeons' && it) {
         // back to the bench, scattering crumbs on the ground in front
         root.rotation.y = Math.atan2(it.pos.x - it.obj.x, it.pos.z - it.obj.z);

@@ -287,6 +287,38 @@ export function workout(state: GameState, personId: Id, kind: 'treadmill' | 'wei
   p.needs.hygiene = clamp(p.needs.hygiene - 15, 0, 100);
   return kind === 'treadmill' ? `Twenty minutes on the treadmill. Fitness ${Math.round(p.fitness ?? 0)}.` : `Sets done. Strength ${Math.round((p as any).strength)}, fitness ${Math.round(p.fitness ?? 0)}.`;
 }
+// ------------------------------------------------- cash-in-hand shifts
+/** an afternoon behind the counter, paid in cash at the end: per hour, by the kind of place */
+export const SHIFT_PAY: Partial<Record<Venue['kind'], { role: string; hourly: number }>> = {
+  bakery: { role: 'on the bakery counter', hourly: 1150 }, florist: { role: 'making up bouquets', hourly: 1150 }, bookshop: { role: 'on the bookshop till', hourly: 1100 },
+  cafe: { role: 'pulling coffees', hourly: 1150 }, takeaway: { role: 'on the fryer', hourly: 1100 }, shop: { role: 'on the till', hourly: 1100 },
+  clothes: { role: 'folding and on the till', hourly: 1200 }, mall: { role: 'on the jewellery counter', hourly: 1400 }, pub: { role: 'behind the bar', hourly: 1200 },
+};
+export const SHIFT_HOURS = 2;
+/** why they will not have you today, or null */
+export function shiftBlocker(state: GameState, p: Person, v: Venue): string | null {
+  if (!SHIFT_PAY[v.kind]) return 'No shifts going here';
+  if (!venueOpen(v, state.minute) || !staffOf(state, v)) return 'Nobody here to ask';
+  if ((p as any).shiftDay === dayIndex(state.minute)) return 'You have already done a shift today';
+  if (state.wanted) return 'Not with the police after you';
+  if ((p.needs.hygiene ?? 100) < 30) return '"Not smelling like that, love - have a wash first"';
+  if (p.needs.energy < 20) return 'You are too tired';
+  if (v.kind === 'mall' && (p.record?.length ?? 0) > 0) return 'No criminal records on the jewellery counter';
+  return null;
+}
+export function finishShift(state: GameState, personId: Id, v: Venue): string {
+  const p = state.people[personId], job = SHIFT_PAY[v.kind]!;
+  const pay = job.hourly * SHIFT_HOURS;
+  (p as any).shiftDay = dayIndex(state.minute);
+  transfer(state, { from: state.externalId, to: p.accountId, amount: pay, reason: 'transfer', memo: `Cash shift at ${v.name}`, key: `shift:${v.id}:${dayIndex(state.minute)}` });
+  p.needs.energy = clamp(p.needs.energy - 14, 0, 100);
+  p.needs.satiety = clamp(p.needs.satiety - 10, 0, 100);
+  const shifts = (p as any).shifts = ((p as any).shifts ?? 0) + 1;
+  if (shifts === 1) lifeEvent(state, p, `First cash shift, ${job.role} at ${v.name}`);
+  const boss = staffOf(state, v)?.name.split(' ')[0] ?? 'The manager';
+  return `${SHIFT_HOURS} hours ${job.role}. ${boss} hands you ${fmtMoney(pay)} in cash. "Same again tomorrow if you want it."`;
+}
+
 export const hasGymPass = (state: GameState, p: Person) => (p as any).gymPass === dayIndex(state.minute);
 
 /** one go on the slots: three reels */

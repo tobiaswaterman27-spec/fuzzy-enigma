@@ -11,7 +11,7 @@ import { BIKE_FARE, hireBike, mountBike } from './bikes';
 import { laundryShift, mealNow, nextMeal, prisonMeal, tryEscape } from './prison';
 import { callVince, dropMission, missionText } from './missions';
 import { fixture, gateOpen, goToMatch, ODDS, STAKE, TICKET, type Pick } from './stadium';
-import { arcadeGo, buyAt, clearRecord, crackVault, RECORD_FEE, smashCases, watchFilm, wedding, WEDDING_FEE, haircut, hasGymPass, newOutfit, offersAt, PAWN, pawnSell, robVenue, shoplift, slots, staffOf, venueOfSpot, workout, EYEWEAR } from './venues';
+import { SHIFT_PAY, SHIFT_HOURS, shiftBlocker, finishShift, arcadeGo, buyAt, clearRecord, crackVault, RECORD_FEE, smashCases, watchFilm, wedding, WEDDING_FEE, haircut, hasGymPass, newOutfit, offersAt, PAWN, pawnSell, robVenue, shoplift, slots, staffOf, venueOfSpot, workout, EYEWEAR } from './venues';
 import { venueOpen } from './world/venues';
 import { attack, crime, goToAandE } from './health';
 import { chopCandidate, chopPrice, mug, pickpocket, sellToChop } from './streetcrime';
@@ -204,7 +204,7 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
       const atTill = head && dist(head.pos, queueSlot(bid!, 0)) < 1.2;
       out.push(opt('serve_customer', head ? `Serve ${head.name} (${total(state.containers[head.basketId])} items)` : 'Serve customers', !onShift ? 'Staff only' : !isEmpty(h) ? 'Put down what you are carrying' : !head ? 'No customer waiting' : !atTill ? 'Customer is still walking up' : undefined));
       if (p.isPlayer && bid && !shopOpenNow(state, state.businesses[bid]?.locationId ?? bid) && !staffOnDuty(state, bid).length) out.push(opt('loot_till', 'Prise the till open'));
-      else if (p.isPlayer && !onShift && bid) out.push(opt('rob', p.weapon ? `Hold up the till (${p.weapon === 'knife' ? 'knife' : 'bat'} out)` : 'Demand the cash from the till'));
+      else if (p.isPlayer && !onShift && bid) out.push(opt('rob', p.weapon ? `Hold up the till (${(WEAPONS as any)[p.weapon]?.label ?? 'weapon'} out)` : 'Demand the cash from the till'));
       break;
     }
     case 'kiosk': {
@@ -423,7 +423,8 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
         if (it.kind !== 'venue_till' && p.isPlayer) for (const o of offersAt(v, it.kind).filter((x) => x.item).slice(0, 2)) out.push(opt('shoplift', `Pocket the ${o.label.toLowerCase()} (don't pay)`, undefined, o.item));
         if (it.kind === 'venue_till' && v.kind === 'pawn') for (const k of Object.keys(PAWN)) if (count(state.containers[p.bagId], k)) out.push(opt('venue', `Sell ${PAWN[k].label} · ${fmtMoney(PAWN[k].price)}`, shut, `pawn:${k}`));
         if (it.kind === 'venue_till' && v.kind === 'pawn' && !Object.keys(PAWN).some((k) => count(state.containers[p.bagId], k))) out.push(opt('venue', 'Sell something', 'Nothing worth selling (bring jewellery, watches, laptops, phones)', 'pawn:none'));
-        if (it.kind === 'venue_till' && p.isPlayer && staff) out.push(opt('rob_venue', p.weapon ? `Hold up the ${v.kind === 'bank' ? 'cashier' : 'till'} (${p.weapon === 'knife' ? 'knife' : 'bat'} out)` : 'Demand the cash from the till'));
+        if (it.kind === 'venue_till' && p.isPlayer && SHIFT_PAY[v.kind]) out.push(opt('venue_shift', `Ask for a cash-in-hand shift, ${SHIFT_PAY[v.kind]!.role} (${SHIFT_HOURS} h · ${fmtMoney(SHIFT_PAY[v.kind]!.hourly * SHIFT_HOURS)})`, shiftBlocker(state, p, v) ?? undefined));
+        if (it.kind === 'venue_till' && p.isPlayer && staff) out.push(opt('rob_venue', p.weapon ? `Hold up the ${v.kind === 'bank' ? 'cashier' : 'till'} (${(WEAPONS as any)[p.weapon]?.label ?? 'weapon'} out)` : 'Demand the cash from the till'));
       }
       if (it.kind === 'clothes_rail') for (const o of EYEWEAR) out.push(opt('venue', `${o.label} · ${fmtMoney(o.price)}`, shut, `wear:${o.key}`));
       if (it.kind === 'clothes_rail') { out.push(opt('venue', `A new casual look · ${fmtMoney(4500)}`, open ? undefined : shut, 'outfit:casual')); out.push(opt('venue', `Something smart · ${fmtMoney(9500)}`, open ? undefined : shut, 'outfit:smart')); }
@@ -453,6 +454,7 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
       const open = venueOpen(v, state.minute), staff = staffOf(state, v);
       const shut = !open ? `${v.name} is closed` : !staff ? 'Nobody is serving' : undefined;
       if (it.kind === 'food_court' || it.kind === 'jeweller') for (const o of offersAt(v, it.kind)) out.push(opt('venue', `${o.label} · ${fmtMoney(o.price)}`, shut, `buy:${o.key}`));
+      if (it.kind === 'jeweller' && p.isPlayer) out.push(opt('venue_shift', `Ask for a shift, ${SHIFT_PAY.mall!.role} (${SHIFT_HOURS} h · ${fmtMoney(SHIFT_PAY.mall!.hourly * SHIFT_HOURS)})`, shiftBlocker(state, p, v) ?? undefined));
       if (it.kind === 'jeweller' && p.isPlayer) out.push(opt('smash_case', p.weapon ? 'Smash the display cases and grab what you can' : 'Smash the display cases (bare-handed: it may hurt)'));
       if (it.kind === 'cinema') out.push(opt('film', `Watch a film · ${fmtMoney(1150)} (about 2 hours)`, open ? undefined : shut));
       if (it.kind === 'council_desk') {
@@ -810,6 +812,7 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
       begin(p, type, itId, { duration: 110 }, now); break;
     case 'smash_case': begin(p, type, itId, { duration: 1.2 }, now); break;
     case 'workout': begin(p, type, itId, { duration: 20, arg }, now); break;
+    case 'venue_shift': begin(p, type, itId, { duration: SHIFT_HOURS * 60 }, now); break;
     case 'punch':
       return { ok: true, msg: attack(state, p.id, itId.slice(7)) || '' };
     case 'barge_in':
@@ -1187,6 +1190,7 @@ export function tickAction(state: GameState, p: Person, dt: number): string | nu
       p.needs.mood = clamp(p.needs.mood + 12, 0, 100); p.needs.energy = clamp(p.needs.energy - 6, 0, 100);
       msg = (p.drunk ?? 0) > 40 ? 'You throw some shapes. Some of them are even in time.' : 'You lose yourself in the music for a while.';
       break;
+    case 'venue_shift': { const v = venueOfSpot(a.target); msg = v ? finishShift(state, p.id, v) : null; break; }
     case 'workout': msg = workout(state, p.id, a.arg === 'weights' ? 'weights' : 'treadmill'); break;
     case 'prison_work': msg = laundryShift(state, p.id); break;
     case 'vince': msg = a.arg === 'drop' ? dropMission(state) : callVince(state, p.id); break;

@@ -214,6 +214,7 @@ export type ActionType =
   | 'shower'
   | 'watch_tv'
   | 'read_book'
+  | 'venue_shift'
   | 'cook'
   | 'talk'
   | 'sit'

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { createNewGame, optionsFor, startAction, addItems, count } from '../src/sim/index';
-import { venues, offersAt } from '../src/sim/venues';
+import { createNewGame, optionsFor, startAction, addItems, count, step, minuteOfDay } from '../src/sim/index';
+import { venues, offersAt, shiftBlocker, finishShift, SHIFT_PAY, venuesTick } from '../src/sim/venues';
+import { venueOpen } from '../src/sim/world/venues';
 
 const setup = { name: 'Tester', appearance: { skin: '#e3b48f', hair: 'short' as const, hairColor: '#3b2416', build: 'average' as const } };
 
@@ -27,5 +28,22 @@ describe('Gifts and the new shops', () => {
     expect(o.needs.mood).toBeGreaterThan(mood);
     expect(count(s.containers[me.bagId], 'flowers')).toBe(0);
     expect(o.npc?.gift?.what).toBe('flowers');
+  });
+});
+
+describe('Cash shifts', () => {
+  it('a shift at the bakery pays in cash, once a day', () => {
+    const s = createNewGame(7, setup);
+    const me = s.people.player;
+    const v = venues().find((x) => x.kind === 'bakery')!;
+    while (!venueOpen(v, s.minute) || minuteOfDay(s.minute) < 10 * 60) step(s, 10);
+    me.pos = { ...v.staff }; me.where = v.id; me.visible = true;
+    venuesTick(s);
+    expect(shiftBlocker(s, me, v)).toBeNull();
+    const before = s.ledger.accounts[me.accountId].balance;
+    const msg = finishShift(s, me.id, v);
+    expect(msg).toMatch(/cash/);
+    expect(s.ledger.accounts[me.accountId].balance).toBe(before + SHIFT_PAY.bakery!.hourly * 2);
+    expect(shiftBlocker(s, me, v)).toMatch(/already/);
   });
 });
