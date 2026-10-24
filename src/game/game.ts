@@ -262,6 +262,8 @@ export class Game {
   private camCur = new THREE.Vector3();
   speedMult = 1;
   paused = false;
+  /** seen through the player's own eyes (V) */
+  firstPerson = false;
   /** photo mode: the world holds still while you frame a shot (paused before it, to restore after) */
   photo: { wasPaused: boolean; zoom: number } | null = null;
   setPhoto(on: boolean) {
@@ -540,6 +542,7 @@ export class Game {
       }
       if (e.code === 'KeyR' && this.drivingVan() && this.drivingVan()!.kind !== 'bike') { this.onToast(this.audio.radio.cycle()); return; }
       if (e.code === 'KeyB' && !this.drivingVan()) { this.toggleBusk(); return; }
+      if (e.code === 'KeyV') { this.firstPerson = !this.firstPerson; this.onToast(this.firstPerson ? 'First person (V to go back)' : 'Third person'); return; }
       if (e.code === 'KeyE' && this.drivingVan()?.kind === 'forklift') {
         if (Math.abs(this.vanSpeed) > 1) { this.onToast('Stop first.'); return; }
         this.onToast(forkliftAction(this.state, this.player.id).msg);
@@ -1558,10 +1561,22 @@ export class Game {
     this.distCur += (dist - this.distCur) * Math.min(1, dt * (dist < this.distCur ? 18 : 3));
     if (hits.length) this.distCur = Math.min(this.distCur, dist);
     this.camCur.copy(origin).addScaledVector(dir, this.distCur);
+    if (this.firstPerson && !this.overview && !p.sleeping) {
+      // first person: from the eyes, looking where the camera looks (or down the road, at the wheel)
+      const pv = this.views.people.get(p.id);
+      const eye = pv ? pv.rig.bones.head.getWorldPosition(new THREE.Vector3()) : new THREE.Vector3(origin.x, origin.y, origin.z);
+      let look: THREE.Vector3;
+      if (van) { const h = van.heading; look = new THREE.Vector3(Math.sin(h), -0.08, Math.cos(h)); eye.addScaledVector(new THREE.Vector3(Math.sin(h), 0, Math.cos(h)), 0.15).add(new THREE.Vector3(0, 0.1, 0)); }
+      else { look = dir.clone().negate(); eye.addScaledVector(new THREE.Vector3(look.x, 0, look.z).normalize(), 0.16).add(new THREE.Vector3(0, 0.07, 0)); }
+      this.camera.position.copy(eye);
+      this.views.hidePlayer = true;
+      this.camera.lookAt(eye.x + look.x * 5, eye.y + look.y * 5, eye.z + look.z * 5);
+    } else {
     this.camera.position.copy(this.camCur);
     // too close to see past: hide the player's own body
     this.views.hidePlayer = this.distCur < 0.6 && !van;
     this.camera.lookAt(origin.x - dir.x * 2, origin.y - dir.y * 2 + (this.overview ? 0 : 0.05), origin.z - dir.z * 2);
+    }
     // the shadow box follows the player in whole shadow-map texels, so shadow edges do not shimmer
     const texel = (this.sun.shadow.camera.right - this.sun.shadow.camera.left) / this.sun.shadow.mapSize.x;
     this.sunAnchor.set(Math.round(sp.x / texel) * texel, 0, Math.round(sp.z / texel) * texel);
