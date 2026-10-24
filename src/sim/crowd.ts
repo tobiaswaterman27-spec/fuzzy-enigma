@@ -73,6 +73,9 @@ export function crowdTick(state: GameState) {
       p.pos = { x: a.x + (rand(state) - 0.5), z: a.z + (rand(state) - 0.5) };
       p.visible = true; p.where = 'outside';
       p.move = null;
+      // late on, a fair few are on their way home from the pub (picked without touching the dice)
+      const hr = Math.floor((state.minute % 1440) / 60), hh = Math.abs(Math.sin(i * 12.9898 + Math.floor(state.minute) * 0.0137) * 43758.5453) % 1;
+      p.drunk = (hr >= 22 || hr < 2) && hh < 0.4 ? 45 + hh * 80 : 0;
     }
     // sitting on a bench, or stopped for a chat: leave them be until they are done
     const n = p.npc as typeof p.npc & { idleUntil?: number; bench?: { x: number; z: number; rot: number } | null };

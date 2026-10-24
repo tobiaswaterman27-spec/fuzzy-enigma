@@ -886,6 +886,16 @@ export class Game {
     if ((s.containers[me.bagId]?.items.flowers ?? 0) > 0) lines.push('Ooh, flowers! Who are they for, then?', 'Somebody\'s lucky day.');
     if (hr >= 1 && hr < 5) lines.push('What are you doing out at this hour?');
     if ((me.record?.length ?? 0) >= 3 || s.wanted) lines.push('I know your face... weren\'t you in the paper?', 'That\'s the one the police are after.');
+    // someone the worse for drink on their way home: singing, shouting, overly friendly
+    const sot = Object.values(s.people).find((q) => !q.isPlayer && q.visible && (q.drunk ?? 0) > 40 && q.down == null && !q.combat && Math.hypot(q.pos.x - me.pos.x, q.pos.z - me.pos.z) < 9 && (this.remarked.get(q.id) ?? 0) < now);
+    if (sot && Math.random() < 0.6) {
+      this.remarked.set(sot.id, now + 40000);
+      this.nextRemark = now + 9000;
+      const drunkLines = ['Oi oi!', 'I love you, mate. I really do.', 'Where\'s the kebab shop? Where\'s it gone?', 'Ere we go, \'ere we go, \'ere we go!', 'One more! Just one more!', 'Sweet Caroline! Ba ba ba!', 'You\'re my best mate, you are.', 'Taxi! TAXI!'];
+      sot.gesture = { clip: Math.random() < 0.5 ? 'laugh' : 'wave', until: s.minute + 0.8 };
+      this.say(sot.id, drunkLines[Math.floor(Math.random() * drunkLines.length)], 6);
+      return;
+    }
     // anyone who knows you says hello by name, before anything else
     const pal = Object.values(s.people).find((q) => !q.isPlayer && q.visible && !q.sleeping && !q.action && !q.dead && q.down == null && !q.combat && q.npc && (q.relations[me.id] ?? 0) >= 30 && Math.hypot(q.pos.x - me.pos.x, q.pos.z - me.pos.z) < 6 && (this.remarked.get(q.id) ?? 0) < now);
     if (pal && !me.weapon && Math.random() < 0.5) {
