@@ -12,8 +12,8 @@ import { temperature } from './weather';
 
 // ------------------------------------------------------------ dogs
 export interface Dog { name: string; color: string; size: number; since: number; walkedDay?: number; happy: number; nextFood?: number; born?: number }
-const DOG_NAMES = ['Biscuit', 'Bonnie', 'Max', 'Poppy', 'Alfie', 'Bella', 'Rolo', 'Teddy', 'Luna', 'Scout', 'Pickle', 'Murphy'];
-const DOG_COATS = ['#c8a06a', '#3b2a1e', '#f0e6d6', '#8a5a2b', '#1c1c1c', '#b9b2a6', '#d9b98a'];
+export const DOG_NAMES = ['Biscuit', 'Bonnie', 'Max', 'Poppy', 'Alfie', 'Bella', 'Rolo', 'Teddy', 'Luna', 'Scout', 'Pickle', 'Murphy'];
+export const DOG_COATS = ['#c8a06a', '#3b2a1e', '#f0e6d6', '#8a5a2b', '#1c1c1c', '#b9b2a6', '#d9b98a'];
 export const ADOPTION_FEE = 12000;
 export const DOG_FOOD_WEEK = 1200;
 

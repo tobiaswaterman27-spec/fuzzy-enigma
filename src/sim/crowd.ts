@@ -9,6 +9,7 @@ import { goTo } from './npc';
 import { getWorld } from './world/layout';
 import { levelOf } from './world/levels';
 import { raining } from './weather';
+import { DOG_COATS, DOG_NAMES } from './leisure';
 
 const POOL = 28;
 /** how many are out at this hour: busy in the day, a few stragglers in the small hours */
@@ -28,8 +29,17 @@ function walker(state: GameState, i: number): Person {
     p.age = 18 + randInt(state, 0, 55);
     p.visible = false; p.where = 'offsite';
   }
+  if (!(p.npc as { typed?: boolean }).typed) {
+    (p.npc as { typed?: boolean }).typed = true;
+    // some walk a dog, some are out running (fixed per walker, picked without touching the dice)
+    const h = Math.imul(i + 1, 2654435761) >>> 0;
+    if (i % 6 === 2) p.dog = { name: DOG_NAMES[h % DOG_NAMES.length], color: DOG_COATS[(h >> 4) % DOG_COATS.length], size: 0.6 + ((h >> 8) % 60) / 100, since: state.minute, happy: 80 };
+    if (i % 7 === 4) { p.appearance = { ...p.appearance, outfit: 'outfit_sport', extras: [] }; p.fitness = 75; }
+  }
   return p;
 }
+/** joggers go out early and after work */
+const jogHour = (h: number) => (h >= 6 && h < 10) || (h >= 17 && h < 21);
 
 // the park benches (and where you sit on one: just in front of the middle, facing the path)
 let benchCache: { w: unknown; all: { x: number; z: number; rot: number }[] } | null = null;
@@ -103,12 +113,13 @@ export function crowdTick(state: GameState) {
       // late on, a fair few are on their way home from the pub (picked without touching the dice)
       const hr = Math.floor((state.minute % 1440) / 60), hh = Math.abs(Math.sin(i * 12.9898 + Math.floor(state.minute) * 0.0137) * 43758.5453) % 1;
       p.drunk = (hr >= 22 || hr < 2) && hh < 0.4 ? 45 + hh * 80 : 0;
+      p.jogging = i % 7 === 4 && jogHour(hr) && !p.drunk ? state.minute + 60 : 0;
     }
     // sitting on a bench, or stopped for a chat: leave them be until they are done
     const n = p.npc as typeof p.npc & { idleUntil?: number; bench?: { x: number; z: number; rot: number } | null };
     if ((n.idleUntil ?? 0) > state.minute) continue;
     // on the way somewhere: now and then a bench catches their eye, or they bump into someone they know
-    if (p.move && !n.bench && rand(state) < 0.02) {
+    if (p.move && !n.bench && rand(state) < 0.02 && !((p.jogging ?? 0) > state.minute)) {
       const b = benchNear(p.pos, 35);
       if (b && rand(state) < 0.5) { n.bench = b; goTo(state, p, benchSeat(b), 'a bench'); continue; }
       const o = Object.values(state.people).find((q) => q !== p && q.id.startsWith('crowd_') && q.visible && dist(q.pos, p.pos) < 3 && ((q.npc as typeof n).idleUntil ?? 0) <= state.minute);
