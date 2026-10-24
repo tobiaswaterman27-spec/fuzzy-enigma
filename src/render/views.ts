@@ -13,7 +13,7 @@ import { boat as harbourBoat } from './harbour';
 import { CAR_MODELS } from '../sim/cars';
 import { modelInstance } from './models';
 import { planRoute } from '../sim/world/nav';
-import { pace } from '../sim/npc';
+import { hasBrolly, pace } from '../sim/npc';
 import { productGeometry, productMaterial, productUnitGeometry } from './products';
 import { buildingAt, getWorld, type Interactable, SHELF_LAYOUT, PALLET_X, SHOPS, U4_SECTIONS, U4_PALLET_Z, WH_PRODUCTS } from '../sim/world/layout';
 import { ITEMS } from '../sim/items';
@@ -777,7 +777,7 @@ class PersonView {
   private brolly: THREE.Group | null = null;
   private umbrellaFx(state: GameState, p: Person, speed: number) {
     let h = 0; for (let i = 0; i < p.id.length; i++) h = (h * 31 + p.id.charCodeAt(i)) >>> 0;
-    const owns = p.isPlayer ? count(state.containers[p.bagId], 'umbrella') > 0 : !p.police && h % 10 < 6;
+    const owns = hasBrolly(state, p);
     const busy = !!p.action || !!this.seatAt || !!this.bedIt || p.down != null || !!p.dead || !!p.weapon || speed > 2.6 || !!firstItem(state.containers[p.handsId]);
     const on = rainNow > 0.25 && owns && !busy && p.where === 'outside' && p.visible && this.lod < 3;
     if (!on) { if (this.brolly) this.brolly.visible = false; return; }

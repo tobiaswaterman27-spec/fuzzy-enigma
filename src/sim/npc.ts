@@ -98,11 +98,20 @@ export function goTo(state: GameState, p: Person, to: Vec2, label: string): bool
   return true;
 }
 
+/** whether someone carries an umbrella (most people do; fixed per person) */
+export function hasBrolly(state: GameState, p: Person): boolean {
+  if (p.isPlayer) return (state.containers[p.bagId]?.items.umbrella ?? 0) > 0;
+  let h = 0; for (let i = 0; i < p.id.length; i++) h = (h * 31 + p.id.charCodeAt(i)) >>> 0;
+  return !p.police && h % 10 < 6;
+}
+
 /** movement execution with arrival verification and stuck recovery */
 export function tickMovement(state: GameState, p: Person, dt: number) {
   const m = p.move;
   if (!m) return;
-  const hurry = p.down != null ? 0 : (p.fleeing ?? 0) > state.minute ? 2.3 : p.police || p.combat ? 2.0 : p.following ? 1.8 : (p.jogging ?? 0) > state.minute ? 2.1 : 1;
+  // caught in the rain without an umbrella: a quicker step, head down
+  const wet = !!p.npc?.ambient && p.where === 'outside' && raining(state) > 0.3 && !hasBrolly(state, p) ? 1.25 : 1;
+  const hurry = p.down != null ? 0 : (p.fleeing ?? 0) > state.minute ? 2.3 : p.police || p.combat ? 2.0 : p.following ? 1.8 : (p.jogging ?? 0) > state.minute ? 2.1 : wet;
   let step = WALK * capability(p).move * hurry * pace(p) * dt;
   // personal space: someone just ahead slows you down and you step round them (keeping left)
   const tgt0 = m.path[m.idx];
