@@ -95,6 +95,8 @@ function weaponMesh(kind: 'bat' | 'knife' | 'golf' | 'crowbar'): THREE.Group {
   return g;
 }
 
+/** clips that move the feet on purpose (never planted) */
+const MOVING_CLIPS = new Set(['run', 'carry_walk', 'sit', 'sit_down', 'stand_up', 'lie', 'lie_ground', 'fall', 'down', 'dance', 'dance_b', 'dance_c', 'fight', 'kick', 'punch', 'workout', 'mop', 'fish', 'sleep', 'stand_up', 'knock', 'pickup', 'place', 'wash', 'dress', 'clean']);
 /** how high the cushion is, for each kind of seat */
 const SEAT_H: Record<string, number> = { chair: 0.47, iv_chair: 0.47, iv_host: 0.47, sofa: 0.42, bench: 0.45 };
 
@@ -235,6 +237,7 @@ class PersonView {
   constructor(public p: Person, private scene: THREE.Scene) {
     this.rig = buildRig(p.appearance);
     this.anim = new AnimationController(this.rig);
+    this.hipsRest = this.rig.bones.hips.position.clone();
     this.outfitKey = JSON.stringify(p.appearance);
     levelGroup(scene, levelOf(p.pos.x)).add(this.rig.root);
     this.rig.root.position.set(p.pos.x, 0, p.pos.z);
@@ -280,6 +283,7 @@ class PersonView {
         parent.remove(this.rig.root);
         this.rig = buildRig(p.appearance);
         this.anim = new AnimationController(this.rig);
+        this.hipsRest = this.rig.bones.hips.position.clone();
         this.rig.root.position.copy(pos); this.rig.root.rotation.y = rot;
         parent.add(this.rig.root);
         this.carried = null; this.carriedItem = '';
@@ -521,6 +525,12 @@ class PersonView {
     this.stinkFx(p, dt);
     this.breathFx(p, dt);
     this.anim.update(dt, realSpeed, !!item, clipAction);
+    // standing still, whatever the clip: feet planted where they stand, the hips swaying only a little
+    // (the captured idles and gestures shuffle and step about, which reads as fidgeting on the spot)
+    const st = this.anim.state;
+    const standing = !floored && !this.bedIt && !this.seatAt && !p.sleeping && realSpeed < 0.05 && !stage?.walking && a?.type !== 'attack' && !MOVING_CLIPS.has(st) && !st.startsWith('walk');
+    this.plantW += ((standing ? 1 : 0) - this.plantW) * Math.min(1, dt * 6);
+    if (this.plantW > 0.02 && this.rig.joints) this.plantFeet(this.plantW);
     // keep the feet on the floor: whatever the animation does, the lower foot rests on the ground
     if (!this.bedIt && !floored && this.rig.joints && !this.seatAt) {
       this.rig.root.updateMatrixWorld(true);
@@ -697,6 +707,29 @@ class PersonView {
   }
   /** flies round the head and a whiff coming off someone who has not washed in days */
   private stink: THREE.Group | null = null;
+  private hipsRest = new THREE.Vector3();
+  private plantW = 0;
+  /** two-bone leg IK: ankles to the bind-pose stance under the body, knees bending forward */
+  private plantFeet(w: number) {
+    const B = this.rig.bones, root = this.rig.root, J = this.rig.joints!;
+    B.hips.position.x += (this.hipsRest.x - B.hips.position.x) * 0.8 * w;
+    B.hips.position.z += (this.hipsRest.z - B.hips.position.z) * 0.8 * w;
+    root.updateMatrixWorld(true);
+    const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(root.getWorldQuaternion(new THREE.Quaternion())).setY(0).normalize();
+    for (const [thigh, shin, foot, rest] of [[B.thighL, B.shinL, B.footL, J.footL], [B.thighR, B.shinR, B.footR, J.footR]] as const) {
+      const H = thigh.getWorldPosition(new THREE.Vector3()), K = shin.getWorldPosition(new THREE.Vector3()), A = foot.getWorldPosition(new THREE.Vector3());
+      const T = A.clone().lerp(this.rig.body.localToWorld(rest.clone()), w);
+      const l1 = H.distanceTo(K), l2 = K.distanceTo(A);
+      const toT = T.clone().sub(H); const dLen = toT.length();
+      if (dLen < 1e-4) continue;
+      const dir = toT.divideScalar(dLen), d = Math.min(dLen, l1 + l2 - 0.002);
+      const a = (l1 * l1 - l2 * l2 + d * d) / (2 * d), h = Math.sqrt(Math.max(0, l1 * l1 - a * a));
+      const bend = fwd.clone().addScaledVector(dir, -fwd.dot(dir)).normalize();
+      const knee = H.clone().addScaledVector(dir, a).addScaledVector(bend, h);
+      aimBone(thigh, shin, knee);
+      aimBone(shin, foot, H.clone().addScaledVector(dir, d));
+    }
+  }
   /** breath that shows in cold air: a little puff from the mouth every few seconds, outdoors */
   private breath: THREE.Sprite | null = null;
   private breathT = Math.random() * 3;
