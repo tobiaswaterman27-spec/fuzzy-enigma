@@ -18,4 +18,6 @@ fs.mkdirSync(`${out}/assets/anim`, { recursive: true });
 fs.copyFileSync('dist/assets/anim/clips.json', `${out}/assets/anim/clips.json`);
 fs.mkdirSync(`${out}/assets/models`, { recursive: true });
 for (const f of fs.readdirSync('dist/assets/models')) if (f.endsWith('.glb')) fs.writeFileSync(`${out}/assets/models/${f}.txt`, fs.readFileSync(`dist/assets/models/${f}`).toString('base64'));
+// the loading-screen art
+if (fs.existsSync('dist/loading')) { fs.mkdirSync(`${out}/loading`, { recursive: true }); for (const f of fs.readdirSync('dist/loading')) fs.copyFileSync(`dist/loading/${f}`, `${out}/loading/${f}`); }
 console.log('ok', js);

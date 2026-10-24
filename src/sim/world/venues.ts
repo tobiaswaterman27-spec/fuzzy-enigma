@@ -6,7 +6,7 @@ import type { Vec2 } from '../types';
 import type { City, CityBuilding, District } from './city';
 import { STREETS, ESPLANADE_Z, ROAD_HALF, WALK_W } from './city';
 
-export type VenueKind = 'shop' | 'cafe' | 'takeaway' | 'pub' | 'clothes' | 'barber' | 'bank' | 'casino' | 'nightclub' | 'gym' | 'arcade' | 'pawn' | 'station' | 'mall' | 'hospital' | 'cityhall' | 'church' | 'prison';
+export type VenueKind = 'shop' | 'cafe' | 'takeaway' | 'pub' | 'clothes' | 'barber' | 'bank' | 'casino' | 'nightclub' | 'gym' | 'arcade' | 'pawn' | 'station' | 'mall' | 'hospital' | 'cityhall' | 'church' | 'prison' | 'bakery' | 'florist' | 'bookshop';
 export interface Rect { x0: number; z0: number; x1: number; z1: number }
 
 export interface VenueObstacle { kind: string; rect: Rect; height: number; solid: boolean; rot?: number; color?: string; ref?: string }
@@ -51,23 +51,27 @@ const NAMES: Record<VenueKind, string[]> = {
   gym: ['Iron Works Gym', 'FitZone'],
   arcade: ['Pier Amusements', 'Game Zone'],
   pawn: ['Cash 4 Gold', 'Harbour Pawnbrokers'],
+  bakery: ['Upper Crust Bakery', 'The Bread Bin'], florist: ['Petal & Stem', 'Bloom'], bookshop: ['Chapter & Verse'],
   station: ['Central Station'], mall: ['Harbourgate Shopping Centre'], hospital: ['Harbourside General Hospital'], cityhall: ['City Hall'], church: ["St Mary's Church"],
   prison: ['HMP Harbourside'],
 };
-const WANT: [VenueKind, number][] = [['shop', 8], ['cafe', 5], ['takeaway', 5], ['pub', 4], ['clothes', 3], ['barber', 3], ['bank', 1], ['casino', 1], ['nightclub', 2], ['gym', 2], ['arcade', 2], ['pawn', 2]];
+const WANT: [VenueKind, number][] = [['shop', 8], ['cafe', 5], ['takeaway', 5], ['pub', 4], ['clothes', 3], ['barber', 3], ['bank', 1], ['casino', 1], ['nightclub', 2], ['gym', 2], ['arcade', 2], ['pawn', 2], ['bakery', 2], ['florist', 2], ['bookshop', 1]];
 const HOURS: Record<VenueKind, [number, number]> = {
   shop: [7 * 60, 23 * 60], cafe: [7 * 60, 18 * 60], takeaway: [16 * 60, 24 * 60], pub: [11 * 60, 23 * 60], clothes: [9 * 60, 18 * 60], barber: [9 * 60, 18 * 60],
   bank: [9 * 60, 17 * 60], casino: [18 * 60, 28 * 60], nightclub: [22 * 60, 28 * 60], gym: [6 * 60, 22 * 60], arcade: [10 * 60, 22 * 60], pawn: [9 * 60, 18 * 60],
+  bakery: [7 * 60, 17 * 60], florist: [9 * 60, 17 * 60 + 30], bookshop: [9 * 60, 18 * 60],
   station: [5 * 60, 25 * 60], mall: [9 * 60, 21 * 60], hospital: [0, 24 * 60], cityhall: [9 * 60, 17 * 60], church: [7 * 60, 20 * 60], prison: [0, 24 * 60],
 };
 const COLORS: Record<VenueKind, string> = {
   station: '#7b2d26', mall: '#2c3e50', hospital: '#2f6fb0', cityhall: '#3d4d5c', church: '#5a4a3a', prison: '#3b4148',
   shop: '#2e7d4f', cafe: '#7b4a2d', takeaway: '#c0392b', pub: '#5b2a1e', clothes: '#2c3e50', barber: '#1f4e79', bank: '#0f3b5f', casino: '#7d1f1f', nightclub: '#4a148c', gym: '#212121', arcade: '#ff6f00', pawn: '#8d6e00',
+  bakery: '#c58b3a', florist: '#c2477a', bookshop: '#2f5a3a',
 };
 const SIZE: Record<VenueKind, { w: number; d: number }> = {
   shop: { w: 9, d: 10 }, cafe: { w: 9, d: 10 }, takeaway: { w: 8, d: 9 }, pub: { w: 11, d: 11 }, clothes: { w: 10, d: 11 }, barber: { w: 7, d: 9 },
   station: { w: 30, d: 20 }, mall: { w: 30, d: 20 }, hospital: { w: 30, d: 20 }, cityhall: { w: 30, d: 20 }, church: { w: 16, d: 30 }, prison: { w: 30, d: 20 },
   bank: { w: 16, d: 16 }, casino: { w: 16, d: 16 }, nightclub: { w: 14, d: 14 }, gym: { w: 12, d: 12 }, arcade: { w: 10, d: 11 }, pawn: { w: 7, d: 9 },
+  bakery: { w: 7, d: 9 }, florist: { w: 7, d: 9 }, bookshop: { w: 8, d: 10 },
 };
 /** where each kind belongs */
 const SUITS: Record<VenueKind, District[]> = {
@@ -75,6 +79,7 @@ const SUITS: Record<VenueKind, District[]> = {
   pub: ['oldtown', 'midtown', 'beach'], clothes: ['centre', 'midtown'], barber: ['oldtown', 'midtown', 'uptown'], bank: ['centre'], casino: ['centre', 'midtown', 'beach'],
   station: [], mall: [], hospital: [], cityhall: [], church: [], prison: [],
   nightclub: ['midtown', 'centre', 'beach'], gym: ['midtown', 'uptown', 'industrial'], arcade: ['beach', 'midtown'], pawn: ['oldtown', 'industrial', 'midtown'],
+  bakery: ['oldtown', 'midtown', 'uptown', 'beach'], florist: ['centre', 'uptown', 'oldtown'], bookshop: ['centre', 'oldtown', 'uptown'],
 };
 
 let cached: Venue[] | null = null;
@@ -346,6 +351,29 @@ function fitOut(id: string, kind: VenueKind, name: string, b: CityBuilding, fron
       }
       ob('cellbars', Wd - 0.5, D - 4.6, Wd - 0.38, D - 0.05, 3.0, true);
       nodes.push(P(5, 8.9), P(4, D - 3.4), P(12, D - 2.6), P(1.0, 15.6), P(mid, 7.5));
+      break;
+    }
+    case 'bakery': {
+      // the glass counter of cakes and pasties across the shop, ovens behind
+      counterBack(3.0);
+      ob('kitchen', 1.2, D - 0.7, Wd - 1.2, D - 0.05, 0.92, true, backRot);
+      ob('table', 0.8, 2.2, 1.9, 3.3, 0.75, true);
+      break;
+    }
+    case 'florist': {
+      counterFront(2.6);
+      // buckets of flowers down both sides
+      for (let v = 3.6; v < D - 1.2; v += 1.4) { ob('plant', 0.5, v, 1.1, v + 0.6, 1.0 + (v % 2) * 0.3, true); ob('plant', Wd - 1.1, v + 0.7, Wd - 0.5, v + 1.3, 0.9 + (v % 3) * 0.2, true); }
+      break;
+    }
+    case 'bookshop': {
+      counterFront(2.6);
+      for (let v = 3.8; v < D - 1.5; v += 2.4) {
+        ob('bookcase', 0.3, v, 0.75, v + 1.6, 1.9, true, Math.PI / 2);
+        spot(`books${Math.round(v)}`, 'venue_shelf', 'Bookshelves', 1.6, v + 0.8, 0.5, v + 0.8);
+      }
+      ob('bookcase', Wd - 0.75, 4, Wd - 0.3, D - 1.5, 1.9, true, -Math.PI / 2);
+      ob('armchair', mid - 0.5, D - 2.4, mid + 0.5, D - 1.4, 0.9, true, Math.PI, '#5a3a2a');
       break;
     }
     case 'pawn': {

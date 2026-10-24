@@ -175,6 +175,7 @@ export type ActionType =
   | 'break_in'
   | 'loot_till'
   | 'pickpocket'
+  | 'give_flowers'
   | 'mug'
   | 'chop'
   | 'hand_in'
@@ -212,6 +213,7 @@ export type ActionType =
   | 'store_food'
   | 'shower'
   | 'watch_tv'
+  | 'read_book'
   | 'cook'
   | 'talk'
   | 'sit'
@@ -289,6 +291,8 @@ export interface NpcState {
   wake: number; // minute of day
   /** why they are out (for their conversation): 'getting some lunch', 'clearing my head' */
   why?: string;
+  /** the last present the player gave them, and when */
+  gift?: { what: string; at: number };
   goalSince: number;
   nextDecision: number;
   /** a small plan step machine within the goal */

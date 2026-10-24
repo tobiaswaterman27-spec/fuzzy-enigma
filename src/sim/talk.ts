@@ -149,6 +149,7 @@ export function characterBrief(state: GameState, id: Id, remote = false, situati
       return opts.length ? `If meeting up comes up, you could do: ${opts.join('; ')}. You will not go while you are at work or past your bedtime. Only suggest those times or later, say the day, and if you agree you MUST record it as decision "meet" with "when" and "where" (cafe, pub or park), or it will not happen.` : 'You have no free time to meet up this week.';
     })(),
     meetupNote(state, id),
+    p.npc?.gift && state.minute - p.npc.gift.at < 3 * 1440 ? `${state.minute - p.npc.gift.at < 60 ? 'Just now' : 'Recently'} they gave you ${p.npc.gift.what}; you remember that.` : '',
     q.recent.length ? `Recent things in your life: ${q.recent.join('; ')}.` : '',
     town.length ? `Talk of the town: ${town.join('; ')}.` : '',
     `The person talking to you: ${you.name.split(' ')[0]}${(p.knowsYou?.talks ?? 0) > 0 ? ` (${you.name})` : ''}.`,

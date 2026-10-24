@@ -1615,7 +1615,7 @@ const KIND_ROLE: Record<VenueKind, string> = {
   clothes: 'Clothes shop - a new look', barber: 'Barber - a new haircut', bank: 'Bank - and a vault full of cash', casino: 'Casino - roulette, blackjack, slots',
   nightclub: 'Nightclub - drinks and dancing, late', gym: 'Gym - get fit', arcade: 'Amusement arcade', pawn: 'Pawnbroker - sells and buys anything',
   station: 'Railway station - trains to Westbay and Northfield', mall: 'Shopping centre - food court, jeweller, cinema, clothes', hospital: 'Hospital - A&E', cityhall: 'City Hall - council services and weddings', church: 'Church',
-  prison: 'Prison',
+  prison: 'Prison', bakery: 'Bakery - bread, pasties and cakes', florist: 'Florist - flowers for someone', bookshop: 'Bookshop - books to read',
 };
 function venueBuilding(v: Venue): BuildingDef {
   const side = v.front === 'n' ? 'zmin' : 'zmax';

@@ -44,6 +44,8 @@ function spillGeometry(id: string): THREE.BufferGeometry {
 const smooth = (t: number) => { const x = Math.max(0, Math.min(1, t)); return x * x * (3 - 2 * x); };
 const FOOT_A = new THREE.Vector3(), FOOT_B = new THREE.Vector3(), HAND_L = new THREE.Vector3(), HAND_R = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
+const BOOK_COVER = new THREE.MeshStandardMaterial({ color: '#2f5a3a', roughness: 0.7 });
+const BOOK_PAGES = new THREE.MeshStandardMaterial({ color: '#f1ead8', roughness: 0.95 });
 const MOP_STICK = new THREE.MeshStandardMaterial({ color: '#c9ccd0', metalness: 0.6, roughness: 0.35 });
 const MOP_BLOCK = new THREE.MeshStandardMaterial({ color: '#2a7fd4', roughness: 0.6 });
 const MOP_STRAND = new THREE.MeshStandardMaterial({ color: '#e8e4da', roughness: 0.95 });
@@ -351,7 +353,7 @@ class PersonView {
         // back to the bench, scattering crumbs on the ground in front
         root.rotation.y = Math.atan2(it.pos.x - it.obj.x, it.pos.z - it.obj.z);
         yaw = root.rotation.y;
-      } else if ((a?.type === 'sit' || a?.type === 'watch_tv') && it && (it.kind === 'sofa' || it.kind === 'chair' || it.kind === 'iv_chair' || it.kind === 'iv_host' || it.kind === 'bench')) {
+      } else if ((a?.type === 'sit' || a?.type === 'watch_tv' || a?.type === 'read_book') && it && (it.kind === 'sofa' || it.kind === 'chair' || it.kind === 'iv_chair' || it.kind === 'iv_host' || it.kind === 'bench')) {
         // sit on the seat itself, facing out from the back rest
         const dx = it.pos.x - it.obj.x, dz = it.pos.z - it.obj.z, l = Math.hypot(dx, dz) || 1;
         root.position.set(it.obj.x + (dx / l) * (it.kind === 'sofa' ? 0.12 : 0.02), 0, it.obj.z + (dz / l) * (it.kind === 'sofa' ? 0.12 : 0.02));
@@ -527,7 +529,32 @@ class PersonView {
         const ankle = knee.clone().addScaledVector(fwd, 0.06).setY(floorY + 0.09);
         aimBone(shin, foot, ankle);
       }
+      // a book open in the lap, held in both hands, head a little bowed over it
+      if (a?.type === 'read_book') {
+        const chest = B.chest.getWorldPosition(new THREE.Vector3());
+        const at = chest.clone().addScaledVector(fwd, 0.3).add(new THREE.Vector3(0, -0.2, 0));
+        const right = new THREE.Vector3(-fwd.z, 0, fwd.x);
+        for (const [arm, fore, hand, sgn] of [[B.armL, B.foreL, B.handL, -1], [B.armR, B.foreR, B.handR, 1]] as const) {
+          const sh = arm.getWorldPosition(new THREE.Vector3());
+          const grip = at.clone().addScaledVector(right, sgn * 0.09);
+          const elbow = sh.clone().lerp(grip, 0.5).addScaledVector(right, sgn * 0.1).add(new THREE.Vector3(0, -0.12, 0));
+          aimBone(arm, fore, elbow);
+          aimBone(fore, hand, grip);
+        }
+        if (!this.book) {
+          this.book = new THREE.Group();
+          const cover = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.012, 0.19), BOOK_COVER);
+          const pages = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.016, 0.18), BOOK_PAGES);
+          pages.position.y = 0.013;
+          this.book.add(cover, pages);
+        }
+        if (this.book.parent !== root.parent) root.parent.add(this.book);
+        this.book.position.copy(root.parent.worldToLocal(at.clone()));
+        this.book.rotation.set(0.55, yaw0, 0, 'YXZ');
+        B.neck.rotation.x += 0.35;
+      }
     }
+    if (a?.type !== 'read_book' && this.book?.parent) this.book.parent.remove(this.book);
     // knocked down or dead: the body goes limp and falls the way the blow sent it
     if (floored && this.rig.joints) {
       if (!this.ragdoll) {
@@ -672,6 +699,7 @@ class PersonView {
   }
   private pedal = 0;
   private seatAt: { x: number; z: number; y: number } | null = null;
+  private book: THREE.Group | null = null;
   private seatH = 0.45;
   private ragdoll: Ragdoll | null = null;
   private getUpUntil = 0;
@@ -1401,7 +1429,7 @@ export class Views {
     const want = new Map<string, { x: number; z: number }>();
     for (let i = 0; i < vis.length; i++) for (let j = i + 1; j < vis.length; j++) {
       const a = vis[i], b = vis[j];
-      const fixed = (q: typeof a) => q.sleeping || q.action?.type === 'sit' || q.action?.type === 'watch_tv' || q.action?.type === 'shower';
+      const fixed = (q: typeof a) => q.sleeping || q.action?.type === 'sit' || q.action?.type === 'watch_tv' || q.action?.type === 'read_book' || q.action?.type === 'shower';
       if (fixed(a) || fixed(b)) continue;
       const dx = b.pos.x - a.pos.x, dz = b.pos.z - a.pos.z, d = Math.hypot(dx, dz);
       if (d > 0.6) continue;

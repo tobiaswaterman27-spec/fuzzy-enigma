@@ -293,6 +293,7 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
     }
     case 'chair':
       out.push(opt('sit', 'Sit down'));
+      if (p.isPlayer && count(state.containers[p.bagId], 'book') > 0) out.push(opt('read_book', 'Sit and read your book (+mood)'));
       out.push({ type: 'ui', label: 'Use laptop (job sites, bank, business)', enabled: true, ui: 'laptop' });
       break;
     case 'iv_chair': {
@@ -317,6 +318,7 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
     case 'sofa':
       out.push(opt('watch_tv', 'Watch TV (raises mood)', hasHomeAccess(state, actorId, it.locationId) ? undefined : 'Not your home'));
       out.push(opt('sit', 'Sit and rest'));
+      if (p.isPlayer && count(state.containers[p.bagId], 'book') > 0) out.push(opt('read_book', 'Sit and read your book (+mood)'));
       if (p.isPlayer && hasHomeAccess(state, actorId, it.locationId)) {
         const m = Math.round(choresOf(p).mess);
         out.push(opt('tidy', `Tidy the flat (${messLabel(m)})`, m < 5 ? 'Already spotless' : undefined));
@@ -356,11 +358,12 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
       if (p.isPlayer && !other.police && !other.npc?.ambient && !openFavour(state, other.id)) out.push(opt('favour_ask', `Ask ${other.name.split(' ')[0]} if they need a hand with anything`));
       if (p.isPlayer && !other.police && !other.isPlayer) {
         out.push(opt('pickpocket', `Pick ${other.name.split(' ')[0]}'s pocket`));
-        out.push(opt('punch', p.weapon ? `Hit ${other.name.split(' ')[0]} with the ${p.weapon === 'knife' ? 'knife' : 'bat'} (F)` : `Punch ${other.name.split(' ')[0]} (F)`));
-        if (p.weapon) out.push(opt('mug', `Threaten ${other.name.split(' ')[0]} for their wallet (${p.weapon === 'knife' ? 'knife' : 'bat'} out)`));
+        out.push(opt('punch', p.weapon ? `Hit ${other.name.split(' ')[0]} with the ${(WEAPONS as any)[p.weapon]?.label ?? 'weapon'} (F)` : `Punch ${other.name.split(' ')[0]} (F)`));
+        if (p.weapon) out.push(opt('mug', `Threaten ${other.name.split(' ')[0]} for their wallet (${(WEAPONS as any)[p.weapon]?.label ?? 'weapon'} out)`));
       }
       if (p.isPlayer && state.incident && state.incident.stage !== 'done' && (state.incident.a === other.id || state.incident.b === other.id)) out.unshift(opt('break_up', 'Step in and break it up'));
       if (p.isPlayer && (other.npc as any)?.shoplift) out.unshift(opt('grab', `Grab ${other.name.split(' ')[0]} (shoplifter!)`));
+      if (p.isPlayer && !other.police && count(state.containers[p.bagId], 'flowers') > 0) out.unshift(opt('give_flowers', `Give ${other.name.split(' ')[0]} the flowers`));
       out.push(opt('talk', p.isPlayer ? `Wave and say hello` : `Chat with ${other.name}`, other.action?.type === 'serve_customer' ? 'Busy serving' : undefined));
       if (p.isPlayer && !other.npc?.ambient) out.push({ type: 'ui', label: `Invite ${other.name.split(' ')[0]} for a coffee`, enabled: fam >= FRIEND_AT && !plannedMeetup(state), reason: fam < FRIEND_AT ? 'Get to know them better first (chat more)' : 'You already have a meet-up arranged', ui: 'invite', arg: other.id });
       break;
@@ -575,6 +578,7 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
     }
     case 'bench':
       out.push(opt('sit', 'Sit on bench'));
+      if (p.isPlayer && count(state.containers[p.bagId], 'book') > 0) out.push(opt('read_book', 'Sit and read your book (+mood)'));
       out.push(opt('feed_pigeons', 'Feed the pigeons (crumbs from your pocket)'));
       out.push(opt('sleep', 'Sleep rough until 07:00 (poor rest)', undefined, 'morning'));
       break;
@@ -812,6 +816,8 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
       return { ok: true, msg: bargeIn(state, p.id) };
     case 'loot_till':
       begin(p, type, itId, { duration: 1.4 }, now); break;
+    case 'give_flowers':
+      return { ok: true, msg: giveFlowers(state, p, itId.slice(7)) };
     case 'pickpocket': case 'mug': {
       const o = state.people[itId.slice(7)];
       if (!o) return { ok: false, msg: '' };
@@ -899,6 +905,8 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
     case 'sit':
     case 'watch_tv':
       begin(p, type, itId, { duration: 600 }, now); break;
+    case 'read_book':
+      begin(p, type, itId, { duration: 45 }, now); break;
     case 'feed_pigeons':
       begin(p, type, itId, { duration: 4 }, now); break;
     case 'shower':
@@ -1209,6 +1217,9 @@ export function tickAction(state: GameState, p: Person, dt: number): string | nu
     case 'watch_tv':
       msg = null;
       break;
+    case 'read_book':
+      msg = 'You read a few chapters. Lost track of time a bit.';
+      break;
     case 'feed_pigeons':
       p.needs.mood = Math.min(100, p.needs.mood + 6);
       msg = 'The pigeons squabble over the last of the crumbs. Oddly calming.';
@@ -1448,4 +1459,22 @@ export function enforceLocationRules(state: GameState, p: Person) {
     const till = state.tills[S.till];
     if (till && till.queue.includes(p.id)) leaveQueue(state, till.id, p.id);
   }
+}
+
+/** a bunch of flowers, handed over: they light up, and remember it (less so from a stranger) */
+function giveFlowers(state: GameState, p: Person, id: Id): string {
+  const o = state.people[id], bag = state.containers[p.bagId];
+  if (!o || !bag || !removeItems(bag, 'flowers', 1)) return '';
+  const was = p.relations[o.id] ?? 0;
+  const gain = was >= 25 ? 14 : 6;
+  p.relations[o.id] = clamp(was + gain, 0, 100);
+  o.relations[p.id] = p.relations[o.id];
+  o.needs.mood = clamp(o.needs.mood + 20, 0, 100);
+  p.needs.mood = clamp(p.needs.mood + 6, 0, 100);
+  p.facing = Math.atan2(o.pos.x - p.pos.x, o.pos.z - p.pos.z);
+  o.facing = Math.atan2(p.pos.x - o.pos.x, p.pos.z - o.pos.z);
+  o.gesture = { clip: was >= 25 ? 'happy' : 'shrug', until: state.minute + 0.8 };
+  if (o.npc) o.npc.gift = { what: 'flowers', at: state.minute };
+  const first = o.name.split(' ')[0];
+  return was >= 25 ? `${first} beams. "For me? Oh, you shouldn't have." (${Math.round(p.relations[o.id])})` : `${first} takes them, a bit thrown. "Er... thanks? That's... nice of you."`;
 }

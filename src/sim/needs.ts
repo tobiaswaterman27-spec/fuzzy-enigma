@@ -27,6 +27,7 @@ export function tickNeeds(_state: GameState, p: Person, dt: number) {
     n.mood += (base - n.mood) * 0.002 * dt;
     if (a0 === 'watch_tv') n.mood += 0.45 * dt;
     if (a0 === 'sit') n.mood += 0.12 * dt;
+    if (a0 === 'read_book') n.mood += 0.3 * dt;
     if (a0 === 'buy_meal') n.mood += 0.35 * dt;
     if (a0 === 'shower') { n.hygiene += 14 * dt; n.mood += 0.3 * dt; }
     if (a0 === 'tidy') n.mood += 0.15 * dt;

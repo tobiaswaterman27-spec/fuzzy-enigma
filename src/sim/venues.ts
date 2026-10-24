@@ -86,6 +86,9 @@ export function offersAt(v: Venue, spotKind: string): Offer[] {
     case 'pub': return [{ key: 'pint', label: 'A pint', price: 460, drink: 18, mood: 4 }, { key: 'lunch', label: 'Pie and mash', price: 1100, eat: 60, mood: 6 }];
     case 'nightclub': return [{ key: 'shot', label: 'A round of shots', price: 600, drink: 25, mood: 6 }, { key: 'water', label: 'Bottle of water', price: 250, energy: 3 }];
     case 'gym': return [{ key: 'pass', label: 'Day pass', price: 600 }];
+    case 'bakery': return [{ key: 'roll', label: 'A sausage roll', price: 140, eat: 25, mood: 3 }, { key: 'pasty', label: 'A Cornish pasty', price: 360, eat: 45, mood: 4 }, { key: 'bun', label: 'An iced bun', price: 120, eat: 15, mood: 5 }, { key: 'loaf', label: 'A crusty loaf', price: 260, item: 'bread' }];
+    case 'florist': return [{ key: 'bouquet', label: 'A bouquet (to give someone)', price: 2500, item: 'flowers' }, { key: 'rose', label: 'A single red rose (to give someone)', price: 400, item: 'flowers' }];
+    case 'bookshop': return spotKind === 'venue_shelf' ? [{ key: 'novel', label: 'A paperback novel', price: 899, item: 'book', mood: 4 }, { key: 'howto', label: 'A how-to book (good for interviews)', price: 1499, item: 'book', mood: 2 }] : [{ key: 'card', label: 'A greetings card', price: 350, mood: 1 }];
     case 'mall':
       if (spotKind === 'food_court') return [{ key: 'burger', label: 'Burger and fries', price: 799, eat: 55, mood: 5 }, { key: 'noodles', label: 'Noodle box', price: 650, eat: 45, mood: 4 }, { key: 'shake', label: 'Milkshake', price: 399, eat: 10, energy: 6, mood: 6 }];
       if (spotKind === 'jeweller') return [
