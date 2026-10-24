@@ -304,6 +304,7 @@ export class AnimationController {
 
   private transition: string | null = null;
   private transitionEnd = 0;
+  private walking = false;
 
   private play(clip: string, fade: number) {
     const next = this.get(clip);
@@ -340,13 +341,15 @@ export class AnimationController {
     } else if (speed > 2.6) {
       clip = 'run';
       rate = speed / RUN_SPEED_REF;
-    } else if (speed > 0.15) {
+    } else if (speed > (this.walking ? 0.1 : 0.3)) {
       clip = carrying ? 'carry_walk' : MOCAP[this.walkStyle] ? this.walkStyle : 'walk';
       const ref = carrying ? CARRY_SPEED_REF : MOCAP[clip]?.speed || WALK_SPEED_REF;
       rate = Math.max(0.5, Math.min(2.2, speed / ref));
     } else {
       clip = carrying ? 'carry_idle' : 'idle';
     }
+    // a little hysteresis, so a nudge or a correction never flickers the legs between standing and walking
+    this.walking = !action && speed > (this.walking ? 0.1 : 0.3);
     // transitions between standing and seated play the captured sit-down / stand-up move first
     const now = this.mixer.time;
     if (this.transition && now >= this.transitionEnd) this.transition = null;

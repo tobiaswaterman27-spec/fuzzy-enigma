@@ -224,6 +224,7 @@ class PersonView {
   culled = false;
   /** sideways offset so two people standing on the same spot are drawn side by side */
   nudge = { x: 0, z: 0 };
+  private turnRate = 0;
   shadow = true;
 
   constructor(public p: Person, private scene: THREE.Scene) {
@@ -296,6 +297,8 @@ class PersonView {
     const cur = root.rotation.y;
     let diff = ((yaw - cur + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
     root.rotation.y = cur + diff * Math.min(1, dt * 12);
+    // how fast they are turning (rad/s), so a turn on the spot is stepped round rather than slid
+    this.turnRate += ((dt > 0 ? Math.abs(diff * Math.min(1, dt * 12)) / dt : 0) - this.turnRate) * Math.min(1, dt * 8);
     // lying down / sitting alignment
     const a = p.action;
     const it = a ? getWorld().interactables[a.target] : null;
@@ -465,7 +468,8 @@ class PersonView {
     this.syncPhone();
     this.syncRod(state, p);
     const stepping = a?.type === 'shower' && this.showerStep;
-    const realSpeed = stage ? (stage.walking ? Math.max(0.6, this.speed) : 0) : stepping ? 0.9 : a || this.bedIt ? 0 : this.speed;
+    let realSpeed = stage ? (stage.walking ? Math.max(0.6, this.speed) : 0) : stepping ? 0.9 : a || this.bedIt ? 0 : this.speed;
+    if (!a && !stage && !this.bedIt && realSpeed < 0.35 && this.turnRate > 2.2 && !p.sleeping) realSpeed = 0.5;
     // site work looks like the job in hand: digging and shovelling, laying bricks, fixing and painting
     const siteClip = a?.type === 'site_work' ? (p.equipment === 'tool_spade' || p.equipment === 'tool_shovel' ? 'clean' : 'stock_shelf') : null;
     const floored = p.down != null || !!p.dead;

@@ -1231,7 +1231,7 @@ export class Game {
     // drunk: you weave about whether you mean to or not
     const drunk = p.drunk ?? 0;
     if (drunk > 35) {
-      const t = performance.now() / 1000, sway = ((drunk - 35) / 65) * 1.1 * (len > 0 ? 1 : 0.25);
+      const t = performance.now() / 1000, sway = ((drunk - 35) / 65) * 1.1 * (len > 0 ? 1 : 0.08);
       tx += Math.sin(t * 1.3) * sway * Math.cos(p.facing); tz -= Math.sin(t * 1.3) * sway * Math.sin(p.facing);
     }
     // acceleration: quick to start, a little slower to stop
