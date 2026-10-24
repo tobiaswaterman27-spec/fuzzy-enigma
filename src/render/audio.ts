@@ -214,7 +214,7 @@ export class Audio {
     src.connect(lp).connect(g).connect(this.master); src.start(t, Math.random() * 0.5); src.stop(t + 1.2);
   }
   /** a strummed chord on an acoustic guitar: six plucked strings a few ms apart, ringing out */
-  strum(root: number, minor: boolean, down = true) {
+  strum(root: number, minor: boolean, down = true, level = 1) {
     if (!this.ctx || this.muted) return;
     const c = this.ctx, t0 = c.currentTime;
     const ivs = [0, 7, 12, minor ? 15 : 16, 19, 24];
@@ -222,7 +222,7 @@ export class Audio {
       const t = t0 + k * 0.014, f = root * Math.pow(2, iv / 12);
       for (const [type, mul, vol] of [['triangle', 1, 0.05], ['sine', 2, 0.02]] as const) {
         const o = c.createOscillator(); o.type = type; o.frequency.value = f * mul;
-        const g = c.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.4 - k * 0.08);
+        const g = c.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol * level, t + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.4 - k * 0.08);
         o.connect(g).connect(this.master); o.start(t); o.stop(t + 1.5);
       }
     });

@@ -9,7 +9,7 @@ import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
-import type { GameState , Vehicle } from '../sim/types';
+import type { GameState , Person, Vehicle } from '../sim/types';
 import { step } from '../sim/sim';
 import { cancelAction, focusInteractable, optionsFor, startAction, enforceLocationRules, type ActionOption } from '../sim/actions';
 import { resolveCircle } from '../sim/world/nav';
@@ -40,6 +40,7 @@ import { setWet } from '../render/wet';
 import { Views } from '../render/views';
 import { CityView } from '../render/city';
 import { fmtMoney } from '../sim/core';
+import { BUSKER } from '../sim/crowd';
 import { buskMinute, canBusk, coinText } from '../sim/busking';
 import { dogDies } from '../sim/rescue';
 import { Traffic } from '../render/traffic';
@@ -960,7 +961,7 @@ export class Game {
   }
   private buskTick(dt: number) {
     const b = this.busk, p = this.player;
-    if (!b) return;
+    if (!b) { this.buskerMusic(dt); return; }
     if (p.where !== 'outside' || p.action || p.down != null || this.drivingVan()) { this.stopBusk(); return; }
     b.beat -= dt;
     if (b.beat <= 0) {
@@ -981,6 +982,22 @@ export class Game {
     }
     const coin = buskMinute(this.state, p.id, near.length, Math.random());
     if (coin) { this.onToast(coinText(coin)); this.audio.cash(); }
+  }
+  /** the street busker: heard as you come near, louder the closer you are */
+  private buskerBeat = 0;
+  private buskerN = 0;
+  private buskerMusic(dt: number) {
+    const o = this.state.people[BUSKER] as (Person & { busking?: boolean }) | undefined, p = this.player;
+    if (!o?.busking || !o.visible || this.insideId) return;
+    const d = Math.hypot(o.pos.x - p.pos.x, o.pos.z - p.pos.z);
+    if (d > 24) return;
+    this.buskerBeat -= dt;
+    if (this.buskerBeat > 0) return;
+    const pat = [true, false, true, true, false, true];
+    const chords: [number, boolean][] = [[174.6, false], [220, true], [146.8, true], [196, false]];
+    const [root, minor] = chords[Math.floor(this.buskerN / 6) % 4];
+    this.audio.strum(root, minor, pat[this.buskerN % 6], Math.max(0.05, 1 - d / 24) * 0.8);
+    this.buskerN++; this.buskerBeat = pat[this.buskerN % 6] ? 0.36 : 0.26;
   }
   /** running on empty: the stomach makes itself heard now and then */
   private nextGrowl = 0;

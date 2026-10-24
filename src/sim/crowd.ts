@@ -8,6 +8,7 @@ import { ambientName, makePerson } from './newgame';
 import { goTo } from './npc';
 import { getWorld } from './world/layout';
 import { levelOf } from './world/levels';
+import { raining } from './weather';
 
 const POOL = 28;
 /** how many are out at this hour: busy in the day, a few stragglers in the small hours */
@@ -48,9 +49,35 @@ const cityNodes = () => {
 };
 let nearCache: { all: unknown; x: number; z: number; near: { id: string; x: number; z: number }[] } | null = null;
 
+// a busker with a guitar outside the station, the shopping centre or city hall, in the daytime
+export const BUSKER = 'busker_0';
+let buskSpots: { w: unknown; all: { x: number; z: number }[] } | null = null;
+function buskerTick(state: GameState, me: Person) {
+  const w = getWorld();
+  if (buskSpots?.w !== w) buskSpots = { w, all: w.buildings.filter((b) => b.id.startsWith('v_') && /^(Railway station|Shopping centre|City Hall)/.test(b.role ?? '')).map((b) => w.nodes[`walk_${b.id}`]).filter(Boolean).map((n) => ({ x: n.x + 2.6, z: n.z - 1.2 })) };
+  const h = Math.floor((state.minute % 1440) / 60);
+  const spot = buskSpots.all.find((s) => dist(s, me.pos) < 90) ?? null;
+  const on = !!spot && h >= 10 && h < 19 && raining(state) < 0.3;
+  let p = state.people[BUSKER];
+  if (!p && !on) return;
+  if (!p) {
+    p = makePerson(state, BUSKER, ambientName(state), { homeId: null, cash: 500 });
+    p.npc!.ambient = true; p.fixedJob = 'crowd'; p.age = 24;
+    p.visible = false; p.where = 'offsite';
+  }
+  const b = p as Person & { busking?: boolean };
+  if (p.dead || p.down != null || p.combat || (p.fleeing ?? 0) > state.minute) { b.busking = false; return; }
+  if (on) {
+    if (!p.visible || dist(p.pos, spot!) > 1) { p.pos = { ...spot! }; p.visible = true; p.where = 'outside'; }
+    p.move = null; p.facing = 0; b.busking = true;
+    (p.npc as { idleUntil?: number }).idleUntil = state.minute + 5;
+  } else if (p.visible) { p.visible = false; p.where = 'offsite'; b.busking = false; }
+}
+
 export function crowdTick(state: GameState) {
   const me = state.people[state.playerId];
   if (!me || levelOf(me.pos.x) !== 0) return;
+  buskerTick(state, me);
   const nodes = cityNodes();
   if (!nodes.length) return;
   if (!nearCache || nearCache.all !== nodes || Math.hypot(nearCache.x - me.pos.x, nearCache.z - me.pos.z) > 8) nearCache = { all: nodes, x: me.pos.x, z: me.pos.z, near: nodes.filter((n) => { const d = dist(n, me.pos); return d > 28 && d < 110; }) };

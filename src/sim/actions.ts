@@ -363,6 +363,7 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
       }
       if (p.isPlayer && state.incident && state.incident.stage !== 'done' && (state.incident.a === other.id || state.incident.b === other.id)) out.unshift(opt('break_up', 'Step in and break it up'));
       if (p.isPlayer && (other.npc as any)?.shoplift) out.unshift(opt('grab', `Grab ${other.name.split(' ')[0]} (shoplifter!)`));
+      if (p.isPlayer && (other as { busking?: boolean }).busking) out.unshift(opt('give_flowers', `Drop a pound in ${other.name.split(' ')[0]}'s guitar case`, (state.ledger.accounts[p.accountId]?.balance ?? 0) < 100 ? 'No change on you' : undefined, 'tip'));
       if (p.isPlayer && !other.police && count(state.containers[p.bagId], 'flowers') > 0) out.unshift(opt('give_flowers', `Give ${other.name.split(' ')[0]} the flowers`));
       out.push(opt('talk', p.isPlayer ? `Wave and say hello` : `Chat with ${other.name}`, other.action?.type === 'serve_customer' ? 'Busy serving' : undefined));
       if (p.isPlayer && !other.npc?.ambient) out.push({ type: 'ui', label: `Invite ${other.name.split(' ')[0]} for a coffee`, enabled: fam >= FRIEND_AT && !plannedMeetup(state), reason: fam < FRIEND_AT ? 'Get to know them better first (chat more)' : 'You already have a meet-up arranged', ui: 'invite', arg: other.id });
@@ -825,6 +826,13 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
       begin(p, type, itId, { duration: 1.4 }, now); break;
     case 'deliveries': { const v = venueOfSpot(itId); return { ok: true, msg: v ? startDeliveries(state, p.id, v.id, p.pos) : '' }; }
     case 'give_flowers':
+      if (arg === 'tip') {
+        const o = state.people[itId.slice(7)];
+        transfer(state, { from: p.accountId, to: o.accountId, amount: 100, reason: 'transfer', memo: 'Tip for the busker', key: `tip:${o.id}:${Math.floor(state.minute * 10)}` });
+        p.needs.mood = clamp(p.needs.mood + 3, 0, 100);
+        o.gesture = { clip: 'wave', until: state.minute + 0.6 };
+        return { ok: true, msg: `${o.name.split(' ')[0]} nods without missing a beat. "Cheers!"` };
+      }
       return { ok: true, msg: giveFlowers(state, p, itId.slice(7)) };
     case 'pickpocket': case 'mug': {
       const o = state.people[itId.slice(7)];
