@@ -885,6 +885,8 @@ export class Game {
     if (wear === 'outfit_casual' && extras.includes('chain') && extras.includes('sunglasses')) lines.push('Flash, aren\'t we.');
     if ((s.containers[me.bagId]?.items.flowers ?? 0) > 0) lines.push('Ooh, flowers! Who are they for, then?', 'Somebody\'s lucky day.');
     if (hr >= 1 && hr < 5) lines.push('What are you doing out at this hour?');
+    if (me.needs.satiety < 12) lines.push('Was that your stomach? Go and get something to eat!');
+    if (me.needs.energy < 12) lines.push('You look dead on your feet, mate.');
     if ((me.record?.length ?? 0) >= 3 || s.wanted) lines.push('I know your face... weren\'t you in the paper?', 'That\'s the one the police are after.');
     // someone the worse for drink on their way home: singing, shouting, overly friendly
     const sot = Object.values(s.people).find((q) => !q.isPlayer && q.visible && (q.drunk ?? 0) > 40 && q.down == null && !q.combat && Math.hypot(q.pos.x - me.pos.x, q.pos.z - me.pos.z) < 9 && (this.remarked.get(q.id) ?? 0) < now);
