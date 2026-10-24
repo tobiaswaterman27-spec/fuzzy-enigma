@@ -21,7 +21,7 @@ import { count, total, firstItem } from '../sim/inventory';
 import { SHELF_CAPACITY } from '../sim/retail';
 import { FORKLIFT_ID, palletsWaiting } from '../sim/forklift';
 import { ageOf } from '../sim/persona';
-import { temperature } from '../sim/weather';
+import { raining, temperature } from '../sim/weather';
 import { buildOneOnMainThread, requestHuman, workerActive } from './humanBuilder';
 
 /** realistic bodies are costly to cut and drape, so outfit/body rebuilds are spread over frames */
@@ -531,6 +531,7 @@ class PersonView {
     const standing = !floored && !this.bedIt && !this.seatAt && !p.sleeping && realSpeed < 0.05 && !stage?.walking && a?.type !== 'attack' && !MOVING_CLIPS.has(st) && !st.startsWith('walk');
     this.plantW += ((standing ? 1 : 0) - this.plantW) * Math.min(1, dt * 6);
     if (this.plantW > 0.02 && this.rig.joints) this.plantFeet(this.plantW);
+    this.umbrellaFx(state, p, realSpeed);
     // keep the feet on the floor: whatever the animation does, the lower foot rests on the ground
     if (!this.bedIt && !floored && this.rig.joints && !this.seatAt) {
       this.rig.root.updateMatrixWorld(true);
@@ -729,6 +730,43 @@ class PersonView {
       aimBone(thigh, shin, knee);
       aimBone(shin, foot, H.clone().addScaledVector(dir, d));
     }
+  }
+  /** in the rain, an umbrella up over the head, the right hand on the shaft at chest height */
+  private brolly: THREE.Group | null = null;
+  private umbrellaFx(state: GameState, p: Person, speed: number) {
+    let h = 0; for (let i = 0; i < p.id.length; i++) h = (h * 31 + p.id.charCodeAt(i)) >>> 0;
+    const owns = p.isPlayer ? count(state.containers[p.bagId], 'umbrella') > 0 : !p.police && h % 10 < 6;
+    const busy = !!p.action || !!this.seatAt || !!this.bedIt || p.down != null || !!p.dead || !!p.weapon || speed > 2.6 || !!firstItem(state.containers[p.handsId]);
+    const on = rainNow > 0.25 && owns && !busy && p.where === 'outside' && p.visible && this.lod < 3;
+    if (!on) { if (this.brolly) this.brolly.visible = false; return; }
+    if (!this.brolly) {
+      const g = new THREE.Group();
+      const cols = ['#111418', '#1d2b44', '#7a1f2b', '#2f5a3a', '#c99a2e', '#5b3a7a'];
+      const canopy = new THREE.Mesh(new THREE.ConeGeometry(0.58, 0.26, 8, 1, true), new THREE.MeshStandardMaterial({ color: cols[h % cols.length], roughness: 0.45, side: THREE.DoubleSide }));
+      canopy.position.y = 0.9; canopy.castShadow = true;
+      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.95, 6), new THREE.MeshStandardMaterial({ color: '#2a2a2a', metalness: 0.6, roughness: 0.4 }));
+      shaft.position.y = 0.5;
+      const tip = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.08, 5), shaft.material); tip.position.y = 1.06;
+      g.add(canopy, shaft, tip);
+      this.brolly = g;
+    }
+    if (this.brolly.parent !== this.rig.root.parent) this.rig.root.parent?.add(this.brolly);
+    const B = this.rig.bones, root = this.rig.root;
+    root.updateMatrixWorld(true);
+    const yaw = root.getWorldQuaternion(new THREE.Quaternion());
+    const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(yaw).setY(0).normalize(), right = new THREE.Vector3(-fwd.z, 0, fwd.x);
+    const chest = B.chest.getWorldPosition(new THREE.Vector3());
+    const grip = chest.clone().addScaledVector(fwd, 0.26).addScaledVector(right, 0.12).add(new THREE.Vector3(0, -0.02, 0));
+    const sh = B.armR.getWorldPosition(new THREE.Vector3());
+    const elbow = sh.clone().lerp(grip, 0.5).addScaledVector(right, 0.12).add(new THREE.Vector3(0, -0.16, 0));
+    aimBone(B.armR, B.foreR, elbow);
+    aimBone(B.foreR, B.handR, grip);
+    // the shaft runs up from the hand, leaning in over the head
+    const local = root.parent!.worldToLocal(grip.clone().add(new THREE.Vector3(0, -0.06, 0)));
+    this.brolly.position.copy(local);
+    this.brolly.rotation.set(0, 0, 0);
+    this.brolly.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 1, 0).addScaledVector(fwd, -0.12).addScaledVector(right, -0.14).normalize());
+    this.brolly.visible = true;
   }
   /** breath that shows in cold air: a little puff from the mouth every few seconds, outdoors */
   private breath: THREE.Sprite | null = null;
@@ -1142,6 +1180,8 @@ function hygieneSticker(rating: number | null): THREE.CanvasTexture {
 
 /** the air temperature this frame (for breath in the cold) */
 let airTemp = 12;
+/** how hard it is raining this frame (0..1) */
+let rainNow = 0;
 let breathMat: THREE.SpriteMaterial | null = null;
 function breathMaterial(): THREE.SpriteMaterial {
   if (breathMat) return breathMat.clone();
@@ -1518,6 +1558,7 @@ export class Views {
   update(state: GameState, dt: number, viewer?: { x: number; z: number }, viewerInside?: string | null, speech?: Map<string, { text: string; until: number }>) {
     buildBudget = 1;
     airTemp = temperature(state);
+    rainNow = raining(state);
     this.syncBlood(state);
     // without a worker, bodies are built here, one per frame at most
     if (!workerActive() && buildOneOnMainThread()) buildBudget = 0;

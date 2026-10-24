@@ -80,7 +80,7 @@ export function offersAt(v: Venue, spotKind: string): Offer[] {
   switch (v.kind) {
     case 'shop':
       if (spotKind === 'venue_fridge') return [{ key: 'drink', label: 'A cold drink', price: 150, drink: 1, energy: 4, mood: 2 }, { key: 'milk', label: 'Milk', price: 125, item: 'milk' }];
-      if (spotKind === 'venue_shelf') return [{ key: 'snacks', label: 'Crisps', price: 135, item: 'snacks' }, { key: 'bread', label: 'Bread', price: 240, item: 'bread' }, { key: 'pasta', label: 'Pasta', price: 180, item: 'pasta' }, { key: 'soap', label: 'Soap', price: 150, item: 'soap' }];
+      if (spotKind === 'venue_shelf') return [{ key: 'snacks', label: 'Crisps', price: 135, item: 'snacks' }, { key: 'bread', label: 'Bread', price: 240, item: 'bread' }, { key: 'pasta', label: 'Pasta', price: 180, item: 'pasta' }, { key: 'soap', label: 'Soap', price: 150, item: 'soap' }, { key: 'umbrella', label: 'An umbrella (up when it rains)', price: 899, item: 'umbrella' }];
       return [{ key: 'sandwich', label: 'A meal deal (sandwich, crisps, drink)', price: 399, eat: 40, mood: 3 }];
     case 'cafe': return [{ key: 'coffee', label: 'Coffee and a pastry', price: 450, eat: 20, energy: 15, mood: 5 }, { key: 'breakfast', label: 'Full English breakfast', price: 895, eat: 65, mood: 8 }];
     case 'takeaway': return TAKEAWAY[v.name] ?? [{ key: 'chips', label: 'Chips', price: 350, eat: 30, mood: 4 }];
