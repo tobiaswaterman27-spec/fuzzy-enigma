@@ -93,10 +93,15 @@ export class Audio {
     for (const [m, d] of notes) { const f = 440 * Math.pow(2, (m + 12 - 69) / 12); this.blip(f, d * 0.42, 'triangle', v, t); this.blip(f * 2, d * 0.3, 'sine', v * 0.4, t); t += d * 0.42; }
   }
   /** a car horn, a short double beep (two notes a third apart, like most cars) */
-  horn(dist: number) {
+  horn(dist: number, pitch = 1) {
     if (!this.ctx || this.muted) return;
     const v = Math.min(0.12, 4 / Math.max(6, dist));
-    for (const [w, d] of [[0, 0.22], [0.3, 0.4]]) { this.blip(392, d, 'sawtooth', v, w); this.blip(494, d, 'sawtooth', v * 0.8, w); }
+    for (const [w, d] of [[0, 0.22], [0.3, 0.4]]) { this.blip(392 * pitch, d, 'sawtooth', v, w); this.blip(494 * pitch, d, 'sawtooth', v * 0.8, w); }
+  }
+  /** a pushbike bell: two bright rings */
+  bell() {
+    if (!this.ctx || this.muted) return;
+    for (const w of [0, 0.16]) { this.blip(2350, 0.5, 'sine', 0.05, w); this.blip(3420, 0.35, 'sine', 0.025, w); this.blip(5100, 0.2, 'sine', 0.012, w); }
   }
   private screechNode: { g: GainNode; f: BiquadFilterNode } | null = null;
   /** tyres howling in a slide or a locked-wheel stop (0..1) */

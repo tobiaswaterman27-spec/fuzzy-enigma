@@ -606,6 +606,7 @@ export class Game {
         });
         return;
       }
+      if (e.code === 'KeyH' && this.drivingVan() && this.drivingVan()!.kind !== 'forklift') { this.honk(); return; }
       // hands up: stand still and let them take you in (a lighter sentence)
       if (e.code === 'KeyH' && !this.drivingVan() && this.state.wanted && !this.state.wanted.surrender) {
         this.state.wanted.surrender = true;
@@ -1074,6 +1075,45 @@ export class Game {
   skid = 0;
   private bumpCooldown = 0;
   private diveCooldown = new Map<string, number>();
+  /** the horn (a bell on a pushbike): people ahead step out of the way, look round, and say so */
+  private honks: number[] = [];
+  private honk() {
+    const v = this.drivingVan()!, now = performance.now();
+    if (this.honks.length && now - this.honks[this.honks.length - 1] < 450) return;
+    const kind = v.kind === 'bike' ? (v.model === 'moped' ? 'moped' : 'bell') : v.kind === 'boat' ? 'boat' : 'car';
+    if (kind === 'bell') this.audio.bell(); else this.audio.horn(0, kind === 'moped' ? 1.6 : kind === 'boat' ? 0.5 : 1);
+    this.honks = this.honks.filter((t) => now - t < 12000);
+    this.honks.push(now);
+    if (v.kind === 'boat') return;
+    const me = this.player, fx = Math.sin(v.heading), fz = Math.cos(v.heading);
+    const lean = this.honks.length >= 4;
+    let spoke = false;
+    const near = Object.values(this.state.people).filter((o) => !o.isPlayer && o.visible && !o.dead && o.down == null && !o.sleeping && o.where !== 'vehicle' && !o.combat && Math.hypot(o.pos.x - v.pos.x, o.pos.z - v.pos.z) < 16)
+      .sort((a, b) => Math.hypot(a.pos.x - v.pos.x, a.pos.z - v.pos.z) - Math.hypot(b.pos.x - v.pos.x, b.pos.z - v.pos.z));
+    const first = me.name.split(' ')[0];
+    for (const o of near) {
+      const dx = o.pos.x - v.pos.x, dz = o.pos.z - v.pos.z, along = dx * fx + dz * fz, side = dx * fz - dz * fx;
+      // in the way: a startled hop to the side
+      if (along > 1 && along < 9 && Math.abs(side) < 1.6 && !o.action) {
+        const away = side >= 0 ? 1 : -1;
+        o.pos = resolveCircle({ x: o.pos.x + fz * away * 1.4, z: o.pos.z - fx * away * 1.4 }, 0.3);
+        o.gesture = { clip: 'scared', until: this.state.minute + 0.6 };
+      }
+      if (spoke || (this.remarked.get(o.id) ?? 0) > now) continue;
+      const friend = o.npc && (o.relations[me.id] ?? 0) >= 30;
+      const r = (Math.imul(o.id.length * 131 + this.honks.length, 2654435761) >>> 0) % 4;
+      let line: string;
+      if (friend && !lean) { line = [`Alright, ${first}!`, `${first}! Nice wheels!`, `Ha! Hiya, ${first}!`, `Oi oi, ${first}!`][r]; o.gesture = { clip: 'wave', until: this.state.minute + 1.2 }; }
+      else if (o.police) line = lean ? 'Enough with the horn. Move along.' : ['Easy on the horn.', 'Is there a problem, driver?', 'Keep it down.', 'Move along, please.'][r];
+      else if ((o.drunk ?? 0) > 40) { line = ['Wahey! Beep beep!', 'Toot toot! Haha!', 'Give us a lift!', 'Yesss! Party bus!'][r]; o.gesture = { clip: 'happy', until: this.state.minute + 1.2 }; }
+      else if (lean) { line = ['Give it a rest, will you?', 'We heard you the first time!', 'Oh, shut up!', 'Some of us are trying to think!'][r]; o.gesture = { clip: 'argue', until: this.state.minute + 1.5 }; }
+      else if (Math.abs(this.vanSpeed) < 1) line = ['What? Who are you beeping at?', 'Alright, alright!', 'Do I know you?', 'Was that at me?'][r];
+      else { line = ['Jesus! Made me jump!', 'Alright, I\'m moving!', 'No need for that!', 'Yeah, yeah.'][r]; o.gesture = { clip: 'shrug', until: this.state.minute + 1 }; }
+      this.say(o.id, line, 4);
+      this.remarked.set(o.id, now + 15000);
+      spoke = true;
+    }
+  }
   private fireWarned = false;
   private homeCheck = 0;
   private homeKey = '';
