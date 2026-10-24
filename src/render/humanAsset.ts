@@ -303,8 +303,8 @@ const MAKERS: Record<string, (...args: any[]) => THREE.Material> = {
   lash: (hair: string) => lashMaterial(hair),
   cloth: (color: string, kind: string, rough: number) => cloth(color, kind, rough),
   std: (key: string, p: THREE.MeshStandardMaterialParameters) => cached(key, () => new THREE.MeshStandardMaterial(p)),
-  hair: (color: string, style: string) => cached(`hhair${color}${style}`, () => new THREE.MeshStandardMaterial({ color: '#ffffff', map: hairTexture(color, style === 'curly'), roughness: 0.5, side: THREE.DoubleSide })),
-  shell: (color: string, style: string, k: number) => cached(`hshell${color}${style}${k}`, () => new THREE.MeshStandardMaterial({ color: '#ffffff', map: strandTexture(color, style === 'curly', k), roughness: 0.55, alphaTest: 0.35 + k * 0.1, side: THREE.DoubleSide })),
+  hair: (color: string, style: string) => cached(`hhair${color}${style}`, () => new THREE.MeshStandardMaterial({ color: '#ffffff', map: hairTexture(color, style === 'curly' || style === 'afro'), roughness: 0.5, side: THREE.DoubleSide })),
+  shell: (color: string, style: string, k: number) => cached(`hshell${color}${style}${k}`, () => new THREE.MeshStandardMaterial({ color: '#ffffff', map: strandTexture(color, style === 'curly' || style === 'afro', k), roughness: 0.55, alphaTest: 0.35 + k * 0.1, side: THREE.DoubleSide })),
   eye: (color: string) => cached(`eye${color}`, () => new THREE.MeshPhysicalMaterial({ map: irisTexture(color), roughness: 0.15, clearcoat: 1, clearcoatRoughness: 0.05 })),
 };
 let workerMode = false;
@@ -494,13 +494,13 @@ function hairFall(pos: Float32Array, head: THREE.Vector3): THREE.BufferGeometry 
     const f = (((a + Math.PI) / (2 * Math.PI)) * bins - 0.5 + bins) % bins, k0 = Math.floor(f), t = f - k0;
     return ring[k0] * (1 - t) + ring[(k0 + 1) % bins] * t;
   };
-  const cols = 22, rows = 12, a0 = Math.PI * 0.5, a1 = Math.PI * 1.5, len = 0.4;
+  const cols = 22, rows = 12, a0 = Math.PI * 0.5, a1 = Math.PI * 1.5, len = 0.34;
   const P: number[] = [], U: number[] = [], I: number[] = [];
   for (let r = 0; r <= rows; r++) for (let c = 0; c <= cols; c++) {
     const t = r / rows, a = a0 + ((a1 - a0) * c) / cols;
     const edge = Math.abs(c / cols - 0.5) * 2;
     // sides tuck in towards the bottom so the ends look like hair, not a cut tube
-    const rad = radiusAt(a) + 0.012 + 0.045 * Math.min(1, t * 1.6) - 0.02 * t * Math.pow(edge, 3);
+    const rad = radiusAt(a) + 0.01 + 0.022 * Math.min(1, t * 1.6) - 0.025 * t * Math.pow(edge, 3) - 0.03 * Math.max(0, t - 0.35);
     const y = yRing - 0.05 * Math.pow(edge, 2) - len * t * (1 - 0.25 * Math.pow(edge, 2));
     P.push(Math.sin(a) * rad, y - head.y, cz + Math.cos(a) * rad - head.z);
     U.push((c / cols) * 3, t * 4);
@@ -942,8 +942,8 @@ function buildRealHumanUncached(a: Appearance): HumanBuild {
     {
       const dx = x - hd.x, dz = z - (hd.z + 0.01), dy = y - hd.y;
       const front = (dz / Math.max(1e-6, Math.hypot(dx, dz)) + 1) / 2; // 1 = forehead, 0 = back of head
-      const back = style === 'long' ? -0.1 : style === 'bun' ? 0.0 : style === 'curly' ? 0.02 : 0.03;
-      const top = style === 'curly' ? 0.1 : 0.115;
+      const back = style === 'long' ? -0.1 : style === 'bob' ? -0.065 : style === 'bun' || style === 'ponytail' || style === 'afro' ? 0.0 : style === 'curly' ? 0.02 : 0.03;
+      const top = style === 'curly' ? 0.1 : style === 'afro' ? 0.095 : style === 'buzz' ? 0.105 : 0.115;
       const line = back + (top - back) * Math.pow(front, 2.2);
       const headish = W.headNeck[v];
       // keep the ears clear of hair
@@ -1086,8 +1086,8 @@ function buildRealHumanUncached(a: Appearance): HumanBuild {
     if (band) sk(band, mat('cloth', g.top.collar ?? g.top.color, g.top.tex, 0.9));
     void topTris;
     sk(poolGeometry(pool, botTris, 0.008, 6, 8, bridge, legHang), mat('cloth', g.bottom.color, g.bottom.tex, 0.9));
-    const style = SHOE_STYLE[a.outfit] ?? 'shoe_trainer';
-    const shoes = hasModel(style) ? shoeGeometries(style, pos, W.foot, [joints.footL.x, joints.footR.x], [bi('footL'), bi('footR')]) : [];
+    const shoeStyle = SHOE_STYLE[a.outfit] ?? 'shoe_trainer';
+    const shoes = hasModel(shoeStyle) ? shoeGeometries(shoeStyle, pos, W.foot, [joints.footL.x, joints.footR.x], [bi('footL'), bi('footR')]) : [];
     if (shoes.length) {
       // real shoes replace the feet
       for (const sh of shoes) sk(sh.geo, sh.paint ? mat('std', `shoe${g.shoes}`, { color: g.shoes, roughness: 0.45, metalness: 0.05 }) : mat('std', `shoepart${sh.color.getHexString()}`, { color: `#${sh.color.getHexString()}`, roughness: 0.6 }));
@@ -1118,13 +1118,13 @@ function buildRealHumanUncached(a: Appearance): HumanBuild {
     }
     // hair: the scalp region cut along the hairline, lifted off the head per style
     if (style !== 'bald' && hairTris.length) {
-      const thick = style === 'curly' ? 0.022 : style === 'long' ? 0.014 : style === 'bun' ? 0.008 : 0.007;
+      const thick = style === 'afro' ? 0.045 : style === 'curly' ? 0.022 : style === 'long' ? 0.014 : style === 'bob' ? 0.018 : style === 'bun' || style === 'ponytail' ? 0.008 : style === 'buzz' ? 0.0025 : 0.007;
       const hairM = mat('hair', a.hairColor, style);
       // the hair layer plus a hair-coloured scalp under it (so thin spots never show bare skin), as one mesh
       sk(mergeGeometries([poolGeometry(pool, hairTris, thick, 9, 3), poolGeometry(pool, hairTris, 0.001, 9, 0)])!, hairM);
       // strand shells: progressively sparser layers of loose strands above the hair, for a soft, fuzzy outline
-      const shells = style === 'curly' ? 4 : 3;
-      const step = style === 'curly' ? 0.006 : 0.0035;
+      const shells = style === 'afro' ? 6 : style === 'curly' ? 4 : style === 'buzz' ? 1 : 3;
+      const step = style === 'afro' ? 0.008 : style === 'curly' ? 0.006 : style === 'buzz' ? 0.0015 : 0.0035;
       for (let k = 1; k <= shells; k++) {
         const shellM = mat('shell', a.hairColor, style, k);
         const shell = sk(poolGeometry(pool, hairTris, thick + k * step, 9, 3), shellM);
@@ -1136,6 +1136,20 @@ function buildRealHumanUncached(a: Appearance): HumanBuild {
         bun.position.set(0, 0.135, -0.09);
         bun.scale.set(1, 0.9, 0.9);
         out.push(bun);
+      }
+      if (style === 'ponytail') {
+        // a tail from the crown down the back of the head, tied with a band
+        const tail = new THREE.CylinderGeometry(0.028, 0.012, 0.24, 12, 4);
+        const tp = tail.getAttribute('position');
+        // falls from the band, curving out a little then hanging down the nape
+        for (let i = 0; i < tp.count; i++) { const y = tp.getY(i), k = (0.12 - y) / 0.24; tp.setZ(i, tp.getZ(i) - Math.sin(k * Math.PI * 0.8) * 0.035); }
+        tail.computeVertexNormals();
+        const t = new THREE.Mesh(tail.translate(0, -0.12, 0), hairM);
+        t.userData.attach = 'head'; t.position.set(0, 0.105, -0.1); t.rotation.x = -0.12;
+        out.push(t);
+        const band = new THREE.Mesh(new THREE.TorusGeometry(0.024, 0.006, 6, 14).rotateX(Math.PI / 2 - 0.12), mat('std', 'hair_band', { color: '#222', roughness: 0.6 }));
+        band.userData.attach = 'head'; band.position.set(0, 0.095, -0.1);
+        out.push(band);
       }
       if (style === 'long') {
         // a fall of hair down the back to the shoulder blades

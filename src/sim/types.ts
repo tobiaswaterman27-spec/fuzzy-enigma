@@ -96,7 +96,7 @@ export interface Container {
 }
 
 // ------------------------------------------------------------- people
-export type HairStyle = 'short' | 'long' | 'bun' | 'bald' | 'curly';
+export type HairStyle = 'short' | 'long' | 'bun' | 'bald' | 'curly' | 'buzz' | 'bob' | 'ponytail' | 'afro';
 export type Build = 'slim' | 'average' | 'broad';
 
 export interface Appearance {

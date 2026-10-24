@@ -30,7 +30,7 @@ export interface PlayerSetup {
 
 export const SKIN_TONES = ['#f1d3b6', '#e3b48f', '#c98e66', '#a86b45', '#7a4a2e', '#4e2f1e'];
 export const HAIR_COLORS = ['#1b1b1b', '#3b2416', '#6b4423', '#a8743f', '#d8b36a', '#8e8e8e', '#b5462f'];
-export const HAIR_STYLES = ['short', 'long', 'bun', 'bald', 'curly'] as const;
+export const HAIR_STYLES = ['short', 'long', 'bun', 'bald', 'curly', 'buzz', 'bob', 'ponytail', 'afro'] as const;
 export const BUILDS = ['slim', 'average', 'broad'] as const;
 
 const MON_SAT = [0, 1, 2, 3, 4, 5];
