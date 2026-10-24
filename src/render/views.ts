@@ -23,6 +23,7 @@ import { FORKLIFT_ID, palletsWaiting } from '../sim/forklift';
 import { ageOf } from '../sim/persona';
 import { raining, temperature } from '../sim/weather';
 import { buildOneOnMainThread, requestHuman, workerActive } from './humanBuilder';
+import { farBody } from './farBody';
 
 /** realistic bodies are costly to cut and drape, so outfit/body rebuilds are spread over frames */
 let buildBudget = 0;
@@ -769,6 +770,29 @@ class PersonView {
     if (on === this.shellsOn) return;
     this.shellsOn = on;
     for (const o of this.shellMeshes) o.visible = on;
+  }
+  /** far away: the merged one-piece body stands in for all the separate parts */
+  private farOn = false;
+  private farRig: Rig | null = null;
+  private farKey = '';
+  private farMesh: THREE.SkinnedMesh | null = null;
+  setFar(on: boolean) {
+    if (this.farRig !== this.rig || this.farKey !== this.outfitKey) {
+      if (this.farMesh) { this.farMesh.parent?.remove(this.farMesh); this.farMesh = null; }
+      if (this.farOn) for (const m of this.rig.meshes) m.visible = true;
+      this.farRig = this.rig; this.farKey = this.outfitKey; this.farOn = false; this.shellRig = null;
+    }
+    if (on === this.farOn) return;
+    if (on && !this.farMesh) {
+      this.farMesh = farBody(this.rig, this.outfitKey);
+      if (!this.farMesh) return;
+      this.farMesh.castShadow = this.shadow;
+      this.rig.body.add(this.farMesh);
+    }
+    this.farOn = on;
+    this.farMesh!.visible = on;
+    for (const m of this.rig.meshes) m.visible = !on;
+    if (!on) { const sh = this.shellsOn; this.shellsOn = !sh; this.setShells(sh); }
   }
   /** busking: the guitar across the body, the left hand on the neck, the right hand strumming */
   private guitar: THREE.Group | null = null;
@@ -1759,6 +1783,7 @@ export class Views {
       v.lod = dv > 55 ? 3 : dv > 32 ? 2 : 1;
       // the soft strands round the hair only show close up
       v.setShells(dv < 18);
+      v.setFar(dv > 25);
       v.update(state, p, dt);
       if (p.isPlayer && this.hidePlayer) v.rig.root.visible = false;
       const sp = speech?.get(p.id);
