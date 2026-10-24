@@ -512,18 +512,22 @@ class PersonView {
     // standing about with nothing to do: people check their phones, yawn when tired, stretch
     if (!clipAction && realSpeed === 0 && (!p.isPlayer || p.needs.energy < 25) && !item) {
       this.idleFor += dt;
-      if (this.idleFidget && performance.now() < this.idleFidget.until) clipAction = `g:${this.idleFidget.clip}`;
+      if (this.idleFidget && performance.now() < this.idleFidget.until) clipAction = `g:${this.idleFidget.clip === 'smoke' ? 'drink' : this.idleFidget.clip}`;
       else if (this.idleFor > 6 && Math.random() < dt * 0.12) {
         const tired = p.needs.energy < 35;
         const r = Math.random();
-        const clip = p.isPlayer ? 'yawn' : tired && r < 0.5 ? 'yawn' : r < 0.6 ? 'phone' : r < 0.8 ? 'idle' : 'shrug';
-        this.idleFidget = { clip, until: performance.now() + (clip === 'phone' ? 6000 : 2600) };
+        // one in eight is a smoker: stood outside, they light up and take long drags
+        let hs = 0; for (let i = 0; i < p.id.length; i++) hs = (hs * 31 + p.id.charCodeAt(i)) >>> 0;
+        const smoker = !p.isPlayer && hs % 8 === 3 && p.where === 'outside' && rainNow < 0.3;
+        const clip = p.isPlayer ? 'yawn' : smoker && r < 0.7 ? 'smoke' : tired && r < 0.5 ? 'yawn' : r < 0.6 ? 'phone' : r < 0.8 ? 'idle' : 'shrug';
+        this.idleFidget = { clip, until: performance.now() + (clip === 'phone' ? 6000 : clip === 'smoke' ? 14000 : 2600) };
         this.idleFor = 0;
       }
     } else { this.idleFor = 0; this.idleFidget = null; }
     this.anim.walkStyle = walkStyleFor(p);
     this.stinkFx(p, dt);
     this.breathFx(p, dt);
+    this.smokeFx(!!this.idleFidget && this.idleFidget.clip === 'smoke' && performance.now() < this.idleFidget.until && !p.move && !p.action, dt);
     this.anim.update(dt, realSpeed, !!item, clipAction);
     // standing still, whatever the clip: feet planted where they stand, the hips swaying only a little
     // (the captured idles and gestures shuffle and step about, which reads as fidgeting on the spot)
@@ -779,6 +783,29 @@ class PersonView {
     this.brolly.rotation.set(0, 0, 0);
     this.brolly.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 1, 0).addScaledVector(fwd, -0.12).addScaledVector(right, -0.14).normalize());
     this.brolly.visible = true;
+  }
+  /** a cigarette between the fingers, a wisp of smoke off the end now and then */
+  private fag: THREE.Group | null = null;
+  private fagT = 0;
+  private smokeFx(on: boolean, dt: number) {
+    if (!on) { if (this.fag) { this.fag.parent?.remove(this.fag); this.fag = null; } return; }
+    if (!this.fag) {
+      const g = new THREE.Group();
+      const paper = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.07, 6), new THREE.MeshStandardMaterial({ color: '#f2efe8', roughness: 0.8 }));
+      const tip = new THREE.Mesh(new THREE.CylinderGeometry(0.0042, 0.0042, 0.012, 6), new THREE.MeshStandardMaterial({ color: '#ff5a1f', emissive: '#ff3a00', emissiveIntensity: 1.4 }));
+      tip.position.y = 0.04;
+      g.add(paper, tip);
+      g.rotation.z = Math.PI / 2;
+      g.position.set(0.02, -0.07, 0.03);
+      this.rig.bones.handR.add(g);
+      this.fag = g;
+    }
+    this.fagT -= dt;
+    if (this.fagT <= 0 && fxRef) {
+      this.fagT = 0.5 + Math.random() * 0.6;
+      const at = this.fag.localToWorld(new THREE.Vector3(0, 0.05, 0));
+      fxRef.emit('smoke', at.x, at.y, at.z, new THREE.Vector3((Math.random() - 0.5) * 0.1, 0.35, (Math.random() - 0.5) * 0.1), 0.08, 2.2);
+    }
   }
   /** breath that shows in cold air: a little puff from the mouth every few seconds, outdoors */
   private breath: THREE.Sprite | null = null;
@@ -1195,6 +1222,8 @@ let airTemp = 12;
 /** how hard it is raining this frame (0..1) */
 let rainNow = 0;
 let breathMat: THREE.SpriteMaterial | null = null;
+/** the shared smoke and fire effects (for cigarettes) */
+let fxRef: Fx | null = null;
 function breathMaterial(): THREE.SpriteMaterial {
   if (breathMat) return breathMat.clone();
   const cv = document.createElement('canvas'); cv.width = cv.height = 64;
@@ -1238,6 +1267,7 @@ export class Views {
 
   constructor(private scene: THREE.Scene) {
     this.fx = new Fx(scene);
+    fxRef = this.fx;
     // shelf products: one instanced mesh per shelf section (count = real shelf stock)
     const sections = [
       ...SHELF_LAYOUT.map((x) => ({ id: `shelf_${x.product}`, bid: 'market', gx: x.gx, zc: x.zc, len: 4.5 })),
