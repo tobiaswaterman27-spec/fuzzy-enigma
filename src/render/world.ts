@@ -963,6 +963,10 @@ function userFacing(o: Obstacle): number {
   return it ? Math.atan2(it.pos.x - it.obj.x, it.pos.z - it.obj.z) : o.rot ?? 0;
 }
 
+const FLOWER_BUCKET = new THREE.MeshStandardMaterial({ color: '#9aa3a8', metalness: 0.7, roughness: 0.4 });
+const FLOWER_LEAF = new THREE.MeshStandardMaterial({ color: '#3f7a35', roughness: 0.9 });
+const flowerMats = new Map<string, THREE.MeshStandardMaterial>();
+const flowerMat = (c: string) => flowerMats.get(c) ?? flowerMats.set(c, new THREE.MeshStandardMaterial({ color: c, roughness: 0.7 })).get(c)!;
 function buildObstacle(o: Obstacle): THREE.Object3D {
   const r = o.rect;
   const cx = (r.x0 + r.x1) / 2, cz = (r.z0 + r.z1) / 2, W = r.x1 - r.x0, D = r.z1 - r.z0;
@@ -973,6 +977,23 @@ function buildObstacle(o: Obstacle): THREE.Object3D {
   const place = (name: string, rot: number, paint?: string, scale = 1) => { const m = modelInstance(name, paint); if (!m) return false; m.position.set(cx, 0, cz); m.rotation.y = rot; m.scale.setScalar(scale); grp.add(m); return true; };
   switch (o.kind) {
     case 'sofa': if (fit('sofa', r, o.rot ?? Math.PI / 2, o.color ?? '#4f6d60')) return grp; break;
+    case 'flowers': {
+      // a zinc bucket of cut flowers: green stems, a mound of blooms in one colour with a few others
+      const bucket = new THREE.Mesh(new THREE.CylinderGeometry(Math.min(W, D) * 0.32, Math.min(W, D) * 0.26, 0.42, 14), FLOWER_BUCKET);
+      bucket.position.set(cx, o.height - 0.62, cz); grp.add(bucket);
+      const cols = ['#e0306a', '#f4d03f', '#ffffff', '#e8662a', '#9b59b6', '#ff8fb1', '#c0392b'];
+      const main = o.color ?? cols[Math.abs(Math.round(cx * 7 + cz * 3)) % cols.length];
+      const bloom = new THREE.SphereGeometry(0.045, 7, 5);
+      for (let k = 0; k < 22; k++) {
+        const a = k * 2.4, rr = Math.sqrt(k / 22) * Math.min(W, D) * 0.33;
+        const m = new THREE.Mesh(bloom, flowerMat(k % 5 === 4 ? cols[(k + 1) % cols.length] : main));
+        m.position.set(cx + Math.cos(a) * rr, o.height - 0.3 + Math.sin(k * 1.7) * 0.06 + (1 - rr / 0.3) * 0.05, cz + Math.sin(a) * rr);
+        grp.add(m);
+      }
+      const leaves = new THREE.Mesh(new THREE.SphereGeometry(Math.min(W, D) * 0.34, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), FLOWER_LEAF);
+      leaves.position.set(cx, o.height - 0.41, cz); leaves.scale.y = 0.6; grp.add(leaves);
+      return grp;
+    }
     case 'armchair': if (fit('armchair', r, o.rot ?? 0, o.color ?? '#6b6e73')) return grp; break;
     case 'bed': if (fit('bed', r, o.rot ?? -Math.PI / 2, o.color ?? '#4e6e9e')) return grp; break;
     case 'bedside': if (fit('bedside', r, o.rot ?? 0)) return grp; break;

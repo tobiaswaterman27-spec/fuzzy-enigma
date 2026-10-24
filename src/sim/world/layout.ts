@@ -154,6 +154,7 @@ export type ObstacleKind =
   | 'water_cooler'
   | 'leaflet_stand'
   | 'bistro_set'
+  | 'flowers'
   | 'site_fence'
   | 'site_house'
   | 'site_cabin'

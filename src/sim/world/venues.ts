@@ -362,16 +362,26 @@ function fitOut(id: string, kind: VenueKind, name: string, b: CityBuilding, fron
       break;
     }
     case 'bakery': {
-      // the glass counter of cakes and pasties across the shop, ovens behind
+      // the glass counter of cakes and pasties across the shop, ovens behind; bread racks down one
+      // side and a few little tables for a coffee and a pastry by the window
       counterBack(3.0);
       ob('kitchen', 1.2, D - 0.7, Wd - 1.2, D - 0.05, 0.92, true, backRot);
-      ob('table', 0.8, 2.2, 1.9, 3.3, 0.75, true);
+      for (let v = 3.2; v < D - 4.6; v += 2.2) ob('gondola', 0.3, v, 0.95, v + 1.8, 1.5, true, Math.PI / 2, '#c58b3a');
+      for (let u = 2.6; u + 1.2 < Wd - 1.4; u += 2.8) if (Math.abs(u + 0.6 - mid) > 1.6) for (let v = 2.4; v < D - 5.2; v += 2.8) ob('bistro_set', u, v, u + 1.3, v + 1.3, 0.75, true);
       break;
     }
     case 'florist': {
       counterFront(2.6);
-      // buckets of flowers down both sides
-      for (let v = 3.6; v < D - 1.2; v += 1.4) { ob('plant', 0.5, v, 1.1, v + 0.6, 1.0 + (v % 2) * 0.3, true); ob('plant', Wd - 1.1, v + 0.7, Wd - 0.5, v + 1.3, 0.9 + (v % 3) * 0.2, true); }
+      // buckets of flowers down both sides, and staging down the middle with more on
+      for (let v = 3.6; v < D - 1.2; v += 1.4) { ob('flowers', 0.4, v, 1.1, v + 0.7, 0.75, true); ob('flowers', Wd - 1.1, v + 0.7, Wd - 0.4, v + 1.4, 0.75, true); }
+      for (let u = 3.2; u + 1.6 < Wd - 3; u += 3.6) if (Math.abs(u + 0.8 - mid) > 1.4) for (let v = 4.4; v + 1.6 < D - 2; v += 3.4) {
+        // an island of buckets, the back row raised on a step so every bunch shows
+        ob('flowers', u, v, u + 0.75, v + 0.75, 0.8, true);
+        ob('flowers', u + 0.85, v, u + 1.6, v + 0.75, 0.8, true);
+        ob('flowers', u, v + 0.85, u + 0.75, v + 1.6, 1.15, true);
+        ob('flowers', u + 0.85, v + 0.85, u + 1.6, v + 1.6, 1.15, true);
+      }
+      ob('plant', Wd - 1.3, 0.3, Wd - 0.5, 1.1, 1.6, true);
       break;
     }
     case 'bookshop': {
@@ -381,7 +391,14 @@ function fitOut(id: string, kind: VenueKind, name: string, b: CityBuilding, fron
         spot(`books${Math.round(v)}`, 'venue_shelf', 'Bookshelves', 1.6, v + 0.8, 0.5, v + 0.8);
       }
       ob('bookcase', Wd - 0.75, 4, Wd - 0.3, D - 1.5, 1.9, true, -Math.PI / 2);
-      ob('armchair', mid - 0.5, D - 2.4, mid + 0.5, D - 1.4, 0.9, true, Math.PI, '#5a3a2a');
+      // free-standing bookcases back to back in rows down the shop, a reading corner at the back
+      for (let u = 3.0; u + 1.8 < Wd - 2.4; u += 3.4) if (Math.abs(u + 0.9 - mid) > 1.5) for (let v = 4.6; v + 0.9 < D - 3.6; v += 3.0) {
+        ob('bookcase', u, v, u + 1.8, v + 0.42, 1.6, true, backRot);
+        ob('bookcase', u, v + 0.46, u + 1.8, v + 0.88, 1.6, true, backRot + Math.PI);
+      }
+      ob('armchair', mid - 1.6, D - 2.4, mid - 0.6, D - 1.4, 0.9, true, Math.PI, '#5a3a2a');
+      ob('armchair', mid + 0.6, D - 2.4, mid + 1.6, D - 1.4, 0.9, true, Math.PI, '#2f4a3a');
+      ob('coffee_table', mid - 0.45, D - 3.4, mid + 0.45, D - 2.7, 0.45, true);
       break;
     }
     case 'pawn': {
