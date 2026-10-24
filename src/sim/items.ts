@@ -39,6 +39,8 @@ export const ITEMS: Record<string, ItemDef> = {
   cafe_supplies: { id: 'cafe_supplies', name: 'Cafe Ingredients', category: 'supplies', caseSize: 20, wholesale: 210, importCost: 150, retail: 0, satiety: 0, energy: 0, color: '#bbbbbb', demand: 0 },
   meal: { id: 'meal', name: 'Cafe Meal', category: 'meal', caseSize: 1, wholesale: 0, importCost: 0, retail: 850, satiety: 55, energy: 5, color: '#ffffff', demand: 0 },
   outfit_casual: { id: 'outfit_casual', name: 'Casual Clothes', category: 'clothing', caseSize: 1, wholesale: 0, importCost: 0, retail: 0, satiety: 0, energy: 0, color: '#4a6fa5', demand: 0 },
+  outfit_sport: { id: 'outfit_sport', name: 'Tracksuit', category: 'clothing', caseSize: 1, wholesale: 0, importCost: 0, retail: 0, satiety: 0, energy: 0, color: '#1f2a44', demand: 0 },
+  outfit_night: { id: 'outfit_night', name: 'Going-out Clothes', category: 'clothing', caseSize: 1, wholesale: 0, importCost: 0, retail: 0, satiety: 0, energy: 0, color: '#1b1b1f', demand: 0 },
   outfit_smart: { id: 'outfit_smart', name: 'Smart Clothes', category: 'clothing', caseSize: 1, wholesale: 0, importCost: 0, retail: 0, satiety: 0, energy: 0, color: '#2f3640', demand: 0 },
   uniform_market: { id: 'uniform_market', name: 'Corner Market Uniform', category: 'clothing', caseSize: 1, wholesale: 0, importCost: 0, retail: 0, satiety: 0, energy: 0, color: '#2e8b57', demand: 0 },
   uniform_wholesale: { id: 'uniform_wholesale', name: 'Hi-Vis Workwear', category: 'clothing', caseSize: 1, wholesale: 0, importCost: 0, retail: 0, satiety: 0, energy: 0, color: '#f4c20d', demand: 0 },
@@ -72,6 +74,8 @@ export interface ClothingEffect {
 export const CLOTHING: Record<string, ClothingEffect> = {
   outfit_casual: { formality: 0, comfort: 0.12, label: 'Comfortable: you tire 12% slower off duty' },
   outfit_smart: { formality: 2, comfort: 0, label: 'Smart: +8 interview impression' },
+  outfit_sport: { formality: 0, comfort: 0.15, label: 'Tracksuit: you tire 15% slower off duty' },
+  outfit_night: { formality: 1, comfort: 0.05, label: 'Going-out clothes: people notice you' },
   uniform_market: { formality: 1, comfort: 0, label: 'Corner Market uniform: required on shift there' },
   uniform_wholesale: { formality: 0, comfort: 0, label: 'Hi-vis workwear: required in the warehouse' },
   uniform_cafe: { formality: 1, comfort: 0, label: 'Cafe apron' },

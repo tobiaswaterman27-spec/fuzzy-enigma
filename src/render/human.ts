@@ -246,6 +246,10 @@ export const GARMENTS: Record<string, Garment> = {
   // the gangs' tracksuits: the Dock Rats in red, the Northfield Crew in blue
   gang_red: { top: { color: '#b71c1c', tex: 'knit', sleeve: 'long', hem: 0.97 }, bottom: { color: '#1a1a1a', tex: 'knit', length: 'long' }, shoes: '#f2f2f2' },
   gang_blue: { top: { color: '#1565c0', tex: 'knit', sleeve: 'long', hem: 0.97 }, bottom: { color: '#1a1a1a', tex: 'knit', length: 'long' }, shoes: '#f2f2f2' },
+  // a tracksuit: zip top and joggers, white trainers
+  outfit_sport: { top: { color: '#1f2a44', tex: 'knit', sleeve: 'long', hem: 0.97 }, bottom: { color: '#1f2a44', tex: 'knit', length: 'long' }, shoes: '#f4f4f4' },
+  // dressed to go out: a dark shirt, black jeans, a leather jacket
+  outfit_night: { top: { color: '#1b1b1f', tex: 'shirt', sleeve: 'long', collar: '#1b1b1f', hem: 0.95 }, bottom: { color: '#141414', tex: 'denim', length: 'long' }, shoes: '#111111', over: { kind: 'jacket', color: '#2a1e18', tex: 'twill' } },
   // prison greys: a sweatshirt and joggers, plimsolls
   outfit_prison: { top: { color: '#878c91', tex: 'knit', sleeve: 'long', hem: 0.97 }, bottom: { color: '#6c7176', tex: 'knit', length: 'long' }, shoes: '#2a2a2a' },
 };
@@ -256,6 +260,7 @@ export const CASUAL_TOPS: [string, 'knit' | 'polo' | 'shirt', 'short' | 'long'][
   ['#3f6ea8', 'knit', 'short'], ['#7d8287', 'knit', 'long'], ['#7b2d3a', 'knit', 'short'], ['#5d6b3c', 'knit', 'long'], ['#efeee9', 'knit', 'short'],
   ['#222428', 'knit', 'short'], ['#c99a2e', 'knit', 'long'], ['#2b3b55', 'polo', 'short'], ['#9cb6cf', 'shirt', 'long'], ['#b5562e', 'knit', 'long'],
   ['#4d7a6e', 'polo', 'short'], ['#d6c7ae', 'knit', 'long'],
+  ['#e86a5a', 'knit', 'short'], ['#f2d36b', 'knit', 'short'], ['#5a8fcf', 'shirt', 'long'], ['#3a3a5c', 'knit', 'long'], ['#e9a6b8', 'knit', 'short'], ['#7f9a5a', 'polo', 'short'],
 ];
 const CASUAL_BOTTOMS: [string, 'denim' | 'twill', 'long' | 'shorts'][] = [['#2d4366', 'denim', 'long'], ['#1c2533', 'denim', 'long'], ['#5b7aa0', 'denim', 'long'], ['#25272b', 'denim', 'long'], ['#b9a37e', 'twill', 'long'], ['#545a60', 'twill', 'long'], ['#3d4a37', 'twill', 'long'], ['#c2b08a', 'twill', 'shorts'], ['#2d4366', 'denim', 'shorts']];
 /** what goes over the top, if anything: zip jackets, jumpers and long coats */
@@ -265,6 +270,11 @@ const CASUAL_OUTER: (NonNullable<Garment['over']> | null)[] = [
   { kind: 'jumper', color: '#7a2b35', tex: 'knit' }, { kind: 'jumper', color: '#2e4a3f', tex: 'knit' }, { kind: 'jumper', color: '#b8b0a2', tex: 'knit' },
   { kind: 'coat', color: '#5a4a3a', tex: 'suit' }, { kind: 'coat', color: '#22262e', tex: 'suit' }, { kind: 'coat', color: '#7d6a50', tex: 'suit' },
 ];
+/** tracksuit colours: top, bottoms and the stripe */
+export const TRACKSUITS: [string, string, string][] = [['#1f2a44', '#1f2a44', '#ffffff'], ['#111111', '#111111', '#ffffff'], ['#7a1f2b', '#1a1a1a', '#f1f1f1'], ['#2f5a3a', '#2f5a3a', '#f4d03f'], ['#8a8f94', '#8a8f94', '#1a1a1a'], ['#2b5fa8', '#1a1a1a', '#ffffff'], ['#d9d4c7', '#d9d4c7', '#2a2a2a'], ['#5b3a7a', '#5b3a7a', '#ffffff']];
+export const NIGHT_TOPS: [string, 'shirt' | 'knit'][] = [['#1b1b1f', 'shirt'], ['#f2f2f2', 'shirt'], ['#5a1622', 'shirt'], ['#1f3b5c', 'shirt'], ['#111111', 'knit'], ['#c9b48a', 'knit'], ['#e8e2d4', 'knit']];
+const NIGHT_BOTTOMS = ['#141414', '#1c2533', '#2b2f38', '#3b3330'];
+const NIGHT_JACKETS: (NonNullable<Garment['over']> | null)[] = [{ kind: 'jacket', color: '#2a1e18', tex: 'twill' }, { kind: 'jacket', color: '#111111', tex: 'twill' }, null, { kind: 'blazer', color: '#2b2f38' }, { kind: 'jacket', color: '#4a3020', tex: 'twill' }, null];
 const CASUAL_SHOES = ['#ececec', '#222222', '#8a8f94', '#6b4a2e', '#1f3d6b'];
 const SHIRTS = ['#f1efe9', '#cfe0ef', '#f2e3e6', '#e9efe4'];
 const SUITS = ['#2b2f38', '#23314d', '#4a4e54', '#3b3330'];
@@ -286,6 +296,14 @@ export function garmentFor(a: Appearance): Garment {
   if (a.outfit === 'outfit_smart') {
     const shirt = SHIRTS[s % SHIRTS.length], suit = SUITS[Math.floor(s / 5) % SUITS.length], tie = TIES[Math.floor(s / 3) % TIES.length];
     return { ...base, top: { ...base.top, color: shirt, collar: shirt }, bottom: { ...base.bottom, color: suit }, over: { kind: 'blazer', color: suit }, tie: tie || undefined };
+  }
+  if (a.outfit === 'outfit_sport') {
+    const [top, bot, stripe] = TRACKSUITS[s % TRACKSUITS.length];
+    return { ...base, top: { ...base.top, color: top, accent: stripe }, bottom: { ...base.bottom, color: bot, length: Math.floor(s / 7) % 4 === 3 && !a.coat ? 'shorts' : 'long' }, shoes: CASUAL_SHOES[Math.floor(s / 3) % CASUAL_SHOES.length] };
+  }
+  if (a.outfit === 'outfit_night') {
+    const [shirt, tex] = NIGHT_TOPS[s % NIGHT_TOPS.length], jacket = NIGHT_JACKETS[Math.floor(s / 5) % NIGHT_JACKETS.length];
+    return { ...base, top: { ...base.top, color: shirt, tex, collar: tex === 'shirt' ? shirt : undefined, sleeve: jacket ? 'long' : 'short' }, bottom: { ...base.bottom, color: NIGHT_BOTTOMS[Math.floor(s / 3) % NIGHT_BOTTOMS.length] }, over: jacket ?? undefined };
   }
   return base;
 }

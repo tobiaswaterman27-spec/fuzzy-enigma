@@ -7,7 +7,7 @@ import type { Appearance } from './sim/types';
 import * as sim from './sim/index';
 import { loadHumanAsset, buildRealHuman } from './render/humanAsset';
 import { loadModels } from './render/models';
-import { CASUAL_TOPS } from './render/human';
+import { CASUAL_TOPS, NIGHT_TOPS, TRACKSUITS } from './render/human';
 import { requestHuman, startHumanBuilder, workerActive } from './render/humanBuilder';
 import { hasHumanBuild } from './render/humanAsset';
 import { buildRig, loadMocap } from './render/character';
@@ -24,6 +24,7 @@ bootTick('Building the city');
 await new Promise((r) => setTimeout(r, 30));
 const canvas = document.getElementById('view') as HTMLCanvasElement;
 const seed = (Date.now() % 100000) + 1;
+const OUTFITS = [['outfit_casual', 'Everyday'], ['outfit_sport', 'Tracksuit'], ['outfit_night', 'Going out'], ['outfit_smart', 'Suited']] as const;
 const appearance = { frame: 'm', skin: SKIN_TONES[2], hair: 'short', hairColor: HAIR_COLORS[1], build: 'average' } as Omit<Appearance, 'outfit' | 'height'>;
 const state = createNewGame(seed, { name: 'Alex Morgan', appearance });
 startHumanBuilder(['shoe_trainer', 'shoe_oxford', 'shoe_boot']);
@@ -58,6 +59,8 @@ function creator() {
   game.camPitch = 0.12;
   game.camYaw = Math.PI * 0.92;
   const p = () => game.state.people.player;
+  // the swatches for the look chosen: tops, tracksuits or going-out shirts
+  const palette = () => { const o = p().appearance.outfit; return o === 'outfit_sport' ? TRACKSUITS.map((t) => t[0]) : o === 'outfit_night' ? NIGHT_TOPS.map((t) => t[0]) : o === 'outfit_smart' ? ['#f1efe9', '#cfe0ef', '#f2e3e6', '#e9efe4'] : CASUAL_TOPS.map((t) => t[0]); };
   p().appearance.shape ??= { ...DEFAULT_SHAPE };
   let tab: 'body' | 'face' | 'hair' | 'style' | 'you' = 'body';
   const chip = (group: string, vals: readonly string[], cur: string, swatch = false) => `<div class="chips">${vals.map((v) => `<button data-g="${group}" data-v="${v}" class="${v === cur ? 'on' : ''} ${swatch ? 'swatch' : ''}" ${swatch ? `style="background:${v}" aria-label="${v}"` : ''}>${swatch ? '' : v}</button>`).join('')}</div>`;
@@ -78,7 +81,7 @@ function creator() {
       <label>Skin tone</label>${chip('skin', SKIN_TONES, a.skin, true)}${colour('skin', a.skin)}
       <label>Eyes</label>${chip('eyes', EYE_COLORS, a.eyes ?? '', true)}${colour('eyes', a.eyes ?? '#5a4632')}`;
     if (tab === 'hair') body = `<label>Style</label>${chip('hair', HAIR_STYLES, a.hair)}<label>Colour</label>${chip('hairColor', HAIR_COLORS, a.hairColor, true)}${colour('hairColor', a.hairColor)}`;
-    if (tab === 'style') body = `<label>Everyday clothes</label><div class="chips">${CASUAL_TOPS.map(([c], i) => `<button data-g="style" data-v="${i}" class="swatch ${(a.style ?? 0) % CASUAL_TOPS.length === i && a.style !== undefined ? 'on' : ''}" style="background:${c}" aria-label="top ${i + 1}"></button>`).join('')}</div><p class="muted">Pick the same top again for different trousers and shoes.</p>
+    if (tab === 'style') body = `<label>Look</label><div class="chips">${OUTFITS.map(([v, l]) => `<button data-g="outfit" data-v="${v}" class="${(a as any).outfit === v || (!(a as any).outfit && v === 'outfit_casual') ? 'on' : ''}">${l}</button>`).join('')}</div><label>Colours</label><div class="chips">${palette().map((c, i) => `<button data-g="style" data-v="${i}" class="swatch ${(a.style ?? 0) % palette().length === i && a.style !== undefined ? 'on' : ''}" style="background:${c}" aria-label="colour ${i + 1}"></button>`).join('')}</div><p class="muted">Pick the same colour again for different trousers, jackets and shoes.</p>
       <label>Jewellery & glasses</label><div class="chips">${EXTRAS.map(([k, l]) => `<button data-x="${k}" class="${a.extras?.includes(k) ? 'on' : ''}">${l}</button>`).join('')}</div>
       <label>Walk</label><div class="chips">${GAITS.map(([v, l]) => `<button data-g="gait" data-v="${v}" class="${(p().gait ?? 'walk') === v ? 'on' : ''}">${l}</button>`).join('')}</div>`;
     if (tab === 'you') body = `<label for="cc-name">Name</label><input id="cc-name" type="text" maxlength="24" value="${p().name}">
@@ -145,7 +148,12 @@ function creator() {
       // keep the chosen top; step through trousers and shoes when the same top is picked again
       const cur = a.style;
       const top = Number(b.dataset.v);
-      a.style = cur !== undefined && cur % CASUAL_TOPS.length === top ? (cur + CASUAL_TOPS.length * 13) % 1000 : top;
+      const n = palette().length;
+      a.style = cur !== undefined && cur % n === top ? (cur + n * 13) % (n * 50) : top;
+    } else if ((g as string) === 'outfit') {
+      a.outfit = b.dataset.v!;
+      const wr = p().wardrobeId ? game.state.containers[p().wardrobeId!] : null;
+      if (wr && !wr.items[a.outfit]) sim.addItems(wr, a.outfit, 1);
     } else (a as any)[g] = b.dataset.v;
     render();
   };

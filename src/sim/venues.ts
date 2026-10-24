@@ -247,17 +247,21 @@ export function crackVault(state: GameState, personId: Id, v: Venue): string {
 }
 
 // ---------------------------------------------------------------- looks
-const CASUAL_STYLES = 12;
-export function newOutfit(state: GameState, personId: Id, v: Venue, smart: boolean): string {
+const CASUAL_STYLES = 18;
+export const OUTFIT_PRICES = { casual: 4500, smart: 9500, sport: 3500, night: 7500 } as const;
+export type OutfitKind = keyof typeof OUTFIT_PRICES;
+export function newOutfit(state: GameState, personId: Id, v: Venue, kind: OutfitKind | boolean): string {
+  const k: OutfitKind = kind === true ? 'smart' : kind === false ? 'casual' : kind;
   const p = state.people[personId];
-  const price = smart ? 9500 : 4500;
+  const price = OUTFIT_PRICES[k];
   if (!venueOpen(v, state.minute)) return `${v.name} is closed.`;
   const r = transfer(state, { from: p.accountId, to: state.externalId, amount: price, reason: 'purchase', memo: `Clothes from ${v.name}`, key: `clothes:${Math.floor(state.minute * 10)}` });
   if (!r.ok) return `That's ${fmtMoney(price)}.`;
   vs(state, v.id).till += price;
-  p.appearance = { ...p.appearance, outfit: smart ? 'outfit_smart' : 'outfit_casual', style: randInt(state, 0, CASUAL_STYLES * 13) };
+  p.appearance = { ...p.appearance, outfit: `outfit_${k}`, style: randInt(state, 0, CASUAL_STYLES * 13) };
+  if (p.wardrobeId && state.containers[p.wardrobeId] && !count(state.containers[p.wardrobeId], `outfit_${k}`)) addItems(state.containers[p.wardrobeId], `outfit_${k}`, 1);
   p.needs.mood = clamp(p.needs.mood + 8, 0, 100);
-  return smart ? `Looking sharp. ${fmtMoney(price)}.` : `New clothes on. ${fmtMoney(price)}.`;
+  return { smart: `Looking sharp. ${fmtMoney(price)}.`, casual: `New clothes on. ${fmtMoney(price)}.`, sport: `Fresh trackie. ${fmtMoney(price)}.`, night: `Ready for a night out. ${fmtMoney(price)}.` }[k];
 }
 
 const HAIR_COLOURS = ['#1c1410', '#3b2416', '#6b4423', '#a0703a', '#d8b26a', '#e8d9b0', '#8a2d1c', '#c0c0c0', '#2b4cff', '#ff3fa4'];

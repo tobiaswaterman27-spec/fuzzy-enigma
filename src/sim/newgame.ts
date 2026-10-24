@@ -78,7 +78,9 @@ export function makePerson(state: GameState, id: Id, name: string, opts: { homeI
   const acc = opts.accountId ?? openAccount(state, id, name, 'person').id;
   if (!opts.accountId) fund(state, acc, opts.cash, `Savings of ${name}`);
   const homeOutfit = pick(state, ['outfit_casual', 'outfit_smart', 'outfit_casual']);
-  const appearance = opts.appearance ?? randomAppearance(state, homeOutfit);
+  // some live in trackies, some always look ready to go out (chosen from the id, not the random stream)
+  const hk = [...id].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7) % 9;
+  const appearance = opts.appearance ?? randomAppearance(state, homeOutfit === 'outfit_casual' && hk === 0 ? 'outfit_sport' : homeOutfit === 'outfit_casual' && hk === 1 ? 'outfit_night' : homeOutfit);
   // everyday clothes differ from person to person (fixed per person, without using the random stream)
   if (!opts.appearance && appearance.style === undefined) { let h = 2166136261; for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 16777619) >>> 0; appearance.style = h % 1000; }
   // a few of the townspeople wear glasses, earrings, a watch or a chain (from their id, not the dice)
@@ -96,7 +98,7 @@ export function makePerson(state: GameState, id: Id, name: string, opts: { homeI
   const basket = createContainer(state, 'basket', id, id, 30, undefined, `basket_${id}`);
   const pantry = opts.homeId ? createContainer(state, 'pantry', id, opts.homeId, 80, undefined, `pantry_${id}`) : null;
   const wardrobe = opts.homeId ? createContainer(state, 'wardrobe', id, opts.homeId, 30, undefined, `wardrobe_${id}`) : null;
-  if (wardrobe) { addItems(wardrobe, 'outfit_casual', 1); addItems(wardrobe, 'outfit_smart', 1); }
+  if (wardrobe) { addItems(wardrobe, 'outfit_casual', 1); addItems(wardrobe, 'outfit_smart', 1); if (appearance.outfit === 'outfit_sport' || appearance.outfit === 'outfit_night') addItems(wardrobe, appearance.outfit, 1); }
   const start = opts.homeId ? homeDoor(opts.homeId) : { x: 0, z: 0 };
   const traits = { ...randomTraits(state), ...(opts.traits ?? {}) };
   const p: Person = {

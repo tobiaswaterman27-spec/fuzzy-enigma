@@ -11,7 +11,7 @@ import { fetchBinary } from './binary';
 import { hasModel, modelInstance } from './models';
 
 /** which Blender shoe each outfit wears */
-const SHOE_STYLE: Record<string, string> = { outfit_casual: 'shoe_trainer', outfit_smart: 'shoe_oxford', uniform_market: 'shoe_trainer', uniform_wholesale: 'shoe_boot', uniform_site: 'shoe_boot', uniform_cafe: 'shoe_oxford' };
+const SHOE_STYLE: Record<string, string> = { outfit_casual: 'shoe_trainer', outfit_smart: 'shoe_oxford', uniform_market: 'shoe_trainer', uniform_wholesale: 'shoe_boot', uniform_site: 'shoe_boot', uniform_cafe: 'shoe_oxford', outfit_sport: 'shoe_trainer', outfit_night: 'shoe_oxford' };
 
 /** A shoe model fitted to each foot in the bind pose and skinned rigidly to the foot bone. */
 function shoeGeometries(style: string, pos: Float32Array, footW: Float32Array, footX: [number, number], bones: [number, number]): { geo: THREE.BufferGeometry; paint: boolean; color: THREE.Color }[] {

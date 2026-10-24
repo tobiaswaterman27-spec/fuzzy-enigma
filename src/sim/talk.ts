@@ -123,7 +123,7 @@ function appearanceOf(state: GameState, p: Person, remote: boolean): string[] {
     if (you.dog) out.push(`They have their dog ${you.dog.name} with them.`);
     if (you.needs.hygiene < 30) out.push('They smell bad.');
     const o = you.appearance.outfit;
-    out.push(o.startsWith('uniform') ? `They are in work uniform (${o.replace('uniform_', '')}).` : o === 'outfit_smart' ? 'They are dressed smartly.' : 'They are in casual clothes.');
+    out.push(o.startsWith('uniform') ? `They are in work uniform (${o.replace('uniform_', '')}).` : o === 'outfit_smart' ? 'They are dressed smartly.' : o === 'outfit_sport' ? 'They are in a tracksuit.' : o === 'outfit_night' ? 'They are dressed up for a night out.' : 'They are in casual clothes.');
   }
   return out;
 }
