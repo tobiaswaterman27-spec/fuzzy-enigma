@@ -754,7 +754,7 @@ export class Game {
     }
     // the flat is refitted when an order arrives (or a save is loaded): rebuild it
     if (++this.homeCheck % 30 === 0) { const k = JSON.stringify(s.homeDesigns.flat ?? null); if (k !== this.homeKey) { if (this.homeKey) this.applyHomeDesign(); this.homeKey = k; } }
-    if (!this.paused) { this.chatter(); this.approaches(); this.remarks(); this.stomach(); this.wary(); this.buskTick(dt); }
+    if (!this.paused) { this.chatter(); this.approaches(); this.remarks(); this.driveRemarks(); this.stomach(); this.wary(); this.buskTick(dt); }
     this.views.update(s, this.paused ? 0 : dt, this.player.pos, this.insideId, this.speech);
     // a jump: up and down, knees tucked in the air
     if (this.jumpY > 0 || this.jumpV > 0) {
@@ -929,6 +929,34 @@ export class Game {
     this.say(o.id, lines[Math.floor(Math.random() * lines.length)], 3.5);
   }
   private remarked = new Map<string, number>();
+  /** creeping past people at the wheel: they notice the car (a flash one, a battered one, one on fire) */
+  private nextDriveRemark = 0;
+  private driveRemarks() {
+    const now = performance.now(), v = this.drivingVan();
+    if (!v || now < this.nextDriveRemark || this.uiOpen || v.kind === 'forklift' || v.kind === 'boat') return;
+    this.nextDriveRemark = now + 2500;
+    if (Math.abs(this.vanSpeed) > 4) return;
+    const s = this.state, me = this.player;
+    const lines: string[] = [];
+    const dmg = (v.dmg ?? [0, 0, 0, 0]).reduce((a, b) => Math.max(a, b), 0);
+    const model = v.model ?? '';
+    if (v.burning) lines.push('Your car\'s on fire! Get out!', 'Mate! MATE! It\'s smoking!');
+    else if (dmg > 0.5 || v.condition < 40) lines.push('Been in the wars, has it?', 'How is that thing still going?', 'You want to get that looked at.');
+    else if (v.kind === 'bike' && model === 'moped') lines.push('Nice scooter.', 'Mind how you go on that thing.');
+    else if (v.kind === 'bike') lines.push('Nice bike.', 'Keeping fit, eh?');
+    else if (model === 'coupe' || model === 'sports') lines.push('Nice motor!', 'Now that\'s a car.', 'Bet that cost a bob or two.', 'Give us a ride, then!');
+    else if (model === 'suv') lines.push('Big enough, is it?');
+    else if (v.kind === 'van' && v.ownerId !== me.id) lines.push('Delivery for me?');
+    if (v.stolen && s.wanted) lines.push('Isn\'t that the car off the news?');
+    if (!lines.length) return;
+    const o = Object.values(s.people).find((q) => !q.isPlayer && q.visible && !q.sleeping && !q.action && !q.dead && q.down == null && !q.combat && q.where !== 'vehicle' && Math.hypot(q.pos.x - v.pos.x, q.pos.z - v.pos.z) < 5.5 && (this.remarked.get(q.id) ?? 0) < now);
+    if (!o) return;
+    this.remarked.set(o.id, now + 90000);
+    this.nextDriveRemark = now + 15000;
+    o.facing = Math.atan2(v.pos.x - o.pos.x, v.pos.z - o.pos.z);
+    o.gesture = { clip: v.burning ? 'scared' : 'talk', until: s.minute + 0.8 };
+    this.say(o.id, lines[Math.floor(Math.random() * lines.length)], 3.5);
+  }
   /** walking up to people with a weapon in your hand: the nervous ones back off and run */
   private nextWary = 0;
   private wary() {
