@@ -193,14 +193,18 @@ function fitOut(id: string, kind: VenueKind, name: string, b: CityBuilding, fron
     case 'cafe': case 'takeaway': {
       counterBack(kind === 'takeaway' ? 3.0 : 3.4);
       ob('kitchen', 1.2, D - 0.7, Wd - 1.2, D - 0.05, 0.92, true, backRot);
-      for (let u = 1.6; u + 1.2 < Wd - 1; u += 3) if (Math.abs(u + 0.6 - mid) > 1.6) ob('table', u, 3.0, u + 1.2, 4.2, 0.75, true);
-      if (kind === 'cafe' && D > 11) for (let u = 1.6; u + 1.2 < Wd - 1; u += 3) if (Math.abs(u + 0.6 - mid) > 1.6) ob('table', u, 6.4, u + 1.2, 7.6, 0.75, true);
+      // tables in rows down the room, an aisle up the middle to the counter
+      for (let v = 3.0; v + 1.2 < D - 5.2; v += 3.4) for (let u = 1.6; u + 1.2 < Wd - 1; u += 3) if (Math.abs(u + 0.6 - mid) > 1.6) ob(kind === 'cafe' && v > 3 && (u * 7 + v) % 3 < 1 ? 'bistro_set' : 'table', u, v, u + 1.2, v + 1.2, 0.75, true);
+      if (Wd > 9) ob('plant', 0.3, 0.3, 1.0, 1.0, 1.4, true);
       break;
     }
     case 'pub': {
       counterBack(3.2);
       ob('kitchen', 1.5, D - 0.7, Wd - 1.5, D - 0.05, 0.95, true, backRot);
-      for (let u = 1.6; u + 1.3 < Wd - 1; u += 3.2) if (Math.abs(u + 0.65 - mid) > 1.7) { ob('table', u, 2.6, u + 1.3, 3.9, 0.75, true); if (D > 12) ob('table', u, 6.0, u + 1.3, 7.3, 0.75, true); }
+      for (let v = 2.6; v + 1.3 < D - 5.0; v += 3.4) for (let u = 1.6; u + 1.3 < Wd - 1; u += 3.2) if (Math.abs(u + 0.65 - mid) > 1.7) ob('table', u, v, u + 1.3, v + 1.3, 0.75, true);
+      // a fruit machine by the door and a comfy corner
+      ob('kiosk', Wd - 1.2, 0.4, Wd - 0.3, 1.1, 1.7, true);
+      if (D > 14) ob('sofa', 0.2, D - 9, 1.1, D - 6.6, 0.9, true, Math.PI / 2, '#6b2a2a');
       ob('dartboard', 0.05, D - 6, 0.15, D - 5.2, 1.73, false);
       break;
     }
@@ -243,6 +247,11 @@ function fitOut(id: string, kind: VenueKind, name: string, b: CityBuilding, fron
       nodes.push(P(Wd - 1.0, D - 8.0), P(Wd - 0.85, D - 6.4), P(Wd - 1.2, D - 4), P(mid, D - 2.2));
       ob('waiting_chairs', 0.5, 3.0, 1.1, 6.0, 0.9, true, Math.PI / 2);
       ob('plant', Wd - 1.2, 0.6, Wd - 0.6, 1.2, 1.2, true);
+      // the queue: rope posts zig-zagging to the counter, leaflets, cash machines on the side wall
+      for (let v = 4.0; v + 0.3 < D - 8.5; v += 1.6) ob('waiting_chairs', mid - 3.2, v, mid - 0.8, v + 0.25, 0.95, true, 0, '#8a6a2a');
+      ob('leaflet_stand', Wd - 1.0, 3.0, Wd - 0.4, 3.6, 1.4, true);
+      for (let v = 5.0; v + 1 < D - 8; v += 2.2) ob('terminal', Wd - 0.7, v, Wd - 0.15, v + 0.8, 1.7, true, -Math.PI / 2);
+      for (const v of [D - 8.6, 3.0]) ob('plant', 1.4, v, 2.0, v + 0.6, 1.3, true);
       break;
     }
     case 'casino': {
@@ -253,6 +262,9 @@ function fitOut(id: string, kind: VenueKind, name: string, b: CityBuilding, fron
         ob('gaming_table', u, 6.0, u + 3.2, 8.0, 0.8, true, undefined, '#1d6b3a');
         spot(i ? 'blackjack' : 'roulette', i ? 'blackjack' : 'roulette', i ? 'Blackjack table' : 'Roulette wheel', u + 1.6, 5.1, u + 1.6, 7.0);
       }
+      // more tables further in, and banks of slot machines down both sides
+      for (let v = 11.0; v + 2 < D - 3.5; v += 4.5) for (const u of [3.0, Wd - 7.0]) ob('gaming_table', u, v, u + 3.2, v + 2.0, 0.8, true, undefined, v % 2 ? '#7a1f2b' : '#1d6b3a');
+      for (let v = 4.0; v + 1 < D - 2.5; v += 1.4) { ob('kiosk', 0.3, v, 1.0, v + 1.0, 1.7, true); ob('kiosk', Wd - 1.0, v, Wd - 0.3, v + 1.0, 1.7, true); }
       nodes.push(P(mid, D - 2.2));
       break;
     }
@@ -261,6 +273,8 @@ function fitOut(id: string, kind: VenueKind, name: string, b: CityBuilding, fron
       ob('dancefloor', 2.5, 3.0, Wd - 2.5, D - 5.0, 0.02, false);
       spot('floor', 'dancefloor', 'Dance floor', mid, (3.0 + D - 5.0) / 2, mid, (3.0 + D - 5.0) / 2 + 0.6, 3.0);
       ob('desk', mid - 1.2, D - 2.4, mid + 1.2, D - 1.6, 1.0, true);
+      // booths round the edge of the floor
+      for (let v = 3.5; v + 2.4 < D - 5.5; v += 3.2) { ob('sofa', 0.2, v, 1.1, v + 2.4, 0.9, true, Math.PI / 2, '#2a1a3a'); ob('sofa', Wd - 1.1, v, Wd - 0.2, v + 2.4, 0.9, true, -Math.PI / 2, '#2a1a3a'); }
       staffUV = [mid, D - 1.6];
       break;
     }
