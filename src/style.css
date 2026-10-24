@@ -196,3 +196,12 @@ body.titling #hud { display: none; }
 @keyframes bootKen { from { transform: scale(1.02); } to { transform: scale(1.14) translateX(-1.5%); } }
 #boot.title #boot-pic { opacity: 0; transition: opacity 1.6s ease; }
 @media (prefers-reduced-motion: reduce) { #boot-pic.ready { animation: none; } }
+
+/* photo mode: nothing on screen but the picture and a slim bar */
+body.photo-mode > *:not(canvas):not(#photo-bar):not(#dialog):not(.photo-flash):not(#dialog-back) { visibility: hidden !important; }
+#photo-bar { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); display: flex; gap: 8px; align-items: center; background: rgba(10,14,12,.78); color: #fff; padding: 8px 12px; border-radius: 12px; z-index: 60; font-size: 14px; flex-wrap: wrap; justify-content: center; max-width: calc(100vw - 32px); }
+#photo-bar b { min-width: 96px; text-align: center; }
+#photo-bar .muted { opacity: .7; font-size: 12px; }
+.photo-flash { position: fixed; inset: 0; background: #fff; z-index: 70; pointer-events: none; animation: photoflash .45s ease-out forwards; }
+@keyframes photoflash { from { opacity: .9 } to { opacity: 0 } }
+body.photo-mode:has(#dialog:not([hidden])) #photo-bar { display: none; }

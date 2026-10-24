@@ -259,6 +259,27 @@ export class Game {
   private camCur = new THREE.Vector3();
   speedMult = 1;
   paused = false;
+  /** photo mode: the world holds still while you frame a shot (paused before it, to restore after) */
+  photo: { wasPaused: boolean; zoom: number } | null = null;
+  setPhoto(on: boolean) {
+    if (on === !!this.photo) return;
+    if (on) { this.photo = { wasPaused: this.paused, zoom: this.zoom }; this.paused = true; this.manualUntil = performance.now() + 1e9; this.keys.clear(); }
+    else { this.paused = this.photo!.wasPaused; this.zoom = this.photo!.zoom; this.photo = null; this.manualUntil = performance.now() + 1500; if (document.pointerLockElement) document.exitPointerLock(); }
+  }
+  /** draw a frame now and hand back the picture (it has to be read in the same task as the draw) */
+  snapshot(filter: string): string {
+    if (this.composer && !this.freeCam) this.composer.render(); else this.renderer.render(this.scene, this.camera);
+    const src = this.renderer.domElement;
+    const c = document.createElement('canvas'); c.width = src.width; c.height = src.height;
+    const g = c.getContext('2d')!;
+    g.filter = filter || 'none';
+    g.drawImage(src, 0, 0);
+    g.filter = 'none';
+    // a thin frame and the town's name, like a print
+    g.fillStyle = 'rgba(255,255,255,0.85)'; g.font = `600 ${Math.round(c.height * 0.028)}px sans-serif`; g.textAlign = 'right';
+    g.fillText(`HARBOURSIDE · ${new Date().toLocaleDateString('en-GB')}`, c.width - c.height * 0.03, c.height - c.height * 0.035);
+    return c.toDataURL('image/jpeg', 0.92);
+  }
   uiOpen = false; // when a modal UI is open, movement keys are ignored
   focus: Focus | null = null;
   onToast: (msg: string) => void = () => {};
@@ -508,7 +529,7 @@ export class Game {
     window.addEventListener('keydown', (e) => {
       if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
       this.keys.add(e.code);
-      if (this.uiOpen) return;
+      if (this.uiOpen || this.photo) return;
       if (e.code === 'KeyE' && this.drivingVan()?.kind === 'bike') {
         if (Math.abs(this.vanSpeed) > 2.5) { this.onToast('Slow down first.'); return; }
         this.onToast(leaveBike(this.state, this.player.id));
@@ -619,7 +640,7 @@ export class Game {
     this.canvas.addEventListener('pointerup', end);
     this.canvas.addEventListener('pointercancel', end);
     this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-    this.canvas.addEventListener('wheel', (e) => { e.preventDefault(); this.zoom = Math.max(0.55, Math.min(2.2, this.zoom * (1 + Math.sign(e.deltaY) * 0.1))); }, { passive: false });
+    this.canvas.addEventListener('wheel', (e) => { e.preventDefault(); this.zoom = Math.max(this.photo ? 0.25 : 0.55, Math.min(this.photo ? 4 : 2.2, this.zoom * (1 + Math.sign(e.deltaY) * 0.1))); }, { passive: false });
     window.addEventListener('blur', () => this.keys.clear());
     // the camera is fully automatic: no mouse look, zoom or camera keys
   }

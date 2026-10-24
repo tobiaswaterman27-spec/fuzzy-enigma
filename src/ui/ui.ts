@@ -99,6 +99,14 @@ export class UI {
     game.onGameOver = (cause) => this.gameOver(cause);
     window.addEventListener('keydown', (e) => {
       if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
+      if (this.game.photo) {
+        if (e.code === 'KeyO' || e.code === 'Escape') { e.preventDefault(); this.photoMode(false); }
+        else if (e.code === 'Space') { e.preventDefault(); this.snap(); }
+        else if (e.code === 'ArrowRight' || e.code === 'KeyD') this.photoFilter(1);
+        else if (e.code === 'ArrowLeft' || e.code === 'KeyA') this.photoFilter(-1);
+        return;
+      }
+      if (e.code === 'KeyO' && !this.phoneOpen && !this.game.uiOpen && !this.game.drivingVan()) { e.preventDefault(); this.photoMode(true); return; }
       if (e.code === 'Tab' || e.code === 'KeyP') { e.preventDefault(); this.phoneOpen ? this.closePhone() : this.openPhone(this.tab); }
       if (e.code === 'Escape') { if (this.phoneOpen) this.closePhone(); else if ($('#dialog').hidden === false) this.closeDialog(); else this.toggleMenu(); }
     });
@@ -796,6 +804,42 @@ export class UI {
     this.openChat(npcId, true, situation, true);
   }
   /** a friend rings you: answer or not */
+  // ------------------------------------------------------------ photo mode
+  private photoIdx = 0;
+  private static FILTERS: [string, string][] = [['Natural', ''], ['Noir', 'grayscale(1) contrast(1.25) brightness(1.05)'], ['Golden hour', 'sepia(0.35) saturate(1.35) brightness(1.05)'], ['Vivid', 'saturate(1.7) contrast(1.12)'], ['Faded', 'contrast(0.85) saturate(0.7) brightness(1.1) sepia(0.15)'], ['Cold', 'hue-rotate(-12deg) saturate(0.85) brightness(1.02) contrast(1.05)']];
+  photoMode(on: boolean) {
+    this.game.setPhoto(on);
+    document.body.classList.toggle('photo-mode', on);
+    let bar = document.getElementById('photo-bar');
+    if (on && !bar) {
+      bar = document.createElement('div'); bar.id = 'photo-bar';
+      bar.innerHTML = '<button data-pf="-1">&lsaquo;</button><b id="photo-filter"></b><button data-pf="1">&rsaquo;</button><button id="photo-snap">Snap (Space)</button><button id="photo-exit">Done (O)</button><span class="muted">Drag to look round, scroll to zoom</span>';
+      document.body.appendChild(bar);
+      bar.addEventListener('click', (e) => {
+        const t = e.target as HTMLElement;
+        if (t.dataset.pf) this.photoFilter(Number(t.dataset.pf));
+        if (t.id === 'photo-snap') this.snap();
+        if (t.id === 'photo-exit') this.photoMode(false);
+      });
+    }
+    if (bar) bar.hidden = !on;
+    this.photoFilter(0);
+    if (!on) this.game.renderer.domElement.style.filter = '';
+  }
+  private photoFilter(step: number) {
+    const F = UI.FILTERS;
+    this.photoIdx = (this.photoIdx + step + F.length) % F.length;
+    const [name, css] = F[this.photoIdx];
+    const el = document.getElementById('photo-filter'); if (el) el.textContent = name;
+    if (this.game.photo) this.game.renderer.domElement.style.filter = css;
+  }
+  private snap() {
+    const url = this.game.snapshot(UI.FILTERS[this.photoIdx][1]);
+    this.game.audio.cash?.();
+    const flash = document.createElement('div'); flash.className = 'photo-flash'; document.body.appendChild(flash); window.setTimeout(() => flash.remove(), 450);
+    this.dialog(`<h3>Snap</h3><img src="${url}" style="width:100%;border-radius:6px;display:block" alt="Your photo"><p class="muted">Right-click (or press and hold) the picture to save it.</p><div class="row"><button class="primary" data-close-snap="1">Keep shooting</button></div>`, (b) => { if (b.dataset.closeSnap) this.closeDialog(); });
+  }
+
   incomingCall(npcId: string) {
     const o = this.s.people[npcId];
     if (!o || this.phoneOpen || !$('#dialog').hidden) return;
@@ -1181,7 +1225,7 @@ export class UI {
       <button data-m="gfx">Graphics: ${this.game.quality === 'high' ? 'High (ambient occlusion, bloom, anti-aliasing)' : this.game.quality === 'medium' ? 'Medium (anti-aliasing, no ambient occlusion)' : 'Low (fastest)'} · resolution ${Math.round(this.game.resScale * 100)}% - click to switch</button>
       <h3>AI conversations</h3><p class="muted">${claudeAi() ? 'People are voiced by Claude on your own claude.ai account (allowed per page). ' : ''}With your own OpenAI API key, people answer anything you say, in character, from their job, family, money, mood and history (outside claude.ai, where the page can reach OpenAI). The key is kept only in this browser and sent only to OpenAI. Without either, people cannot talk.</p>
       ${hasAi() ? `<p>Key saved (…${esc((getApiKey() ?? '').slice(-4))}) · model ${esc(getModel())}</p><div class="row"><button data-m="aiclear">Remove key</button></div>` : `<input id="ai-key" type="password" placeholder="sk-…" autocomplete="off" style="font:inherit;padding:8px;border-radius:6px;border:1px solid var(--line);background:#1c2420;color:var(--ink)"><div class="row"><button data-m="aisave">Save key</button></div>`}
-      <h3>Controls</h3><p class="muted">W/A/S/D or arrows: walk (relative to the camera, like GTA: you turn to face the way you go) · Mouse: click to take the mouse, then move it to look round (Esc lets go) · Shift: run · E: use · F: punch / attack · Q: hold a weapon (bat or knife, sold at Harbour Home) · G: take a car from the traffic (or a parked one) · Space: jump (handbrake when driving) · H: hands up (surrender) · R: change radio station while driving · 1-6: other options · Tab or P: phone · Esc: pause. On touch, drag to look round. Scroll to zoom. Stairs: just walk up (or down) them.</p>
+      <h3>Controls</h3><p class="muted">W/A/S/D or arrows: walk (relative to the camera, like GTA: you turn to face the way you go) · Mouse: click to take the mouse, then move it to look round (Esc lets go) · Shift: run · E: use · F: punch / attack · Q: hold a weapon (bat or knife, sold at Harbour Home) · G: take a car from the traffic (or a parked one) · Space: jump (handbrake when driving) · H: hands up (surrender) · R: change radio station while driving · 1-6: other options · Tab or P: phone · O: photo mode (Space to snap, arrows for filters) · ` : cheats · Esc: pause. On touch, drag to look round. Scroll to zoom. Stairs: just walk up (or down) them.</p>
       <p class="muted">Day ${dayIndex(this.s.minute) + 1}. Time passes at ${this.game.speedMult}× (1× = 20 game minutes per real minute). Sleeping fast-forwards.</p>`;
   }
   onMenuClick(e: Event) {
