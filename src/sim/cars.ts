@@ -214,6 +214,19 @@ export function carFireTick(state: GameState): Vehicle | null {
 }
 
 export const REPAIR_PER_POINT = 1500;
+/** the paint shop's colour cards */
+export const PAINTS: [string, string][] = [['jet black', '#111418'], ['racing red', '#c0392b'], ['arctic white', '#f0f3f4'], ['ocean blue', '#2e86c1'], ['british racing green', '#1e5631'], ['sunburst yellow', '#d4ac0d'], ['gunmetal grey', '#4a4f55'], ['candy purple', '#6c3483'], ['burnt orange', '#d35400']];
+export const PAINT_PRICE = 25000;
+/** a fresh coat of paint in a colour of your choosing */
+export function respray(state: GameState, personId: Id, v: Vehicle, hex: string): string {
+  const p = state.people[personId];
+  const name = PAINTS.find(([, h]) => h === hex)?.[0] ?? 'a new colour';
+  const r = transfer(state, { from: p.accountId, to: state.externalId, amount: PAINT_PRICE, reason: 'purchase', memo: `Respray (${name})`, key: `paint:${v.id}:${Math.floor(state.minute)}` });
+  if (!r.ok) return `A respray is ${fmtMoney(PAINT_PRICE)}. You can't cover it.`;
+  v.color = hex;
+  return `Resprayed ${name}. Looks brand new.`;
+}
+
 /** Eastgate Motors' yard: dents knocked out and, for a car the police are after, a quick respray */
 export function garageJob(state: GameState, personId: Id, v: Vehicle): string {
   const p = state.people[personId];

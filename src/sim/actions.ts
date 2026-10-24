@@ -28,7 +28,7 @@ const PINT = 520;
 import { canDriveForklift, mountForklift, palletsWaiting } from './forklift';
 import { buyAtStall, marketOn, stallPrice } from './streetmarket';
 import { COURSES, completeSession, sessionBlocker, sessionMinutes } from './training';
-import { canDriveCar, enterCar, garageJob, REPAIR_PER_POINT } from './cars';
+import { canDriveCar, enterCar, garageJob, PAINTS, PAINT_PRICE, REPAIR_PER_POINT, respray } from './cars';
 import type { ActionState, ActionType, GameState, Id, Person } from './types';
 import { dist, fmtMoney, clamp, randInt } from './core';
 import { count, firstItem, isEmpty, moveAll, moveItems, removeItems, spaceFor, total } from './inventory';
@@ -476,6 +476,8 @@ export function optionsFor(state: GameState, actorId: Id, itId: Id): ActionOptio
         const hot = !!state.wanted && state.wanted.level > 0;
         const cost = Math.round((100 - mine.condition) * REPAIR_PER_POINT / 100) * 100 + (hot ? 50000 : 0);
         out.push(opt('garage', hot ? `Respray the ${mine.name} and lose the police · ${fmtMoney(cost)}` : `Fix up the ${mine.name} · ${fmtMoney(cost)}`, cost <= 0 ? 'Nothing needs doing to it' : undefined, mine.id));
+        // a new colour, any time
+        if (!hot) for (const [name, hex] of PAINTS) if (mine.color !== hex) out.push(opt('garage', `Respray it ${name} · ${fmtMoney(PAINT_PRICE)}`, undefined, `${mine.id}|${hex}`));
       }
       const car = chopCandidate(state, it.pos);
       out.push(opt('chop', car ? `Sell the stolen ${car.name} for parts · ${fmtMoney(chopPrice(state, car.id))}` : 'Sell a stolen car for parts', car ? undefined : 'Bring a stolen car round to the yard gate'));
@@ -848,7 +850,12 @@ export function startAction(state: GameState, actorId: Id, itId: Id, type: Actio
     }
     case 'hire_bike': return { ok: true, msg: hireBike(state, p.id) };
     case 'ride_bike': { const v = state.vehicles[itId.slice(5)]; return { ok: !!v, msg: v ? mountBike(state, p.id, v) : '' }; }
-    case 'garage': { const v = state.vehicles[arg ?? '']; return { ok: !!v, msg: v ? garageJob(state, p.id, v) : '' }; }
+    case 'garage': {
+      const [vid, hex] = (arg ?? '').split('|');
+      const v = state.vehicles[vid];
+      if (v && hex) return { ok: true, msg: respray(state, p.id, v, hex) };
+      return { ok: !!v, msg: v ? garageJob(state, p.id, v) : '' };
+    }
     case 'prison_meal': begin(p, type, itId, { duration: 0.4 }, now); break;
     case 'serve_time':
       // onto the bunk until you get up (or the gate opens)

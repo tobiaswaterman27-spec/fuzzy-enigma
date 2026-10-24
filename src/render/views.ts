@@ -1777,7 +1777,9 @@ export class Views {
       }
       if (v.kind !== 'car') continue;
       let obj = this.cars.get(v.id);
-      if (!obj) { obj = buildCar(v.color ?? '#8a8f94', 0, 0, 0, false, CAR_MODELS.find((m) => m.id === v.model)?.body ?? 'car'); this.scene.add(obj); this.cars.set(v.id, obj); }
+      // a fresh coat of paint: the car is rebuilt in its new colour
+      if (obj && obj.userData.paint !== (v.color ?? '#8a8f94')) { obj.parent?.remove(obj); obj = undefined; }
+      if (!obj) { obj = buildCar(v.color ?? '#8a8f94', 0, 0, 0, false, CAR_MODELS.find((m) => m.id === v.model)?.body ?? 'car'); obj.userData.paint = v.color ?? '#8a8f94'; this.scene.add(obj); this.cars.set(v.id, obj); }
       obj.position.set(v.pos.x, v.lift ?? 0, v.pos.z);
       obj.rotation.order = 'YXZ';
       obj.rotation.set(v.pitch ?? 0, v.heading, 0);
