@@ -67,7 +67,7 @@ function randomTraits(state: GameState): Traits {
 
 function randomAppearance(state: GameState, outfit: string): Appearance {
   const frame = rand(state) < 0.5 ? 'f' : 'm';
-  const hair = frame === 'f' ? pick(state, ['long', 'bun', 'curly', 'long', 'short'] as const) : pick(state, ['short', 'short', 'curly', 'bald', 'bun'] as const);
+  const hair = frame === 'f' ? pick(state, ['long', 'bun', 'curly', 'long', 'short', 'bob', 'ponytail', 'afro', 'long', 'bob'] as const) : pick(state, ['short', 'short', 'curly', 'bald', 'bun', 'buzz', 'short', 'afro', 'buzz', 'bald'] as const);
   return {
     frame, skin: pick(state, SKIN_TONES), hair, hairColor: pick(state, HAIR_COLORS), build: pick(state, BUILDS),
     height: Math.round(((frame === 'f' ? 0.9 : 0.96) + rand(state) * 0.1) * 100) / 100, outfit,
