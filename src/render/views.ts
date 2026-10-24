@@ -21,6 +21,7 @@ import { count, total, firstItem } from '../sim/inventory';
 import { SHELF_CAPACITY } from '../sim/retail';
 import { FORKLIFT_ID, palletsWaiting } from '../sim/forklift';
 import { ageOf } from '../sim/persona';
+import { temperature } from '../sim/weather';
 import { buildOneOnMainThread, requestHuman, workerActive } from './humanBuilder';
 
 /** realistic bodies are costly to cut and drape, so outfit/body rebuilds are spread over frames */
@@ -518,6 +519,7 @@ class PersonView {
     } else { this.idleFor = 0; this.idleFidget = null; }
     this.anim.walkStyle = walkStyleFor(p);
     this.stinkFx(p, dt);
+    this.breathFx(p, dt);
     this.anim.update(dt, realSpeed, !!item, clipAction);
     // keep the feet on the floor: whatever the animation does, the lower foot rests on the ground
     if (!this.bedIt && !floored && this.rig.joints && !this.seatAt) {
@@ -695,6 +697,34 @@ class PersonView {
   }
   /** flies round the head and a whiff coming off someone who has not washed in days */
   private stink: THREE.Group | null = null;
+  /** breath that shows in cold air: a little puff from the mouth every few seconds, outdoors */
+  private breath: THREE.Sprite | null = null;
+  private breathT = Math.random() * 3;
+  private breathFx(p: Person, dt: number) {
+    const on = airTemp < 6 && p.where === 'outside' && p.visible && !p.dead && this.lod === 1;
+    if (!on) { if (this.breath) this.breath.visible = false; return; }
+    if (!this.breath) {
+      this.breath = new THREE.Sprite(breathMaterial());
+      this.rig.root.parent?.add(this.breath);
+    }
+    if (this.breath.parent !== this.rig.root.parent) this.rig.root.parent?.add(this.breath);
+    // panting when running, slow and steady standing about
+    const period = this.speed > 2.6 ? 1.1 : 3.2;
+    this.breathT = (this.breathT + dt) % period;
+    const k = this.breathT / 1.2;
+    if (k > 1) { this.breath.visible = false; return; }
+    // in front of the mouth, the way the body faces (the head bone's own axes are not the face's)
+    const at = this.rig.bones.head.getWorldPosition(new THREE.Vector3());
+    const yaw = this.rig.root.getWorldQuaternion(new THREE.Quaternion());
+    const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(yaw); fwd.y = 0; fwd.normalize();
+    at.addScaledVector(fwd, 0.14 + k * 0.25);
+    at.y += 0.04 + k * 0.06;
+    this.breath.position.copy(this.rig.root.parent!.worldToLocal(at));
+    const sz = 0.08 + k * 0.28;
+    this.breath.scale.set(sz, sz, sz);
+    (this.breath.material as THREE.SpriteMaterial).opacity = Math.min(1, (6 - airTemp) / 6 + 0.35) * 0.5 * Math.sin(Math.PI * Math.min(1, k * 1.15));
+    this.breath.visible = true;
+  }
   private stinkFx(p: Person, dt: number) {
     const on = p.needs.hygiene < 22 && p.visible && !p.sleeping;
     if (!on) { if (this.stink) { this.stink.parent?.remove(this.stink); this.stink = null; } return; }
@@ -1077,6 +1107,19 @@ function hygieneSticker(rating: number | null): THREE.CanvasTexture {
   return t;
 }
 
+/** the air temperature this frame (for breath in the cold) */
+let airTemp = 12;
+let breathMat: THREE.SpriteMaterial | null = null;
+function breathMaterial(): THREE.SpriteMaterial {
+  if (breathMat) return breathMat.clone();
+  const cv = document.createElement('canvas'); cv.width = cv.height = 64;
+  const g = cv.getContext('2d')!;
+  const grd = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  grd.addColorStop(0, 'rgba(255,255,255,0.9)'); grd.addColorStop(0.5, 'rgba(240,244,248,0.35)'); grd.addColorStop(1, 'rgba(240,244,248,0)');
+  g.fillStyle = grd; g.fillRect(0, 0, 64, 64);
+  breathMat = new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), transparent: true, depthWrite: false, opacity: 0 });
+  return breathMat.clone();
+}
 export class Views {
   people = new Map<string, PersonView>();
   stickers = new Map<string, { mesh: THREE.Mesh; rating: number | null }>();
@@ -1441,6 +1484,7 @@ export class Views {
 
   update(state: GameState, dt: number, viewer?: { x: number; z: number }, viewerInside?: string | null, speech?: Map<string, { text: string; until: number }>) {
     buildBudget = 1;
+    airTemp = temperature(state);
     this.syncBlood(state);
     // without a worker, bodies are built here, one per frame at most
     if (!workerActive() && buildOneOnMainThread()) buildBudget = 0;
