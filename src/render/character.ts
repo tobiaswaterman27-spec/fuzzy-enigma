@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import type { Appearance } from '../sim/types';
 import { BONE_NAMES, buildHumanMeshes, buildSkeleton, type HBone } from './human';
 import { buildRealHuman, humanAsset } from './humanAsset';
+import { mergeParts } from './farBody';
 
 // --------------------------------------------------------------- outfits
 export interface OutfitStyle {
@@ -114,7 +115,7 @@ function dressReal(rig: Rig, a: Appearance) {
   rig.body.updateMatrixWorld(true);
   rig.skeleton.calculateInverses();
   const hb = buildRealHuman(a);
-  const objs = hb.meshes(rig.skeleton);
+  const objs = mergeParts(hb.meshes(rig.skeleton), rig.skeleton, JSON.stringify(a));
   rig.meshes = [];
   for (const o of objs) {
     if (o.userData.attach) {

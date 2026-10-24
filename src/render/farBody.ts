@@ -48,6 +48,7 @@ function partColour(m: THREE.Material): THREE.Color {
 /** the merged body for a rig in its current outfit (built once per outfit and shared) */
 function build(rig: Rig): THREE.BufferGeometry | null {
   const parts: { g: THREE.BufferGeometry; colour: THREE.Color; bone: number; m: THREE.Matrix4 | null }[] = [];
+  // (parts merged by mergeParts carry their colours per vertex, times a white tint)
   const boneIndex = new Map(rig.skeleton.bones.map((b, i) => [b, i]));
   for (const top of rig.meshes) top.traverse((o) => {
     const mesh = o as THREE.Mesh;
@@ -84,7 +85,8 @@ function build(rig: Rig): THREE.BufferGeometry | null {
       const o = vo + i;
       pos[o * 3] = v.x; pos[o * 3 + 1] = v.y; pos[o * 3 + 2] = v.z;
       nrm[o * 3] = n.x; nrm[o * 3 + 1] = n.y; nrm[o * 3 + 2] = n.z;
-      col[o * 3] = p.colour.r; col[o * 3 + 1] = p.colour.g; col[o * 3 + 2] = p.colour.b;
+      const C = p.g.getAttribute('color');
+      col[o * 3] = p.colour.r * (C ? C.getX(i) : 1); col[o * 3 + 1] = p.colour.g * (C ? C.getY(i) : 1); col[o * 3 + 2] = p.colour.b * (C ? C.getZ(i) : 1);
       if (p.bone >= 0 || !SI) { si[o * 4] = Math.max(0, p.bone); sw[o * 4] = 1; }
       else for (let k = 0; k < 4; k++) { si[o * 4 + k] = SI.getComponent(i, k); sw[o * 4 + k] = SW.getComponent(i, k); }
     }
@@ -119,4 +121,72 @@ export function farBody(rig: Rig, key: string): THREE.SkinnedMesh | null {
   m.receiveShadow = true;
   m.bind(rig.skeleton, new THREE.Matrix4());
   return m;
+}
+
+// ---------------------------------------------------------------- near: fewer parts, same look
+/** what makes two materials draw the same apart from their colour */
+function signature(m: THREE.Material): string {
+  const s = m as THREE.MeshPhysicalMaterial;
+  return [m.type, s.map?.uuid, s.normalMap?.uuid, s.roughnessMap?.uuid, s.alphaMap?.uuid, s.roughness?.toFixed(3), s.metalness?.toFixed(3), m.side, m.transparent, m.opacity, m.alphaTest, m.depthWrite, m.userData?.kind, s.emissive?.getHexString(), s.sheen, s.clearcoat, s.transmission].join('|');
+}
+const mergedCache = new Map<string, { geos: THREE.BufferGeometry[]; mats: THREE.Material[] }>();
+
+/** Skinned parts that differ only in colour (shoe panels, soles, laces; garments of one fabric) become
+ *  one mesh with the colours in its vertices: about half the draw calls for a person close up, and
+ *  exactly the same picture. Parts riding a bone and the hair shells are left as they are. */
+export function mergeParts(objs: THREE.Object3D[], skeleton: THREE.Skeleton, key: string): THREE.Object3D[] {
+  const skinned = objs.filter((o) => (o as THREE.SkinnedMesh).isSkinnedMesh && !o.userData.attach && !Array.isArray((o as THREE.Mesh).material) && ((o as THREE.Mesh).material as THREE.Material).userData?.kind !== 'shell') as THREE.SkinnedMesh[];
+  const rest = objs.filter((o) => !skinned.includes(o as THREE.SkinnedMesh));
+  let hit = mergedCache.get(key);
+  if (!hit) {
+    const groups = new Map<string, THREE.SkinnedMesh[]>();
+    for (const m of skinned) { const k = signature(m.material as THREE.Material); groups.set(k, [...(groups.get(k) ?? []), m]); }
+    hit = { geos: [], mats: [] };
+    for (const list of groups.values()) {
+      const src = list[0].material as THREE.MeshStandardMaterial;
+      if (list.length === 1) { hit.geos.push(list[0].geometry); hit.mats.push(src); continue; }
+      let verts = 0, idx = 0;
+      for (const m of list) { verts += m.geometry.getAttribute('position').count; idx += m.geometry.index ? m.geometry.index.count : m.geometry.getAttribute('position').count; }
+      const pos = new Float32Array(verts * 3), nrm = new Float32Array(verts * 3), uv = new Float32Array(verts * 2), col = new Float32Array(verts * 3);
+      const si = new Uint16Array(verts * 4), sw = new Float32Array(verts * 4);
+      const index = verts > 65535 ? new Uint32Array(idx) : new Uint16Array(idx);
+      let vo = 0, io = 0;
+      for (const m of list) {
+        const g = m.geometry, c = (m.material as THREE.MeshStandardMaterial).color ?? new THREE.Color(1, 1, 1);
+        const P = g.getAttribute('position'), N = g.getAttribute('normal'), U = g.getAttribute('uv'), SI = g.getAttribute('skinIndex'), SW = g.getAttribute('skinWeight'), C = g.getAttribute('color');
+        for (let i = 0; i < P.count; i++) {
+          const o = vo + i;
+          pos[o * 3] = P.getX(i); pos[o * 3 + 1] = P.getY(i); pos[o * 3 + 2] = P.getZ(i);
+          if (N) { nrm[o * 3] = N.getX(i); nrm[o * 3 + 1] = N.getY(i); nrm[o * 3 + 2] = N.getZ(i); }
+          if (U) { uv[o * 2] = U.getX(i); uv[o * 2 + 1] = U.getY(i); }
+          col[o * 3] = c.r * (C ? C.getX(i) : 1); col[o * 3 + 1] = c.g * (C ? C.getY(i) : 1); col[o * 3 + 2] = c.b * (C ? C.getZ(i) : 1);
+          for (let k = 0; k < 4; k++) { si[o * 4 + k] = SI.getComponent(i, k); sw[o * 4 + k] = SW.getComponent(i, k); }
+        }
+        if (g.index) { const I = g.index; for (let i = 0; i < I.count; i++) index[io++] = I.getX(i) + vo; }
+        else for (let i = 0; i < P.count; i++) index[io++] = vo + i;
+        vo += P.count;
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      g.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
+      g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+      g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      g.setAttribute('skinIndex', new THREE.BufferAttribute(si, 4));
+      g.setAttribute('skinWeight', new THREE.BufferAttribute(sw, 4));
+      g.setIndex(new THREE.BufferAttribute(index, 1));
+      const mat = src.clone();
+      mat.color = new THREE.Color(1, 1, 1);
+      mat.vertexColors = true;
+      hit.geos.push(g); hit.mats.push(mat);
+    }
+    mergedCache.set(key, hit);
+    if (mergedCache.size > 200) { const k0 = mergedCache.keys().next().value!; mergedCache.delete(k0); }
+  }
+  const out: THREE.Object3D[] = hit.geos.map((g, i) => {
+    const m = new THREE.SkinnedMesh(g, hit!.mats[i]);
+    m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false;
+    m.bind(skeleton, new THREE.Matrix4());
+    return m;
+  });
+  return [...out, ...rest];
 }
