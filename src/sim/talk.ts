@@ -116,7 +116,7 @@ function appearanceOf(state: GameState, p: Person, remote: boolean): string[] {
   if (!remote) {
     if (you.weapon) out.push(`They are holding a ${({ bat: 'cricket bat', knife: 'kitchen knife', golf: 'golf club', crowbar: 'crowbar' } as Record<string, string>)[you.weapon]} in front of you. That is frightening.`);
     if (you.needs.energy < 15) out.push('They look absolutely shattered, barely keeping their eyes open.');
-    if (raining(state) > 0.3 && !buildingAt(you.pos)) out.push('They are soaked through from the rain.');
+    if (raining(state) > 0.3 && !buildingAt(you.pos)) out.push((state.containers[you.bagId]?.items.umbrella ?? 0) > 0 ? 'They have an umbrella up against the rain.' : 'They are soaked through from the rain.');
     if ((p.relations[you.id] ?? 0) < 15 && you.appearance.outfit === 'outfit_smart') out.push('They look smart, like someone with money.');
     if ((you.drunk ?? 0) > 40) out.push('They are obviously drunk.');
     if (you.injured) out.push('They look hurt, bruised and bloodied.');

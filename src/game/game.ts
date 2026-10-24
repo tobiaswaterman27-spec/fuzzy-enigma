@@ -853,7 +853,7 @@ export class Game {
     if (me.weapon) lines.push(`Whoa, put the ${({ bat: 'bat', knife: 'knife', golf: 'club', crowbar: 'crowbar' } as Record<string, string>)[me.weapon]} down!`, `${me.appearance.frame === 'f' ? 'She' : 'He'}\'s got a weapon, careful!`, 'Someone ring the police!');
     if (me.injured || (me.health ?? 100) < 45) lines.push('Are you alright? You\'re bleeding.', 'Blimey, what happened to you?');
     if ((me.drunk ?? 0) > 40) lines.push('Someone\'s had a few.', 'Steady on, pal.');
-    if (raining(s) > 0.5 && me.needs.hygiene >= 20) lines.push('Lovely weather, eh?');
+    if (raining(s) > 0.5 && me.needs.hygiene >= 20) lines.push(...((s.containers[me.bagId]?.items.umbrella ?? 0) > 0 ? ['Lovely weather, eh?'] : ['Lovely weather, eh?', 'No brolly? You\'re drenched!']));
     const hr = hourOfDay(s.minute), dark = hr < 6 || hr >= 20;
     const wear = me.appearance.outfit, extras = me.appearance.extras ?? [];
     if (extras.includes('sunglasses') && (dark || raining(s) > 0.3)) lines.push('Sunglasses? Now? Bit dark for that, isn\'t it.', 'Who do you think you are, a film star?');
