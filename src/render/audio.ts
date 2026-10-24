@@ -8,6 +8,10 @@ import { daylight } from '../sim/clock';
 import { Radio } from './radio';
 import { Theme } from './theme';
 import { voice } from './voice';
+import { venues } from '../sim/venues';
+import { venueOpen } from '../sim/world/venues';
+import { AVENUES, STREETS } from '../sim/world/city';
+import { levelOf } from '../sim/world/levels';
 
 export class Audio {
   private ctx: AudioContext | null = null;
@@ -20,6 +24,9 @@ export class Audio {
   private lastScan = new Map<string, number>();
   private lastWhere = '';
   private birdAt = 0;
+  private murmurGain!: GainNode;
+  private beatAt = 0;
+  private bleepAt = 0;
   volume = 0.6;
   readonly radio = new Radio();
   readonly theme = new Theme();
@@ -48,6 +55,16 @@ export class Audio {
     };
     this.rainGain = loopNoise('highpass', 900, 0.4);
     this.trafficGain = loopNoise('lowpass', 220, 0.7);
+    // a room full of people talking: band-limited noise that swells and falls like voices
+    {
+      const src = c.createBufferSource(); src.buffer = this.noise; src.loop = true; src.playbackRate.value = 0.7;
+      const f1 = c.createBiquadFilter(); f1.type = 'bandpass'; f1.frequency.value = 520; f1.Q.value = 0.9;
+      const f2 = c.createBiquadFilter(); f2.type = 'lowpass'; f2.frequency.value = 1500;
+      const mod = c.createGain(); mod.gain.value = 0.75;
+      for (const [hz, depth] of [[0.9, 0.18], [2.3, 0.1], [0.37, 0.12]]) { const lfo = c.createOscillator(); lfo.frequency.value = hz; const d = c.createGain(); d.gain.value = depth; lfo.connect(d).connect(mod.gain); lfo.start(); }
+      this.murmurGain = c.createGain(); this.murmurGain.gain.value = 0;
+      src.connect(f1).connect(f2).connect(mod).connect(this.murmurGain).connect(this.master); src.start();
+    }
     this.radio.attach(c, this.master, this.noise);
     this.theme.attach(c, this.master, this.noise);
   }
@@ -61,6 +78,16 @@ export class Audio {
     o.connect(g).connect(this.master); o.start(t); o.stop(t + dur + 0.02);
   }
 
+  /** a bass drum: a sine dropping fast in pitch */
+  private kick(when: number, vol: number) {
+    const c = this.ctx!;
+    const t = c.currentTime + when;
+    const o = c.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(130, t); o.frequency.exponentialRampToValueAtTime(42, t + 0.12);
+    const g = c.createGain();
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+    o.connect(g).connect(this.master); o.start(t); o.stop(t + 0.32);
+  }
   /** a firework going off, quieter and more muffled the further away it is */
   bang(dist: number) {
     if (!this.ctx || this.muted) return;
@@ -280,7 +307,8 @@ export class Audio {
     const r = raining(state);
     this.rainGain.gain.setTargetAtTime(r * (inside ? 0.05 : 0.22), t, 0.5);
     // traffic hum near the roads, quieter indoors and at night
-    const nearRoad = Math.max(0, 1 - Math.min(Math.abs(p.pos.z), Math.abs(p.pos.x)) / 30);
+    const near = (xs: number[], v: number) => xs.reduce((m, a) => Math.min(m, Math.abs(v - a)), Infinity);
+    const nearRoad = levelOf(p.pos.x) !== 0 ? 0 : Math.max(0, 1 - Math.min(near(STREETS, p.pos.z), near(AVENUES, p.pos.x)) / 30);
     this.trafficGain.gain.setTargetAtTime((inside ? 0.02 : 0.09) * nearRoad * (0.4 + 0.6 * daylight(state.minute)), t, 0.6);
     // footsteps: one per stride, a sharper click on hard floors indoors
     if (drivingSpeed === null && speed > 0.4) {
@@ -319,10 +347,34 @@ export class Audio {
       if (n > prev) this.blip(2600, 0.09, 'square', 0.05);
       this.lastScan.set(till.id, n);
     }
+    const here = venues().find((v) => p.pos.x > v.rect.x0 && p.pos.x < v.rect.x1 && p.pos.z > v.rect.z0 && p.pos.z < v.rect.z1) ?? null;
+    const open = !!here && venueOpen(here, state.minute);
     // a two-tone chime when you walk into a shop
     if (inside !== this.lastWhere) {
-      if (inside && ['market', 'unit4', 'homestore', 'cafe'].includes(inside)) { this.blip(1318, 0.35, 'sine', 0.07); this.blip(1046, 0.5, 'sine', 0.07, 0.18); }
+      if (inside && (['market', 'unit4', 'homestore', 'cafe'].includes(inside) || open && ['shop', 'bakery', 'florist', 'bookshop', 'clothes', 'pawn', 'cafe', 'barber', 'takeaway'].includes(here!.kind))) { this.blip(1318, 0.35, 'sine', 0.07); this.blip(1046, 0.5, 'sine', 0.07, 0.18); }
       this.lastWhere = inside ?? '';
+    }
+    // the room you are in: voices in a busy pub or cafe, bleeps in the arcade, the club's bass (which
+    // you also hear, muffled, from the pavement outside at night)
+    const CROWD: Record<string, number> = { pub: 0.06, nightclub: 0.05, casino: 0.05, cafe: 0.04, takeaway: 0.03, station: 0.045, mall: 0.045, arcade: 0.03, hospital: 0.025, bakery: 0.02, cityhall: 0.02, bank: 0.015, shop: 0.015, barber: 0.02, gym: 0.02 };
+    this.murmurGain.gain.setTargetAtTime(open ? CROWD[here!.kind] ?? 0 : 0, t, 0.8);
+    if (open && here!.kind === 'arcade' && performance.now() > this.bleepAt) {
+      this.bleepAt = performance.now() + 300 + Math.random() * 900;
+      const f = [523, 659, 784, 1046, 1318][Math.floor(Math.random() * 5)];
+      this.blip(f, 0.08, 'square', 0.012); if (Math.random() < 0.4) this.blip(f * 1.5, 0.08, 'square', 0.01, 0.09);
+    }
+    const club = open && here!.kind === 'nightclub' ? here : venues().find((v) => v.kind === 'nightclub' && venueOpen(v, state.minute) && Math.hypot(Math.max(v.rect.x0 - p.pos.x, 0, p.pos.x - v.rect.x1), Math.max(v.rect.z0 - p.pos.z, 0, p.pos.z - v.rect.z1)) < 30) ?? null;
+    if (club) {
+      const d = here === club ? 0 : Math.hypot(Math.max(club.rect.x0 - p.pos.x, 0, p.pos.x - club.rect.x1), Math.max(club.rect.z0 - p.pos.z, 0, p.pos.z - club.rect.z1));
+      const level = here === club ? 1 : 0.35 * (1 - d / 30);
+      const beat = 60 / 124;
+      if (t > this.beatAt + 0.5) this.beatAt = t;
+      while (this.beatAt < t + 0.1) {
+        const at = this.beatAt - t, n = Math.round(this.beatAt / beat);
+        this.kick(Math.max(0, at), 0.4 * level);
+        if (here === club && n % 2 === 1) this.blip(7000, 0.04, 'square', 0.006, Math.max(0, at) + beat / 2);
+        this.beatAt += beat;
+      }
     }
     // birdsong on dry days outdoors
     const day = daylight(state.minute);
