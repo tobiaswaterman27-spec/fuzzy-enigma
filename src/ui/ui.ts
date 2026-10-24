@@ -835,7 +835,7 @@ export class UI {
   }
   private snap() {
     const url = this.game.snapshot(UI.FILTERS[this.photoIdx][1]);
-    this.game.audio.cash?.();
+    this.game.audio.shutter();
     const flash = document.createElement('div'); flash.className = 'photo-flash'; document.body.appendChild(flash); window.setTimeout(() => flash.remove(), 450);
     this.dialog(`<h3>Snap</h3><img src="${url}" style="width:100%;border-radius:6px;display:block" alt="Your photo"><p class="muted">Right-click (or press and hold) the picture to save it.</p><div class="row"><button class="primary" data-close-snap="1">Keep shooting</button></div>`, (b) => { if (b.dataset.closeSnap) this.closeDialog(); });
   }

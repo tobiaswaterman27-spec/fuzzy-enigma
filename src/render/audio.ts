@@ -184,6 +184,18 @@ export class Audio {
     const v = Math.min(1, 8 / Math.max(2, dist));
     this.thud(heavy ? 80 : 120, heavy ? 0.3 : 0.18, 0.75 * v); this.thud(heavy ? 400 : 800, 0.08, 0.35 * v);
   }
+  /** a camera shutter: two quick clicks of filtered noise */
+  shutter() {
+    if (!this.ctx || this.muted) return;
+    const c = this.ctx;
+    for (const [at, f] of [[0, 3200], [0.07, 2400]] as const) {
+      const t = c.currentTime + at;
+      const src = c.createBufferSource(); src.buffer = this.noise;
+      const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = f; bp.Q.value = 2;
+      const g = c.createGain(); g.gain.setValueAtTime(0.3, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.035);
+      src.connect(bp).connect(g).connect(this.master); src.start(t, Math.random() * 0.5); src.stop(t + 0.05);
+    }
+  }
   /** feet back on the ground */
   land() { if (this.ctx && !this.muted) this.thud(120, 0.12, 0.35); }
   /** the phone: two soft bleeps up (out) or down (away) */
