@@ -700,6 +700,7 @@ export class Game {
       this.last = now;
       const t0 = performance.now();
       this.tick(dt);
+      this.pumpFireTick();
       this.prewarm();
       this.frameMs = this.frameMs * 0.95 + (performance.now() - t0) * 0.05;
       requestAnimationFrame(loop);
@@ -1003,6 +1004,8 @@ export class Game {
       const side = Math.abs(fwd) > Math.abs(rt) ? (fwd < 0 ? 0 : 1) : (rt < 0 ? 3 : 2);
       if (v.kind === 'car' && !this.bumpCooldown) { damageCar(this.state, v, Math.abs(this.vanSpeed), side as 0 | 1 | 2 | 3); this.bumpCooldown = 0.4; if (Math.abs(this.vanSpeed) > 4) this.audio.crash(Math.abs(this.vanSpeed)); }
       if (Math.abs(this.vanSpeed) > 2) taxiBump(this.state);
+      // ploughed into a petrol pump: it goes up, and the car with it
+      if (v.kind === 'car' && Math.abs(this.vanSpeed) > 8) this.pumpHit(v, res);
       this.vanSpeed *= 0.4;
     }
     this.bumpCooldown = Math.max(0, this.bumpCooldown - dt);
@@ -1056,6 +1059,30 @@ export class Game {
     if (v.kind === 'car' || v.kind === 'van') this.stunt(v, dt);
   }
 
+  private pumpsBlown = new Map<string, number>();
+  private pumpFires: { x: number; z: number; until: number }[] = [];
+  private pumpHit(v: Vehicle, at: { x: number; z: number }) {
+    const pump = getWorld().city.props.find((q) => q.kind === 'pump' && Math.hypot(q.x - at.x, q.z - at.z) < 2.6);
+    if (!pump) return;
+    const key = `${pump.x},${pump.z}`, now = performance.now();
+    if ((this.pumpsBlown.get(key) ?? 0) > now) return;
+    this.pumpsBlown.set(key, now + 120000);
+    this.views.fx.explode(pump.x, pump.z);
+    this.audio.boom(Math.hypot(pump.x - this.player.pos.x, pump.z - this.player.pos.z));
+    this.pumpFires.push({ x: pump.x, z: pump.z, until: now + 25000 });
+    if (v.burning == null) v.burning = this.state.minute - 0.8;
+    crime(this.state, 'blowing up a petrol pump', 3);
+    this.onToast('The pump goes up! Get out of the car!');
+  }
+  /** a blown pump burns for a while: flames and thick black smoke */
+  private pumpFireTick() {
+    const now = performance.now();
+    this.pumpFires = this.pumpFires.filter((f) => f.until > now);
+    for (const f of this.pumpFires) {
+      if (Math.random() < 0.6) this.views.fx.emit('fire', f.x + (Math.random() - 0.5) * 0.8, 0.6, f.z + (Math.random() - 0.5) * 0.8, new THREE.Vector3(0, 2.2, 0), 0.9, 0.9);
+      if (Math.random() < 0.3) this.views.fx.emit('black', f.x, 1.6, f.z, new THREE.Vector3(0.3, 1.8, 0), 1.4, 3.5);
+    }
+  }
   /** stunt ramps: up the slope, off the lip, through the air, and down again */
   private air: { y: number; vy: number; t: number; x0: number; z0: number; ramp: number; pitch: number; speed: number } | null = null;
   private onRamp: Ramp | null = null;
