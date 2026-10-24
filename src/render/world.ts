@@ -658,8 +658,12 @@ function buildBuilding(g: THREE.Group, b: BuildingDef, cutaway: WorldView['cutaw
         const metalM = metal('#3b4045', 0.4);
         for (let f = 1; f < b.floors; f++) {
           const fy = 3.2 * f;
-          const course = box(W + WALL_T + 0.1, 0.14, D + WALL_T + 0.1, trimM, cx, fy, cz);
-          roofs.push(course); g.add(course);
+          // a string course round the outside at each floor (a ring, not a slab: from inside, the
+          // ground floor's ceiling must be the ceiling, not the band's underside)
+          for (const [bx, bz, bw, bd] of [[cx, z0 - WALL_T / 2, W + WALL_T + 0.1, 0.1], [cx, z1 + WALL_T / 2, W + WALL_T + 0.1, 0.1], [x0 - WALL_T / 2, cz, 0.1, D + WALL_T + 0.1], [x1 + WALL_T / 2, cz, 0.1, D + WALL_T + 0.1]]) {
+            const course = box(bw, 0.14, bd, trimM, bx, fy, bz);
+            roofs.push(course); g.add(course);
+          }
           for (const [side, len] of [['zmin', W], ['zmax', W], ['xmin', D], ['xmax', D]] as const) {
             const n = Math.floor((len - 2) / 3.2);
             const start = side === 'zmin' || side === 'zmax' ? x0 : z0;
