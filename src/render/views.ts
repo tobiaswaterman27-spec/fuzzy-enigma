@@ -586,11 +586,25 @@ class PersonView {
       const floorY = root.parent.localToWorld(new THREE.Vector3(0, this.seatAt.y - this.seatH, 0)).y;
       for (const [thigh, shin, foot, splay] of [[B.thighL, B.shinL, B.footL, 1], [B.thighR, B.shinR, B.footR, -1]] as const) {
         const hip = thigh.getWorldPosition(new THREE.Vector3());
-        const side = new THREE.Vector3(fwd.z, 0, -fwd.x).multiplyScalar(splay * 0.04);
-        const knee = hip.clone().addScaledVector(fwd, 0.44).add(side).setY(hip.y + 0.04);
+        const L1 = hip.distanceTo(shin.getWorldPosition(new THREE.Vector3())), L2 = shin.getWorldPosition(new THREE.Vector3()).distanceTo(foot.getWorldPosition(new THREE.Vector3()));
+        const side = new THREE.Vector3(fwd.z, 0, -fwd.x).multiplyScalar(splay * 0.06);
+        // two-bone IK: the ankle on the floor a thigh's length ahead, the knee bending up and forward
+        // (on a low sofa the knees come up; on a high stool the feet just reach)
+        const ankleH = (this.rig.joints?.footL.y ?? 0.07) * this.rig.body.scale.y;
+        const ankle = hip.clone().addScaledVector(fwd, L1 + 0.05).add(side).setY(floorY + ankleH);
+        const toA = ankle.clone().sub(hip);
+        const D = Math.min(toA.length(), L1 + L2 - 0.002);
+        const u = toA.normalize();
+        const pole = new THREE.Vector3(0, 1, 0).addScaledVector(fwd, 0.6);
+        const n = pole.addScaledVector(u, -pole.dot(u)).normalize();
+        const along = (L1 * L1 - L2 * L2 + D * D) / (2 * D), up = Math.sqrt(Math.max(0, L1 * L1 - along * along));
+        const knee = hip.clone().addScaledVector(u, along).addScaledVector(n, up);
         aimBone(thigh, shin, knee);
-        const ankle = knee.clone().addScaledVector(fwd, 0.06).setY(floorY + 0.09);
-        aimBone(shin, foot, ankle);
+        aimBone(shin, foot, hip.clone().addScaledVector(u, D));
+        // and the foot flat on the floor, toes forward (the clip's foot angle no longer fits the shin)
+        foot.parent!.updateWorldMatrix(true, false);
+        foot.quaternion.copy(foot.parent!.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(root.getWorldQuaternion(new THREE.Quaternion())));
+        foot.updateMatrixWorld(true);
       }
       // sitting up: the captured sit slumps right back, so the back is set nearly upright against the
       // seat back (a slight recline), the head level (not on a sofa, where a slouch is allowed)
@@ -1937,7 +1951,7 @@ export class Views {
       if (!m) {
         m = new THREE.Mesh(spillGeometry(d.id), spillMat);
         m.rotation.x = -Math.PI / 2;
-        m.position.set(d.pos.x, 0.09, d.pos.z);
+        m.position.set(d.pos.x, 0.03, d.pos.z);
         this.scene.add(m);
         this.spills.set(d.id, m);
       }

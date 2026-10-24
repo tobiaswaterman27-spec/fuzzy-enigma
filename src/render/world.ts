@@ -622,7 +622,7 @@ function buildBuilding(g: THREE.Group, b: BuildingDef, cutaway: WorldView['cutaw
     const holeOf = (f: Flight | null): Rect | null => f && mk >= 0 ? { x0: f.x0 + mk * LEVEL_DX, x1: f.x1 + mk * LEVEL_DX, z0: Math.min(f.bottom, f.top), z1: Math.max(f.bottom, f.top) } : null;
     const floorHole = mk >= 0 ? holeOf(flightsAt(mk).down) : null, ceilHole = mk >= 0 ? holeOf(flightsAt(mk).up) : null;
     const flM = texMat(fl.t, 0.75);
-    for (const pr of rectMinus({ x0, z0, x1, z1 }, floorHole)) g.add(box(pr.x1 - pr.x0, 0.08, pr.z1 - pr.z0, flM, (pr.x0 + pr.x1) / 2, 0.04, (pr.z0 + pr.z1) / 2, false, fl.tile));
+    for (const pr of rectMinus({ x0, z0, x1, z1 }, floorHole)) g.add(box(pr.x1 - pr.x0, 0.08, pr.z1 - pr.z0, flM, (pr.x0 + pr.x1) / 2, -0.03, (pr.z0 + pr.z1) / 2, false, fl.tile));
     // frames on both faces and one clear pane in each opening
     for (const w of wins) {
       for (const inner of [false, true]) {
@@ -720,13 +720,13 @@ function buildBuilding(g: THREE.Group, b: BuildingDef, cutaway: WorldView['cutaw
     // a solid ceiling slab that also blocks sunlight, so no light leaks along the top of the walls
     const ceilM = M('#f3f1ec', 0.95);
     for (const pr of rectMinus({ x0: x0 - WALL_T / 2, z0: z0 - WALL_T / 2, x1: x1 + WALL_T / 2, z1: z1 + WALL_T / 2 }, ceilHole)) {
-      const ceil = box(pr.x1 - pr.x0, 0.08, pr.z1 - pr.z0, ceilM, (pr.x0 + pr.x1) / 2, 3.2, (pr.z0 + pr.z1) / 2, true);
+      const ceil = box(pr.x1 - pr.x0, 0.08, pr.z1 - pr.z0, ceilM, (pr.x0 + pr.x1) / 2, 3.14, (pr.z0 + pr.z1) / 2, true);
       ceil.receiveShadow = true;
       roofs.push(ceil);
       g.add(ceil);
     }
     const panel = M('#ffffff', 0.3, { emissive: new THREE.Color('#fff6e0'), emissiveIntensity: 0.6 });
-    for (let x = x0 + 3; x < x1 - 1.5; x += 5) for (let z = z0 + 3; z < z1 - 1.5; z += 5) { const p = box(1.4, 0.04, 0.5, panel, x, 3.16, z, false); roofs.push(p); g.add(p); }
+    for (let x = x0 + 3; x < x1 - 1.5; x += 5) for (let z = z0 + 3; z < z1 - 1.5; z += 5) { const p = box(1.4, 0.04, 0.5, panel, x, 3.085, z, false); roofs.push(p); g.add(p); }
     const nL = Math.max(1, Math.round((W * D) / 220));
     for (let i = 0; i < nL; i++) {
       lightSpots.push({ x: x0 + (W * (i + 0.5)) / nL, y: 2.9, z: cz, intensity: 7, distance: Math.max(W, D), bid: b.id });
@@ -1030,7 +1030,7 @@ function buildObstacle(o: Obstacle): THREE.Object3D {
     case 'lane_marking': {
       // yellow floor lines around a staging lane, with the lane number painted at the front
       const paint = M('#e8c12a', 0.6);
-      grp.add(box(W, 0.006, 0.08, paint, cx, 0.093, r.z0), box(W, 0.006, 0.08, paint, cx, 0.093, r.z1), box(0.08, 0.006, D, paint, r.x0, 0.093, cz), box(0.08, 0.006, D, paint, r.x1, 0.093, cz));
+      grp.add(box(W, 0.006, 0.08, paint, cx, 0.016, r.z0), box(W, 0.006, 0.08, paint, cx, 0.016, r.z1), box(0.08, 0.006, D, paint, r.x0, 0.016, cz), box(0.08, 0.006, D, paint, r.x1, 0.016, cz));
       return grp;
     }
     case 'forklift': if (fit('forklift', r, o.rot ?? 0, '#f2a516')) return grp; break;
@@ -1087,7 +1087,7 @@ function buildObstacle(o: Obstacle): THREE.Object3D {
       const f = FLOORS[o.color ?? 'oak'] ?? FLOORS.oak;
       const t = f.kind === 'wood' ? tex.wood(f.a) : f.kind === 'carpet' ? tex.carpet(f.a) : tex.tiles(f.a, f.b, 4);
       const key = f.kind === 'wood' ? `wood${f.a}` : f.kind === 'carpet' ? `carpet${f.a}` : `tiles${f.a}${f.b}`;
-      grp.add(box(W, 0.012, D, texMat(t, f.kind === 'tiles' ? 0.3 : f.kind === 'carpet' ? 1 : 0.6), cx, 0.086, cz, false, TILE[key] ?? 1.2));
+      grp.add(box(W, 0.012, D, texMat(t, f.kind === 'tiles' ? 0.3 : f.kind === 'carpet' ? 1 : 0.6), cx, 0.016, cz, false, TILE[key] ?? 1.2));
       return grp;
     }
     case 'wallfinish': {
@@ -1307,7 +1307,7 @@ function buildObstacle(o: Obstacle): THREE.Object3D {
       const chrome = metal('#d6d9dc', 0.15);
       const H = o.height;
       grp.add(box(W, 0.08, D, M('#f7f7f5', 0.2), cx, 0.04, cz));
-      grp.add(box(0.12, 0.012, 0.12, chrome, cx, 0.085, cz, false));
+      grp.add(box(0.12, 0.012, 0.12, chrome, cx, 0.016, cz, false));
       // which open side faces the person using it decides where the door goes
       const it = Object.values(getWorld().interactables).find((x) => x.kind === 'shower' && x.obj.x >= r.x0 - 0.1 && x.obj.x <= r.x1 + 0.1 && x.obj.z >= r.z0 - 0.1 && x.obj.z <= r.z1 + 0.1);
       const doorSide = it ? (Math.abs(it.pos.x - cx) > Math.abs(it.pos.z - cz) ? (it.pos.x < cx ? 'xmin' : 'xmax') : (it.pos.z < cz ? 'zmin' : 'zmax')) : 'xmin';
@@ -1605,7 +1605,7 @@ function buildObstacle(o: Obstacle): THREE.Object3D {
       for (const y of [0.05, 1.1, o.height]) grp.add(along ? box(L, 0.06, 0.08, steel, cx, y, cz) : box(0.08, 0.06, L, steel, cx, y, cz));
       for (let t = -L / 2 + 0.06; t < L / 2; t += 0.13) grp.add(along ? cyl(0.016, 0.016, o.height, steel, cx + t, o.height / 2, cz, 6) : cyl(0.016, 0.016, o.height, steel, cx, o.height / 2, cz + t, 6));
       if (o.kind === 'celldoor') grp.add(box(0.16, 0.22, 0.12, metal('#2a2f35', 0.3), along ? r.x1 - 0.12 : cx, 1.1, along ? cz : r.z1 - 0.12));
-      if (o.kind === 'cellbars') { grp.add(box(W, 0.02, D, M('#7d8186', 0.9), cx, 3.15, cz)); }
+      if (o.kind === 'cellbars') { grp.add(box(W, 0.02, D, M('#7d8186', 0.9), cx, 3.09, cz)); }
       break;
     }
     case 'stairs': {
@@ -1660,7 +1660,7 @@ function buildObstacle(o: Obstacle): THREE.Object3D {
       grp.add(leaf);
       break;
     }
-    case 'tilefloor': grp.add(box(W, 0.012, D, texMat(tex.tiles('#eef0f1', '#e2e6e8', 8), 0.35), cx, 0.087, cz, false, TILE['tiles#eef0f1#e2e6e8'] ?? 1.2)); break;
+    case 'tilefloor': grp.add(box(W, 0.012, D, texMat(tex.tiles('#eef0f1', '#e2e6e8', 8), 0.35), cx, 0.017, cz, false, TILE['tiles#eef0f1#e2e6e8'] ?? 1.2)); break;
     case 'toilet': {
       const ceramic = M('#f7f7f5', 0.15);
       grp.add(box(0.36, 0.4, 0.5, ceramic, cx - 0.02, 0.2, cz));
@@ -1670,7 +1670,7 @@ function buildObstacle(o: Obstacle): THREE.Object3D {
       grp.add(cyl(0.025, 0.025, 0.02, metal('#ccc'), r.x1 - 0.09, 0.82, cz, 10));
       break;
     }
-    case 'rug': grp.add(box(W, 0.015, D, texMat(tex.carpet(o.color ?? '#8a3e3a'), 1), cx, 0.09, cz, false, 1)); break;
+    case 'rug': grp.add(box(W, 0.015, D, texMat(tex.carpet(o.color ?? '#8a3e3a'), 1), cx, 0.021, cz, false, 1)); break;
     case 'plant':
       grp.add(cyl(0.22, 0.17, 0.4, M('#9a5b3a', 0.8), cx, 0.2, cz, 12));
       for (let i = 0; i < 5; i++) { const lf = new THREE.Mesh(new THREE.IcosahedronGeometry(0.22, 0), M('#3f7f45', 0.9)); lf.position.set(cx + Math.sin(i * 1.3) * 0.12, 0.6 + i * 0.12, cz + Math.cos(i * 1.3) * 0.12); lf.castShadow = true; grp.add(lf); }
@@ -1774,7 +1774,7 @@ function buildObstacle(o: Obstacle): THREE.Object3D {
       m.position.set(cx, o.height, cz - 0.03); m.rotation.y = Math.PI;
       grp.add(m);
       grp.add(box(0.8, 0.8, 0.04, M('#4a2f1e', 0.6), cx, o.height, cz + 0.01, false));
-      grp.add(box(0.6, 0.012, 0.05, M('#d9c27a', 0.5), cx, 0.09, cz - 2.37, false));
+      grp.add(box(0.6, 0.012, 0.05, M('#d9c27a', 0.5), cx, 0.016, cz - 2.37, false));
       return grp;
     }
     default: grp.add(box(W, o.height, D, M('#888'), cx, o.height / 2, cz));
