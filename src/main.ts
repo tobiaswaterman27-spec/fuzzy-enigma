@@ -45,7 +45,7 @@ const EYE_COLORS = ['#4a6b8a', '#5a4632', '#3b2a1c', '#4f6b3a', '#6b7f8c', '#7a5
 const GAITS = [['walk', 'normal'], ['walk_b', 'relaxed'], ['walk_c', 'casual'], ['walk_brisk', 'brisk'], ['walk_proud', 'confident']] as const;
 
 // --- character creator: edits the real player appearance live
-const EXTRAS: [string, string][] = [['glasses', 'Glasses'], ['sunglasses', 'Sunglasses'], ['studs', 'Ear studs'], ['hoops', 'Gold hoops'], ['chain', 'Gold chain'], ['watch', 'Watch']];
+const EXTRAS: [string, string][] = [['glasses', 'Glasses'], ['sunglasses', 'Sunglasses'], ['studs', 'Ear studs'], ['hoops', 'Gold hoops'], ['chain', 'Gold chain'], ['watch', 'Watch'], ['flatcap', 'Flat cap'], ['beanie', 'Beanie'], ['cap', 'Baseball cap']];
 type Shape = NonNullable<Appearance['shape']>;
 const DEFAULT_SHAPE: Shape = { african: 0.33, asian: 0.33, caucasian: 0.34, muscle: 0, weight: 0, tall: 0, prop: 0.6 };
 
@@ -82,7 +82,7 @@ function creator() {
       <label>Eyes</label>${chip('eyes', EYE_COLORS, a.eyes ?? '', true)}${colour('eyes', a.eyes ?? '#5a4632')}`;
     if (tab === 'hair') body = `<label>Style</label>${chip('hair', HAIR_STYLES, a.hair)}<label>Colour</label>${chip('hairColor', HAIR_COLORS, a.hairColor, true)}${colour('hairColor', a.hairColor)}`;
     if (tab === 'style') body = `<label>Look</label><div class="chips">${OUTFITS.map(([v, l]) => `<button data-g="outfit" data-v="${v}" class="${(a as any).outfit === v || (!(a as any).outfit && v === 'outfit_casual') ? 'on' : ''}">${l}</button>`).join('')}</div><label>Colours</label><div class="chips">${palette().map((c, i) => `<button data-g="style" data-v="${i}" class="swatch ${(a.style ?? 0) % palette().length === i && a.style !== undefined ? 'on' : ''}" style="background:${c}" aria-label="colour ${i + 1}"></button>`).join('')}</div><p class="muted">Pick the same colour again for different trousers, jackets and shoes.</p>
-      <label>Jewellery & glasses</label><div class="chips">${EXTRAS.map(([k, l]) => `<button data-x="${k}" class="${a.extras?.includes(k) ? 'on' : ''}">${l}</button>`).join('')}</div>
+      <label>Hats, jewellery & glasses</label><div class="chips">${EXTRAS.map(([k, l]) => `<button data-x="${k}" class="${a.extras?.includes(k) ? 'on' : ''}">${l}</button>`).join('')}</div>
       <label>Walk</label><div class="chips">${GAITS.map(([v, l]) => `<button data-g="gait" data-v="${v}" class="${(p().gait ?? 'walk') === v ? 'on' : ''}">${l}</button>`).join('')}</div>`;
     if (tab === 'you') body = `<label for="cc-name">Name</label><input id="cc-name" type="text" maxlength="24" value="${p().name}">
       <label for="cc-ai">OpenAI API key <span class="muted">(optional)</span></label>
@@ -139,7 +139,7 @@ function creator() {
     }
     if (b.dataset.x) {
       const k = b.dataset.x, set = new Set(a.extras ?? []);
-      if (set.has(k)) set.delete(k); else { set.add(k); if (k === 'glasses') set.delete('sunglasses'); if (k === 'sunglasses') set.delete('glasses'); }
+      if (set.has(k)) set.delete(k); else { set.add(k); if (k === 'glasses') set.delete('sunglasses'); if (k === 'sunglasses') set.delete('glasses'); for (const h of ['flatcap', 'beanie', 'cap']) if (h !== k && ['flatcap', 'beanie', 'cap'].includes(k)) set.delete(h); }
       a.extras = [...set]; render(); return;
     }
     const g = b.dataset.g as keyof Appearance;

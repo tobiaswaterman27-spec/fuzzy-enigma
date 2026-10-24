@@ -67,7 +67,8 @@ export function venuesTick(state: GameState) {
 // ---------------------------------------------------------------- buying
 export interface Offer { key: string; label: string; price: number; eat?: number; drink?: number; item?: string; energy?: number; mood?: number; /** something worn as soon as it is bought (an appearance extra) */ wear?: string }
 /** glasses on the rail at the clothes shops */
-export const EYEWEAR: Offer[] = [{ key: 'sunglasses', label: 'Sunglasses (wear them)', price: 2900, wear: 'sunglasses', mood: 4 }, { key: 'glasses', label: 'Glasses with clear lenses (wear them)', price: 3900, wear: 'glasses', mood: 2 }];
+export const HATS = ['beanie', 'cap', 'flatcap'];
+export const EYEWEAR: Offer[] = [{ key: 'flatcap', label: 'A tweed flat cap (wear it)', price: 2400, wear: 'flatcap', mood: 3 }, { key: 'beanie', label: 'A beanie hat (wear it)', price: 1200, wear: 'beanie', mood: 2 }, { key: 'cap', label: 'A baseball cap (wear it)', price: 1500, wear: 'cap', mood: 2 }, { key: 'sunglasses', label: 'Sunglasses (wear them)', price: 2900, wear: 'sunglasses', mood: 4 }, { key: 'glasses', label: 'Glasses with clear lenses (wear them)', price: 3900, wear: 'glasses', mood: 2 }];
 const TAKEAWAY: Record<string, Offer[]> = {
   'Golden Dragon': [{ key: 'chowmein', label: 'Chicken chow mein', price: 850, eat: 60, mood: 6 }, { key: 'ribs', label: 'Salt and pepper ribs', price: 790, eat: 50, mood: 6 }],
   'The Codfather': [{ key: 'fish', label: 'Cod and chips', price: 920, eat: 65, mood: 8 }, { key: 'chips', label: 'Bag of chips', price: 350, eat: 30, mood: 4 }],
@@ -116,6 +117,7 @@ export function buyAt(state: GameState, personId: Id, v: Venue, o: Offer): strin
     const set = new Set(p.appearance.extras ?? []);
     set.add(o.wear);
     if (o.wear === 'glasses') set.delete('sunglasses'); if (o.wear === 'sunglasses') set.delete('glasses');
+    if (HATS.includes(o.wear)) for (const h of HATS) if (h !== o.wear) set.delete(h);
     p.appearance = { ...p.appearance, extras: [...set] };
     p.gesture = { clip: 'dress', until: state.minute + 1 };
   }

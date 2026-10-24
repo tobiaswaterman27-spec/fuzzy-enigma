@@ -1117,6 +1117,7 @@ function buildRealHumanUncached(a: Appearance): HumanBuild {
       out.push(tie);
     }
     // hair: the scalp region cut along the hairline, lifted off the head per style
+    let hairOuter: THREE.BufferGeometry | null = null;
     if (style !== 'bald' && hairTris.length) {
       const thick = style === 'afro' ? 0.045 : style === 'curly' ? 0.022 : style === 'long' ? 0.014 : style === 'bob' ? 0.018 : style === 'bun' || style === 'ponytail' ? 0.008 : style === 'buzz' ? 0.0025 : 0.007;
       const hairM = mat('hair', a.hairColor, style);
@@ -1129,6 +1130,7 @@ function buildRealHumanUncached(a: Appearance): HumanBuild {
         const shellM = mat('shell', a.hairColor, style, k);
         const shell = sk(poolGeometry(pool, hairTris, thick + k * step, 9, 3), shellM);
         shell.castShadow = false;
+        hairOuter = shell.geometry;
       }
       if (style === 'bun') {
         const bun = new THREE.Mesh(new THREE.SphereGeometry(0.04, 18, 14), hairM);
@@ -1201,6 +1203,44 @@ function buildRealHumanUncached(a: Appearance): HumanBuild {
         const n = joints.neck, c = joints.chest;
         const y = n.y - (n.y - c.y) * 0.35;
         put(g([new THREE.TorusGeometry(0.078, 0.003, 6, 32).rotateX(Math.PI / 2 - 0.5).translate(n.x, y - 0.015, n.z + 0.03)], joints.chest), gold, 'chest', joints.chest);
+      }
+      // hats: sat on the crown over the hair, sized for how much hair is under them
+      const hat = ex.has('beanie') ? 'beanie' : ex.has('cap') ? 'cap' : ex.has('flatcap') ? 'flatcap' : null;
+      if (hat) {
+        // measured from the hair over a short cut: the crown sits about 6 cm above the head bone, a
+        // little behind it, and the hair reaches ~9.5 cm to the sides, 11-12 cm up, back and front
+        // fitted over whatever is on top of the head: the outermost layer of hair, or the bare skull
+        const pts: number[] = [];
+        const hp = hairOuter?.getAttribute('position');
+        if (hp) for (let v = 0; v < hp.count; v++) pts.push(hp.getX(v) - hd.x, hp.getY(v) - hd.y, hp.getZ(v) - hd.z);
+        else for (let v = 0; v < pos.length / 3; v++) if (W.headNeck[v] > 0.5) pts.push(pos[v * 3] - hd.x, pos[v * 3 + 1] - hd.y, pos[v * 3 + 2] - hd.z);
+        const yc = 0.055;
+        let ex0 = 0, ey = 0, z0 = 9, z1 = -9;
+        for (let k = 0; k < pts.length; k += 3) { if (pts[k + 1] < yc) continue; ex0 = Math.max(ex0, Math.abs(pts[k])); ey = Math.max(ey, pts[k + 1] - yc); z0 = Math.min(z0, pts[k + 2]); z1 = Math.max(z1, pts[k + 2]); }
+        const cz = hp ? (z0 + z1) / 2 : (z0 + Math.min(z1, 0.09)) / 2;
+        let rx = Math.max(0.07, ex0), ry = Math.max(0.05, ey), rz = Math.max(0.08, hp ? (z1 - z0) / 2 : (Math.min(z1, 0.09) - z0) / 2);
+        // grow the dome until every point under it is inside, plus a few millimetres of cloth
+        let worst = 0;
+        for (let k = 0; k < pts.length; k += 3) { if (pts[k + 1] < yc) continue; if (pts[k + 2] - cz > rz) continue; worst = Math.max(worst, Math.hypot(pts[k] / rx, (pts[k + 1] - yc) / ry, (pts[k + 2] - cz) / rz)); }
+        const grow = Math.max(1, worst) * 1.02 + 0.004 / Math.min(rx, ry, rz);
+        rx *= grow; ry *= grow; rz *= grow;
+        const parts: THREE.BufferGeometry[] = [];
+        const dome = (k: number) => new THREE.SphereGeometry(1, 24, 12, 0, Math.PI * 2, 0, Math.PI * 0.5).scale(rx * 1.04, ry * k, rz * 1.03);
+        const ring = (top: number, h: number, k = 1.04) => { const c = new THREE.CylinderGeometry(1, 1, h, 24, 1, true); c.scale(rx * k, 1, rz * k * 0.99); return c.translate(0, top - h / 2, 0); };
+        const brim = (len: number, wide: number, y: number) => new THREE.CylinderGeometry(1, 1, 0.006, 20, 1, false, -Math.PI / 2, Math.PI).scale(rx * wide, 1, len).translate(0, y, rz * 0.86);
+        if (hat === 'beanie') parts.push(dome(1.1), ring(0.002, 0.03, 1.05));
+        else if (hat === 'cap') parts.push(dome(1.02), ring(0.002, 0.012), brim(0.075, 0.85, 0.0));
+        else parts.push(dome(0.92), ring(0.002, 0.014, 1.05), brim(0.05, 0.8, 0.004));
+        const hm = mergeGeometries(parts.map((x) => x.index ? x.toNonIndexed() : x))!;
+        const col = hat === 'flatcap' ? ['#5a4a3a', '#4a4f45', '#6b5a48'] : hat === 'beanie' ? ['#1d1d1f', '#7a2b35', '#2e4a3f', '#c99a2e', '#2b3b55'] : ['#111111', '#1f3d6b', '#b71c1c', '#efeee9'];
+        let hh = 0; for (const ch of a.skin + a.hairColor) hh = (hh * 31 + ch.charCodeAt(0)) >>> 0;
+        const o = new THREE.Mesh(hm, mat('cloth', col[hh % col.length], hat === 'beanie' ? 'knit' : 'twill', 0.9));
+        o.castShadow = true;
+        o.userData.attach = 'head';
+        o.position.set(0, yc + (hat === 'flatcap' ? 0.012 : 0), cz);
+        // worn tipped back: the front on the forehead, clear of the eyes; the back over the crown
+        o.rotation.x = hat === 'flatcap' ? -0.08 : hat === 'cap' ? -0.16 : -0.22;
+        out.push(o);
       }
       if (ex.has('watch')) {
         const w = joints.handL, f = joints.foreL, d = w.clone().sub(f).normalize(), at = w.clone().addScaledVector(d, -0.035);

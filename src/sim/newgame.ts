@@ -91,6 +91,11 @@ export function makePerson(state: GameState, id: Id, name: string, opts: { homeI
     if ((h >>> 3) % 6 === 0) ex.push(appearance.frame === 'f' ? 'hoops' : 'studs');
     if ((h >>> 6) % 5 === 0) ex.push('watch');
     if ((h >>> 9) % 11 === 0) ex.push('chain');
+    // a flat cap on some of the men, a beanie or a cap on a few others
+    const hat = (h >>> 13) % 13;
+    if (hat === 0 && appearance.frame !== 'f' && appearance.outfit !== 'outfit_smart') ex.push('flatcap');
+    else if (hat === 1 && appearance.hair !== 'bun' && appearance.hair !== 'ponytail') ex.push('beanie');
+    else if (hat === 2 && appearance.outfit !== 'outfit_smart') ex.push('cap');
     if (ex.length) appearance.extras = ex;
   }
   const hands = createContainer(state, 'hands', id, id, 16, undefined, `hands_${id}`);
