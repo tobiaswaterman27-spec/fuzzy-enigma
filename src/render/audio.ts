@@ -184,6 +184,16 @@ export class Audio {
     const v = Math.min(1, 8 / Math.max(2, dist));
     this.thud(heavy ? 80 : 120, heavy ? 0.3 : 0.18, 0.75 * v); this.thud(heavy ? 400 : 800, 0.08, 0.35 * v);
   }
+  /** an empty stomach: a low gurgling rumble that rises and falls */
+  growl() {
+    if (!this.ctx || this.muted) return;
+    const c = this.ctx, t = c.currentTime;
+    const src = c.createBufferSource(); src.buffer = this.noise;
+    const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.setValueAtTime(140, t); lp.Q.value = 8;
+    for (let k = 0; k < 6; k++) lp.frequency.linearRampToValueAtTime(90 + Math.random() * 160, t + 0.15 + k * 0.17);
+    const g = c.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.55, t + 0.2); g.gain.linearRampToValueAtTime(0.35, t + 0.6); g.gain.linearRampToValueAtTime(0.0001, t + 1.15);
+    src.connect(lp).connect(g).connect(this.master); src.start(t, Math.random() * 0.5); src.stop(t + 1.2);
+  }
   /** a camera shutter: two quick clicks of filtered noise */
   shutter() {
     if (!this.ctx || this.muted) return;

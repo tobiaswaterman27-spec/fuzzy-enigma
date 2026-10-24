@@ -746,7 +746,7 @@ export class Game {
     }
     // the flat is refitted when an order arrives (or a save is loaded): rebuild it
     if (++this.homeCheck % 30 === 0) { const k = JSON.stringify(s.homeDesigns.flat ?? null); if (k !== this.homeKey) { if (this.homeKey) this.applyHomeDesign(); this.homeKey = k; } }
-    if (!this.paused) { this.chatter(); this.approaches(); this.remarks(); }
+    if (!this.paused) { this.chatter(); this.approaches(); this.remarks(); this.stomach(); }
     this.views.update(s, this.paused ? 0 : dt, this.player.pos, this.insideId, this.speech);
     // a jump: up and down, knees tucked in the air
     if (this.jumpY > 0 || this.jumpV > 0) {
@@ -918,6 +918,14 @@ export class Game {
     this.say(o.id, lines[Math.floor(Math.random() * lines.length)], 3.5);
   }
   private remarked = new Map<string, number>();
+  /** running on empty: the stomach makes itself heard now and then */
+  private nextGrowl = 0;
+  private stomach() {
+    const now = performance.now(), me = this.player;
+    if (now < this.nextGrowl || me.sleeping || me.dead) return;
+    this.nextGrowl = now + 35000 + Math.random() * 50000;
+    if (me.needs.satiety < 15) this.audio.growl();
+  }
 
   private approaches() {
     const now = performance.now();
